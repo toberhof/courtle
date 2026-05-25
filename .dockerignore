@@ -1,0 +1,14 @@
+.git/
+.gitignore
+.dockerignore
+.DS_Store
+AGENTS.md
+README.md
+data/
+docker-compose.yml
+LICENSE
+*.db
+tests/
+node_modules/
+docker-compose.test.yml
+

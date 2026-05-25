@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<!--built:407-->
+<html lang="de" data-theme="light">
+<head>
+<meta charset="UTF-8">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyOCAyOCIgZmlsbD0ibm9uZSI+CiAgPHJlY3Qgd2lkdGg9IjI4IiBoZWlnaHQ9IjI4IiBmaWxsPSIjZmZmZmZmIi8+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTQsMTQpIHNjYWxlKDAuOCkgdHJhbnNsYXRlKC0xNCwtMTQpIj4KICAgIDxjaXJjbGUgY3g9IjE0IiBjeT0iMyIgcj0iMS41IiBmaWxsPSIjMDA3YTVhIi8+CiAgICA8bGluZSB4MT0iMTQiIHkxPSI0LjUiIHgyPSIxNCIgeTI9IjYuMiIgc3Ryb2tlPSIjMDA3YTVhIiBzdHJva2Utd2lkdGg9IjEuMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8cmVjdCB4PSI3LjUiIHk9IjYiIHdpZHRoPSIxMyIgaGVpZ2h0PSIxNiIgcng9IjUiIHN0cm9rZT0iIzAwN2E1YSIgc3Ryb2tlLXdpZHRoPSIyLjUiIGZpbGw9Im5vbmUiLz4KICAgIDxnIHN0cm9rZT0iIzAwN2E1YSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBmaWxsPSJub25lIj4KICAgICAgPHBhdGggZD0iTSg4LDkgUSA1LDcuNSA0LDYiIHN0cm9rZS13aWR0aD0iMS41Ii8+CiAgICAgIDxwYXRoIGQ9Ik0gMjAsOSBRIDIzLDcuNSAyNCw2IiBzdHJva2Utd2lkdGg9IjEuNSIvPgogICAgICA8cGF0aCBkPSJNIDgsMjAgUSA1LjUsMjEuNSA1LjUsMjMiIHN0cm9rZS13aWR0aD0iMS41Ii8+CiAgICAgIDxwYXRoIGQ9Ik0gMjAsMjAgUSAyMi41LDIxLjUgMjIuNSwyMyIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KICAgICAgPHBhdGggZD0iTSAxNCwyMS44IFEgMTQsMjMgMTQsMjMuNSIgc3Ryb2tlLXdpZHRoPSIxLjIiLz4KICAgIDwvZz4KICAgIDxsaW5lIHgxPSI3LjUiIHkxPSIxNCIgeDI9IjIwLjUiIHkyPSIxNCIgc3Ryb2tlPSIjMDA3YTVhIiBzdHJva2Utd2lkdGg9IjEuMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgPC9nPgo8L3N2Zz4K">
+  <link rel="apple-touch-icon" sizes="180x180" href="courtle-icon-180.png">
+  <link rel="manifest" href="/api.php/manifest" crossorigin="use-credentials">
+  <script>
+window.__pip=null;
+
+window.addEventListener('beforeinstallprompt', e => {
+  console.log('[PWA] beforeinstallprompt fired',{
+    platforms: e.platforms,
+    userChoice: typeof e.userChoice,
+    hasPrompt: typeof e.prompt === 'function'
+  });
+  e.preventDefault();
+  window.__pip = e;
+  console.log('[PWA] __pip stored', !!window.__pip);
+  if (typeof showAndroidInstallBanner === 'function') showAndroidInstallBanner();
+});
+
+window.addEventListener('appinstalled', () => {
+  console.log('[PWA] appinstalled fired');
+});
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js', { scope: '/' })
+    .then(reg => {
+      console.log('[SW] registered',{
+        scope: reg.scope,
+        active: reg.active?.state,
+        controller: navigator.serviceWorker.controller
+      });
+    })
+    .catch(err => console.error('[SW] registration failed',err));
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    console.log('[SW] controller changed', navigator.serviceWorker.controller?.scriptURL);
+  });
+}
+</script>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Courtle">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1c1b19">
+<meta name="robots" content="noindex, nofollow">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Courtle</title>
+<link rel="stylesheet" href="style.css?build=407">
+<link rel="apple-touch-icon" href="courtle-icon-180.png">
+<script src="/vendor/lucide/lucide.js" defer></script>
+<script src="i18n.js?build=407" defer></script>
+<script src="app.js?build=407" defer></script>
+
+<div class="app-shell">
+
+<!-- ── TOPBAR ── -->
+<header class="topbar">
+  <a class="topbar-logo" href="#" onclick="showView('sessions');return false;">
+    <svg class="logo-icon" width="26" height="26" viewBox="0 0 28 28" fill="none" style="color:var(--pri)">
+      <circle cx="14" cy="3" r="1.5" fill="currentColor"/>
+      <line x1="14" y1="4.5" x2="14" y2="6.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      <rect x="7.5" y="6" width="13" height="16" rx="5" stroke="currentColor" stroke-width="2.5" fill="var(--sur2)"/>
+      <g stroke="currentColor" stroke-linecap="round" fill="none">
+        <path d="M 8,9 Q 5,7.5 4,6" stroke-width="1.5"/>
+        <path d="M 20,9 Q 23,7.5 24,6" stroke-width="1.5"/>
+        <path d="M 8,20 Q 5.5,21.5 5.5,23" stroke-width="1.5"/>
+        <path d="M 20,20 Q 22.5,21.5 22.5,23" stroke-width="1.5"/>
+        <path d="M 14,21.8 Q 14,23 14,23.5" stroke-width="1.2"/>
+      </g>
+      <line x1="7.5" y1="14" x2="20.5" y2="14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>
+    <span class="topbar-team-name" id="topbar-team-name"></span>
+  </a>
+  <nav class="nav-dropdown-wrap" id="main-nav">
+    <button class="nav-btn active" id="nav-sessions" onclick="showView('sessions')">
+      <i data-lucide="calendar"></i><span data-i18n="nav.sessions">Sessions</span>
+    </button>
+    <button class="nav-btn" id="nav-my-history" onclick="showView('my-history')" style="display:none">
+      <i data-lucide="calendar-check"></i><span data-i18n="nav.bookings">Buchungen</span>
+    </button>
+    <button class="nav-btn" id="nav-my-transactions" onclick="showView('my-transactions')" style="display:none">
+      <i data-lucide="receipt"></i><span data-i18n="nav.transactions">Transaktionen</span>
+    </button>
+    <div class="nav-dropdown" id="admin-nav-dd" style="display:none">
+      <button class="nav-dropdown-trigger" id="nav-dd-trigger" onclick="toggleNavDD()">
+        <i data-lucide="layout-grid" style="width:16px;height:16px"></i>
+        <span id="nav-dd-label" data-i18n="nav.admin">Admin</span>
+        <i data-lucide="chevron-down" id="nav-dd-caret" style="width:14px;height:14px;margin-left:2px;transition:transform .2s"></i>
+      </button>
+      <div class="nav-dd-menu" id="nav-dd-menu">
+        <button class="nav-dd-item" id="nav-dashboard" onclick="showView('dashboard');closeNavDD()">
+          <i data-lucide="layout-dashboard" style="width:16px;height:16px"></i><span data-i18n="nav.overview">Übersicht</span>
+        </button>
+        <button class="nav-dd-item" id="nav-players" onclick="showView('players');closeNavDD()">
+          <i data-lucide="users" style="width:16px;height:16px"></i><span data-i18n="nav.players">Spieler</span>
+        </button>
+        <button class="nav-dd-item" id="nav-expenses" onclick="showView('expenses');closeNavDD()">
+          <i data-lucide="credit-card" style="width:16px;height:16px"></i><span data-i18n="nav.expenses">Ausgaben</span>
+        </button>
+        <button class="nav-dd-item" id="nav-history" onclick="showView('history');closeNavDD()">
+          <i data-lucide="chart-no-axes-gantt" style="width:16px;height:16px"></i><span data-i18n="nav.history">Transaktionen</span>
+        </button>
+        <button class="nav-dd-item" id="nav-admin-plan" onclick="showView('admin-plan');closeNavDD()">
+          <i data-lucide="clipboard-list" style="width:16px;height:16px"></i><span data-i18n="nav.session_plan">Session Planer</span>
+        </button>
+        <button class="nav-dd-item" id="nav-series" onclick="showView('series');closeNavDD()">
+          <i data-lucide="repeat" style="width:16px;height:16px"></i><span data-i18n="nav.series">Session Serien</span>
+        </button>
+        <div class="nav-dd-divider"></div>
+        <button class="nav-dd-item" id="nav-settings" onclick="showView('settings');closeNavDD()">
+          <i data-lucide="settings" style="width:16px;height:16px"></i><span data-i18n="nav.settings">System</span>
+        </button>
+      </div>
+    </div>
+    <div class="nav-dropdown" id="profile-nav-dd">
+      <button class="nav-btn" id="profile-dd-trigger" onclick="toggleProfileDD()">
+        <i data-lucide="user" id="profile-dd-icon" style="width:16px;height:16px"></i>
+        <span id="profile-dd-label" data-i18n="nav.login">Login</span>
+        <i data-lucide="chevron-down" id="profile-dd-caret" style="width:14px;height:14px;margin-left:2px;transition:transform .2s"></i>
+      </button>
+      <div class="nav-dd-menu" id="profile-dd-menu">
+        <button class="nav-dd-item" onclick="openChangeUserPinModal();closeProfileDD()">
+          <i data-lucide="key-round" style="width:16px;height:16px"></i><span data-i18n="nav.pin_change">PIN ändern</span>
+        </button>
+        <button class="nav-dd-item" onclick="openChangeUserContactModal();closeProfileDD()">
+          <i data-lucide="mail" style="width:16px;height:16px"></i><span data-i18n="nav.email_change">E-Mail ändern</span>
+        </button>
+        <button class="nav-dd-item" onclick="openIconPickerModal();closeProfileDD()">
+          <i data-lucide="image" style="width:16px;height:16px"></i><span data-i18n="nav.icon_change">Icon ändern</span>
+        </button>
+        <button class="nav-dd-item" onclick="openLanguageModal();closeProfileDD()">
+          <i data-lucide="languages" style="width:16px;height:16px"></i><span data-i18n="nav.language">Sprache</span>
+        </button>
+        <button class="nav-dd-item" data-theme-toggle id="desktop-theme-toggle" onclick="closeProfileDD()">
+          <!-- Dynamically populated in app.js setThemeIcon -->
+        </button>
+        <button class="nav-dd-item" onclick="confirmLogout()">
+          <i data-lucide="log-out" style="width:16px;height:16px"></i><span data-i18n="nav.logout">Logout</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="topbar-right">
+    <div class="navbar-balance-badge hidden" id="navbar-balance-badge">
+      <span id="navbar-balance-amount" class="navbar-balance-amount"></span>
+      <i data-lucide="wallet" id="navbar-balance-icon" style="width:14px;height:14px"></i>
+    </div>
+  </div>
+</header>
+
+<!-- ── GUEST BALANCE BAR (removed — balance shown in navbar badge) ── -->
+<span id="gbb-amount" class="gbb-amount" style="display:none" aria-hidden="true"></span>
+
+<!-- ── INSTALL BANNER (iOS/Android) ── -->
+<div class="install-banner hidden" id="install-banner">
+  <div class="install-banner-content">
+    <svg class="install-banner-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+    <span class="install-banner-text">
+      <span class="ios-text" data-i18n-html="banner.ios_text">App installieren: <strong>Teilen</strong> <svg class="install-banner-share-inline" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg> → "Zum Home-Bildschirm"</span>
+      <span class="android-text"><button class="install-banner-btn" onclick="installPWA()" data-i18n="banner.android_btn">Als App hinzufügen</button><span class="android-hint" data-i18n="banner.android_hint">⋮ → App installieren</span></span>
+    </span>
+    <button class="install-banner-close" onclick="dismissInstallBanner()" aria-label="Schließen" data-i18n-aria-label="banner.close">✕</button>
+  </div>
+</div>
+
+<!-- ── PULL-TO-REFRESH INDICATOR (iOS PWA) ── -->
+<div id="ptr-indicator" class="ptr-hidden">
+  <svg class="ptr-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="7 13 12 18 17 13"/><line x1="12" y1="2" x2="12" y2="18"/></svg>
+  <svg class="ptr-spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 1 1-6-8.4"/></svg>
+</div>
+
+<!-- ── MAIN ── -->
+<main class="main">
+
+  <div class="swipe-wrap" id="swipe-wrap">
+    <div class="swipe-track" id="swipe-track">
+
+  <!-- SESSIONS (public default view) -->
+  <section class="view active" id="view-sessions">
+    <div id="sessions-container"></div>
+  </section>
+
+  <!-- MY HISTORY (logged in guest) -->
+  <section class="view" id="view-my-history">
+    <div id="my-bookings-upcoming" class="mb6"></div>
+    <div id="my-bookings-past" class="mb6"></div>
+    <div id="my-history-list"></div>
+  </section>
+  <section class="view" id="view-my-transactions">
+    <div id="my-group-pool" class="group-pool-wrap mb6"></div>
+    <div id="my-runway-indicator" class="sc runway-card mb6"></div>
+    <div class="sc timeline-card">
+      <div class="flex items-c just-b mb4" style="margin-top:0">
+        <h2 class="sec-title" style="margin-bottom:0" data-i18n="nav.timeline">Timeline</h2>
+      </div>
+      <div id="my-timeline-container" class="timeline-container"></div>
+      <div id="my-timeline-footer" class="timeline-footer flex just-c mt6">
+        <button id="btn-toggle-history" class="btn btn-flat" onclick="toggleHistoryView()">
+          <span id="btn-toggle-history-text">Ältere Transaktionen laden</span>
+        </button>
+      </div>
+      <div class="flex just-c mt4 mb2">
+        <button class="btn-csv-link" onclick="downloadMyTransactionsCSV()">
+          <i data-lucide="download" style="width: 12px; height: 12px; margin-right: 4px;"></i>
+          <span data-i18n="history.csv_export">CSV exportieren</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+    </div>
+  </div>
+
+  <!-- DASHBOARD (admin) -->
+  <section class="view" id="view-dashboard">
+    <div id="kpi-container" class="kpi-grid"></div>
+    <div class="flex items-c just-b mb4 mt6">
+      <h2 class="sec-title" style="margin-bottom:0" data-i18n="dashboard.player_activity">Spieler-Aktivität</h2>
+    </div>
+    <div id="balance-table"></div>
+  </section>
+
+  <!-- EXPENSES (admin) -->
+  <section class="view" id="view-expenses">
+    <div class="flex items-c just-b mb6">
+      <div style="display:flex;flex-direction:column;gap:var(--sp1);align-items:flex-start">
+        <h1 class="page-title" style="margin-bottom:0" data-i18n="nav.expenses">Ausgaben</h1>
+        <p class="txsm txm" data-i18n="expenses.operator_desc">Trage hier Rechnungen ein, die an den Court-Betreiber bezahlt wurden.</p>
+      </div>
+      <button class="btn btn-pri" onclick="openExpenseModal()"><i data-lucide="plus"></i> <span data-i18n="dashboard.expenses_record">Erfassen</span></button>
+    </div>
+    <div id="expenses-container" class="expense-list"></div>
+  </section>
+
+  <!-- ADMIN SESSION PLANNER -->
+  <section class="view" id="view-admin-plan">
+    <div class="flex items-c just-b mb6 wrap g3" id="admin-plan-header-dynamic">
+    </div>
+    <div class="card mb6">
+      <div class="flex items-c just-b mb4">
+        <h2 class="sec-title" style="margin-bottom:0" data-i18n="session.court">Court</h2>
+        <div class="flex g2">
+          <span class="txxs txm" id="plan-slots-meta"></span>
+          <button class="btn btn-xs btn-sec" id="add-court-btn" onclick="addCourtToSessionFromBtn()"><i data-lucide="plus"></i> <span data-i18n="session.add_court">Court</span></button>
+        </div>
+      </div>
+      <div id="plan-slots-editor"></div>
+    </div>
+    <div class="card mb6" id="plan-waitlist-admin"></div>
+    <div class="card" id="plan-summary"></div>
+    <div class="card mt6" id="plan-history">
+      <h3 class="sec-title" data-i18n="session.history_title">Verlauf</h3>
+      <div id="plan-history-content">
+        <div class="empty"><i data-lucide="clock"></i><p data-i18n="session.history_empty">Wähle eine Session, um den Verlauf zu sehen.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PLAYERS (admin) -->
+  <section class="view" id="view-players">
+    <div class="flex items-c just-b mb4">
+      <h1 class="page-title" style="margin-bottom:0" data-i18n="view.players">Spieler</h1>
+      <button class="btn btn-pri" onclick="openAddPlayer()"><i data-lucide="user-plus"></i> <span data-i18n="players.add">Hinzufügen</span></button>
+    </div>
+    <div class="player-controls flex items-c gap3 mb6 wrap">
+      <div class="search-wrap" style="flex:1;min-width:200px;position:relative">
+        <i data-lucide="search" style="width:16px;height:16px;position:absolute;left:var(--sp3);top:50%;transform:translateY(-50%);color:var(--txm)"></i>
+        <input type="text" id="player-search" class="fi" style="padding-left:36px;font-size:var(--text-sm)" data-i18n-placeholder="players.search" placeholder="Spieler suchen..." oninput="handlePlayerSearch(this.value)">
+      </div>
+      <div class="sort-wrap flex items-c gap2">
+        <span class="txsm txm" style="white-space:nowrap" data-i18n="players.sort">Sortierung:</span>
+        <select id="player-sort" class="fi" style="width:auto;font-size:var(--text-sm)" onchange="handlePlayerSort(this.value)">
+          <option value="name_asc">Name A-Z</option>
+          <option value="name_desc">Name Z-A</option>
+          <option value="balance_desc">Guthaben (Meiste zuerst)</option>
+          <option value="balance_asc">Guthaben (Wenigste zuerst)</option>
+        </select>
+      </div>
+    </div>
+    <div class="pg" id="players-grid"></div>
+  </section>
+
+  <!-- HISTORY (admin) -->
+  <section class="view" id="view-history">
+    <div class="flex items-c just-b mb6">
+      <h1 class="page-title" style="margin-bottom:0" data-i18n="view.history">Transaktionen</h1>
+      <div class="flex items-c g2">
+        <button class="btn btn-sec" onclick="downloadHistoryCSV()" data-i18n-title="history.csv_export" style="white-space:nowrap;padding:var(--sp2) var(--sp3);border-radius:var(--r-md);font-size:var(--text-sm);font-weight:400;line-height:normal"><i data-lucide="download"></i> <span data-i18n="history.csv">CSV</span></button>
+        <select class="fi" id="hist-filter" style="width:auto;font-size:var(--text-sm)" onchange="renderHistory()">
+          <option value="" data-i18n="players.csv_all">Alle Spieler</option>
+        </select>
+      </div>
+    </div>
+    <div class="hl" id="history-list"></div>
+  </section>
+
+<!-- SETTINGS (admin) -->
+  <section class="view" id="view-settings">
+    <div class="card mb6">
+      <h2 class="sec-title" data-i18n="settings.general">Allgemein</h2>
+      <p class="txsm txm mb4" data-i18n="settings.general_desc">Globale Systemeinstellungen.</p>
+
+      <div class="fg">
+        <label class="fl" for="disp-team-name" data-i18n="settings.team_name">Team-Name</label>
+        <input type="text" id="disp-team-name" class="fi" data-i18n-placeholder="settings.team_name_placeholder" placeholder="z. B. Padel-Frechen" autocomplete="organization">
+        <p class="txsm txm" style="margin-left:2px" data-i18n="settings.team_name_hint">Wird als Seitentitel und im Login-Modal angezeigt.</p>
+      </div>
+
+      <div class="fg" style="margin-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="sys-series-enabled" style="width:20px;height:20px" checked>
+          <span data-i18n="settings.series_enabled">Session-Serien aktiviert</span>
+        </label>
+        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.series_hint">Wenn deaktiviert, werden alle angelegten Serien ignoriert. Bestehende Sessions bleiben erhalten.</p>
+      </div>
+
+      <div class="fg" style="gap:4px">
+        <label class="fl" for="sys-cancel-hours" data-i18n="settings.cancel_hours">Globale Abmeldefrist</label>
+        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+          <input type="number" id="sys-cancel-hours" class="fi" min="0" max="240" step="1" value="7" style="max-width:90px" inputmode="numeric">
+          <span style="font-size:1.2em;font-weight:bold;line-height:1;user-select:none">:</span>
+          <select id="sys-cancel-minutes" class="fi" style="max-width:80px">
+            <option value="0">00</option>
+            <option value="15">15</option>
+            <option value="30">30</option>
+            <option value="45">45</option>
+          </select>
+        </div>
+        <p class="txsm txm" style="margin-left:2px;width:100%" data-i18n="settings.cancel_hours_hint">Standard-Frist für alle Sessions ohne individuelle Einstellung (max. 240:00).</p>
+      </div>
+
+      <div class="fg">
+        <label class="fl" for="sr-cost" data-i18n="settings.cost">Standard-Preis pro Slot</label>
+        <input type="number" id="sr-cost" class="fi" style="max-width:150px" value="16">
+        <p class="txsm txm" style="margin-top:4px" data-i18n="settings.cost_hint">Gilt für alle Sessions, sofern nicht pro Session überschrieben.</p>
+      </div>
+
+      <div class="fg" style="margin-top:10px">
+        <button class="btn btn-pri btn-sm" onclick="saveSystemSettings()">
+          <i data-lucide="save"></i> <span data-i18n="settings.save">Speichern</span>
+        </button>
+      </div>
+    </div>
+
+<!-- 1. Anzeige -->
+    <div class="card mb6">
+      <h2 class="sec-title" data-i18n="settings.display">Anzeige</h2>
+      <p class="txsm txm mb4" data-i18n="settings.display_desc">Passe die Darstellung der Session-Übersicht an.</p>
+
+      <div class="fg">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="disp-court-grouping" style="width:20px;height:20px" checked>
+          <span data-i18n="settings.court_grouping">Courts gruppiert anzeigen</span>
+        </label>
+        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.court_grouping_hint">Wenn deaktiviert, werden alle Slots als eine flache Liste dargestellt.</p>
+      </div>
+
+      <div class="fg">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="disp-privacy-mode" style="width:20px;height:20px">
+          <span data-i18n="settings.privacy_mode">Datenschutz-Modus</span>
+        </label>
+        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.privacy_mode_hint">Wenn aktiviert, werden in der Session-Übersicht für nicht eingeloggte Besucher nur "Gebucht" statt der Spielernamen angezeigt.</p>
+      </div>
+
+      <div class="fg">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="disp-show-cancel-deadline" style="width:20px;height:20px" checked>
+          <span data-i18n="settings.show_cancel_deadline">Abmeldefrist in Session-Cards anzeigen</span>
+        </label>
+        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.show_cancel_deadline_hint">Zeigt die Abmeldefrist in der Session-Übersicht. Folgt dem Datenschutz-Modus.</p>
+      </div>
+
+      <div class="fg">
+        <label class="fl" for="sr-currency" data-i18n="settings.currency">Währung</label>
+        <select id="sr-currency" class="fi" style="max-width:220px">
+          <option value="€" data-i18n="currency.eur">€ EUR – Euro</option>
+          <option value="$" data-i18n="currency.usd">$ USD – US-Dollar</option>
+          <option value="£" data-i18n="currency.gbp">£ GBP – Britisches Pfund</option>
+          <option value="CHF" data-i18n="currency.chf">CHF – Schweizer Franken</option>
+          <option value="SEK" data-i18n="currency.sek">SEK – Schwedische Krone</option>
+          <option value="NOK" data-i18n="currency.nok">NOK – Norwegische Krone</option>
+          <option value="DKK" data-i18n="currency.dkk">DKK – Dänische Krone</option>
+          <option value="zł" data-i18n="currency.pln">zł PLN – Polnischer Zloty</option>
+          <option value="Kč" data-i18n="currency.czk">Kč CZK – Tschechische Krone</option>
+          <option value="Ft" data-i18n="currency.huf">Ft HUF – Ungarischer Forint</option>
+          <option value="lei" data-i18n="currency.ron">lei RON – Rumänischer Leu</option>
+          <option value="лв" data-i18n="currency.bgn">лв BGN – Bulgarischer Lew</option>
+          <option value="₽" data-i18n="currency.rub">₽ RUB – Russischer Rubel</option>
+          <option value="₺" data-i18n="currency.try">₺ TRY – Türkische Lira</option>
+          <option value="C$" data-i18n="currency.cad">C$ CAD – Kanadischer Dollar</option>
+          <option value="MX$" data-i18n="currency.mxn">MX$ MXN – Mexikanischer Peso</option>
+          <option value="R$" data-i18n="currency.brl">R$ BRL – Brasilianischer Real</option>
+          <option value="AR$" data-i18n="currency.ars">AR$ ARS – Argentinischer Peso</option>
+          <option value="CL$" data-i18n="currency.clp">CL$ CLP – Chilenischer Peso</option>
+          <option value="CO$" data-i18n="currency.cop">CO$ COP – Kolumbianischer Peso</option>
+        </select>
+      </div>
+
+      <div class="fg">
+        <label class="fl" for="sys-language" data-i18n="settings.system_language">Systemsprache</label>
+        <select id="sys-language" class="fi" style="max-width:220px">
+          <option value="" data-i18n="language.auto">Automatisch</option>
+          <option value="de" data-i18n="language.german">Deutsch</option>
+          <option value="en" data-i18n="language.english">English</option>
+          <option value="es" data-i18n="language.spanish">Español</option>
+          <option value="it" data-i18n="language.italian">Italiano</option>
+          <option value="fr" data-i18n="language.french">Français</option>
+          <option value="pt" data-i18n="language.portuguese">Português</option>
+        </select>
+        <p class="txsm txm" style="margin-top:4px" data-i18n="settings.system_language_hint">Standardsprache für neue Spieler, wenn keine Browser-Erkennung möglich ist.</p>
+      </div>
+
+      <div class="fg">
+        <label class="fl" for="disp-time-format" data-i18n="settings.time_format">Uhrzeitformat</label>
+        <select id="disp-time-format" class="fi" style="max-width:220px">
+          <option value="24h" data-i18n="settings.time_format_24h">24h (16:00)</option>
+          <option value="12h" data-i18n="settings.time_format_12h">12h (4:00 PM)</option>
+        </select>
+        <p class="txsm txm" style="margin-top:4px" data-i18n="settings.time_format_hint">Legt fest, ob Uhrzeiten im 24h- oder 12h-Format (AM/PM) angezeigt werden.</p>
+      </div>
+
+      <div class="fg">
+        <label class="fl" for="disp-date-format" data-i18n="settings.date_format">Datumsformat</label>
+        <select id="disp-date-format" class="fi" style="max-width:220px">
+          <option value="dmy" data-i18n="settings.date_format_dmy">TT.MM.JJJJ (31.12.2025)</option>
+          <option value="mdy" data-i18n="settings.date_format_mdy">MM/TT/JJJJ (12/31/2025)</option>
+          <option value="ymd" data-i18n="settings.date_format_ymd">JJJJ-MM-TT (2025-12-31)</option>
+        </select>
+        <p class="txsm txm" style="margin-top:4px" data-i18n="settings.date_format_hint">Legt fest, wie Datumsangaben im System angezeigt werden.</p>
+      </div>
+
+      <div class="fg" style="margin-top:10px">
+        <button class="btn btn-pri btn-sm" onclick="saveDisplaySettings()">
+          <i data-lucide="save"></i> <span data-i18n="settings.save_display">Speichern</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 3. Datensicherung -->
+    <div class="card mb6">
+      <h2 class="sec-title" data-i18n="settings.backup">Datensicherung</h2>
+      <p class="txsm txm mb4" data-i18n-html="settings.backup_desc">
+        Export sichert alle Spieler, Buchungen und Transaktionen als JSON-Datei.
+        Import stellt ein zuvor exportiertes Backup wieder her (<strong>überschreibt</strong> alle aktuellen Daten).
+      </p>
+      <div class="flex g3 wrap">
+        <button class="btn btn-sec btn-sm" onclick="exportData()"><i data-lucide="download"></i> <span data-i18n="settings.export">Export</span></button>
+        <button class="btn btn-sec btn-sm" onclick="document.getElementById('imp').click()"><i data-lucide="upload"></i> <span data-i18n="settings.import">Import</span></button>
+        <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(event)">
+      </div>
+    </div>
+  </section>
+
+  <!-- SERIES (admin) -->
+  <section class="view" id="view-series">
+    <div class="flex items-c just-b mb6">
+      <h1 class="page-title" style="margin-bottom:0" data-i18n="view.series">Session Serien</h1>
+      <button class="btn btn-pri" onclick="openAddSeries()"><i data-lucide="plus"></i> <span data-i18n="series.new">Neue Serie</span></button>
+    </div>
+    <div id="series-list"></div>
+  </section>
+</main>
+<footer style="text-align:center;padding:var(--sp4);font-size:10px;color:var(--txf)">
+  <span style="display:inline-flex;align-items:center;gap:6px">
+    <svg width="14" height="14" viewBox="0 0 28 28" fill="none" style="color:var(--txf)">
+      <circle cx="14" cy="3" r="1.5" fill="currentColor"/>
+      <line x1="14" y1="4.5" x2="14" y2="6.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      <rect x="7.5" y="6" width="13" height="16" rx="5" stroke="currentColor" stroke-width="2" fill="transparent"/>
+      <g stroke="currentColor" stroke-linecap="round" fill="none">
+        <path d="M 8,9 Q 5,7.5 4,6" stroke-width="1.5"/>
+        <path d="M 20,9 Q 23,7.5 24,6" stroke-width="1.5"/>
+        <path d="M 8,20 Q 5.5,21.5 5.5,23" stroke-width="1.5"/>
+        <path d="M 20,20 Q 22.5,21.5 22.5,23" stroke-width="1.5"/>
+        <path d="M 14,21.8 Q 14,23 14,23.5" stroke-width="1.2"/>
+      </g>
+      <line x1="7.5" y1="14" x2="20.5" y2="14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>
+    Courtle
+  </span><br>
+  <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
+  <span style="font-size:7px;color:var(--txf)">(build 407)</span>
+
+</footer>
+
+<!-- ── BOTTOM NAV (mobile) ── -->
+<nav class="bottom-nav" id="bottom-nav">
+  <button class="bnav-btn active" id="bnav-sessions" onclick="showView('sessions')">
+    <i data-lucide="calendar"></i><span data-i18n="nav.sessions">Sessions</span>
+  </button>
+  <button class="bnav-btn hidden" id="bnav-my-history" onclick="showView('my-history')">
+    <i data-lucide="calendar-check"></i><span data-i18n="nav.bookings">Buchungen</span>
+  </button>
+  <button class="bnav-btn hidden" id="bnav-my-transactions" onclick="showView('my-transactions')">
+    <i data-lucide="receipt"></i><span data-i18n="nav.transactions">Transaktionen</span>
+  </button>
+  <button class="bnav-btn hidden" id="bnav-admin-dd" onclick="toggleMobileAdminMenu()">
+    <i data-lucide="layout-grid"></i><span data-i18n="nav.admin">Admin</span>
+  </button>
+  <button class="bnav-btn" id="bnav-profile">
+    <i data-lucide="user"></i><span id="bnav-profile-label" data-i18n="nav.login">Login</span>
+  </button>
+</nav>
+<div class="bnav-backdrop" id="bnav-backdrop" onclick="closeMobileAdminMenu();closeProfileMenu()"></div>
+<div class="bnav-profile-menu" id="bnav-profile-menu">
+  <button onclick="openChangeUserPinModal();closeProfileMenu()">
+    <i data-lucide="key-round" style="width:16px;height:16px"></i><span data-i18n="nav.pin_change">PIN ändern</span>
+  </button>
+  <button onclick="openChangeUserContactModal();closeProfileMenu()">
+    <i data-lucide="mail" style="width:16px;height:16px"></i><span data-i18n="nav.email_change">E-Mail ändern</span>
+  </button>
+  <button onclick="openIconPickerModal();closeProfileMenu()">
+    <i data-lucide="image" style="width:16px;height:16px"></i><span data-i18n="nav.icon_change">Icon ändern</span>
+  </button>
+  <button onclick="openLanguageModal();closeProfileMenu()">
+    <i data-lucide="languages" style="width:16px;height:16px"></i><span data-i18n="nav.language">Sprache</span>
+  </button>
+  <button data-theme-toggle id="mobile-theme-toggle" onclick="closeProfileMenu()">
+    <!-- Dynamically populated in app.js setThemeIcon -->
+  </button>
+  <button onclick="confirmLogout()">
+    <i data-lucide="log-out" style="width:16px;height:16px"></i><span data-i18n="nav.logout">Logout</span>
+  </button>
+</div>
+<div class="bnav-admin-menu" id="bnav-admin-menu">
+  <button onclick="showView('dashboard');closeMobileAdminMenu()"><i data-lucide="layout-dashboard"></i> <span data-i18n="nav.overview">Übersicht</span></button>
+  <button onclick="showView('players');closeMobileAdminMenu()"><i data-lucide="users"></i> <span data-i18n="nav.players">Spieler</span></button>
+  <button onclick="showView('expenses');closeMobileAdminMenu()"><i data-lucide="credit-card"></i> <span data-i18n="nav.expenses">Ausgaben</span></button>
+  <button onclick="showView('history');closeMobileAdminMenu()"><i data-lucide="chart-no-axes-gantt"></i> <span data-i18n="nav.history">Transaktionen</span></button>
+  <button onclick="showView('admin-plan');closeMobileAdminMenu()"><i data-lucide="clipboard-list"></i> <span data-i18n="nav.session_plan">Session Planer</span></button>
+  <button onclick="showView('series');closeMobileAdminMenu()"><i data-lucide="repeat"></i> <span data-i18n="nav.series">Session Serien</span></button>
+  <div class="bnav-divider"></div>
+  <button onclick="showView('settings');closeMobileAdminMenu()"><i data-lucide="settings"></i> <span data-i18n="nav.settings">System</span></button>
+</div>
+
+</div>
+
+<!-- ── LANGUAGE MODAL ── -->
+<div class="mo" id="mo-language">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" data-i18n="language.title">Sprache</h2><button class="mo-close btn-icon" onclick="closeMo('mo-language')"><i data-lucide="x"></i></button></div>
+    <div class="fg" style="display:flex;flex-direction:column;gap:12px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="radio" name="lang" value="" id="lang-auto" style="width:18px;height:18px">
+        <span data-i18n="language.auto">Automatisch erkennen (Browser)</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="radio" name="lang" value="de" id="lang-de" style="width:18px;height:18px">
+        <span data-i18n="language.german">Deutsch</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="radio" name="lang" value="en" id="lang-en" style="width:18px;height:18px">
+        <span data-i18n="language.english">English</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="radio" name="lang" value="es" id="lang-es" style="width:18px;height:18px">
+        <span data-i18n="language.spanish">Español</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="radio" name="lang" value="it" id="lang-it" style="width:18px;height:18px">
+        <span data-i18n="language.italian">Italiano</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="radio" name="lang" value="fr" id="lang-fr" style="width:18px;height:18px">
+        <span data-i18n="language.french">Français</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+        <input type="radio" name="lang" value="pt" id="lang-pt" style="width:18px;height:18px">
+        <span data-i18n="language.portuguese">Português</span>
+      </label>
+    </div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-language')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-pri" onclick="saveLanguage()"><i data-lucide="save"></i> <span data-i18n="language.save">Speichern</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ── USER PIN MODAL ── -->
+<div class="pin-modal-overlay" id="upin-overlay" style="z-index:500">
+  <div class="pin-box">
+    <svg class="pin-logo" width="44" height="44" viewBox="0 0 28 28" fill="none">
+      <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" stroke-width="1.5"/>
+    </svg>
+    <h2 class="pin-title" id="upin-title">Hallo!</h2>
+    <p class="pin-subtitle" id="upin-sub" data-i18n="login.enter_pin">PIN eingeben</p>
+    <span id="upin-mode" style="display:none"></span>
+    <div class="pin-dots">
+      <div class="pdot" id="upd0"></div><div class="pdot" id="upd1"></div>
+      <div class="pdot" id="upd2"></div><div class="pdot" id="upd3"></div>
+    </div>
+    <div class="pin-err" id="upin-err"></div>
+    <div class="pin-grid">
+      <button class="pkey" onclick="upk('1')">1</button><button class="pkey" onclick="upk('2')">2</button><button class="pkey" onclick="upk('3')">3</button>
+      <button class="pkey" onclick="upk('4')">4</button><button class="pkey" onclick="upk('5')">5</button><button class="pkey" onclick="upk('6')">6</button>
+      <button class="pkey" onclick="upk('7')">7</button><button class="pkey" onclick="upk('8')">8</button><button class="pkey" onclick="upk('9')">9</button>
+      <button class="pkey" onclick="upclr()">✕</button><button class="pkey" onclick="upk('0')">0</button>
+      <button class="pkey del" onclick="updel()"><i data-lucide="delete"></i></button>
+    </div>
+    <button class="pin-close" onclick="closeUserPinModal(); openWelcomeModal()">← <span data-i18n="modal.cancel">Zurück</span></button>
+  </div>
+</div>
+
+<!-- ── WELCOME MODAL ── -->
+<div class="welcome-overlay" id="welcome-overlay">
+  <div class="welcome-box">
+    <div class="welcome-branding">
+      <svg class="welcome-logo" width="52" height="52" viewBox="0 0 28 28" fill="none" style="color:var(--pri)">
+        <circle cx="14" cy="3" r="1.5" fill="currentColor"/>
+        <line x1="14" y1="4.5" x2="14" y2="6.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      <rect x="7.5" y="6" width="13" height="16" rx="5" stroke="currentColor" stroke-width="2" fill="var(--bg,white)"/>
+        <g stroke="currentColor" stroke-linecap="round" fill="none">
+          <path d="M 8,9 Q 5,7.5 4,6" stroke-width="1.5"/>
+          <path d="M 20,9 Q 23,7.5 24,6" stroke-width="1.5"/>
+          <path d="M 8,20 Q 5.5,21.5 5.5,23" stroke-width="1.5"/>
+          <path d="M 20,20 Q 22.5,21.5 22.5,23" stroke-width="1.5"/>
+          <path d="M 14,21.8 Q 14,23 14,23.5" stroke-width="1.2"/>
+        </g>
+        <line x1="7.5" y1="14" x2="20.5" y2="14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <span class="welcome-brand-text" data-i18n="welcome.title">Courtle</span>
+      <div class="welcome-hero" id="welcome-hero"></div>
+    </div>
+
+    <p class="welcome-sub" data-i18n="welcome.subtitle">Wähle deinen Namen um dich anzumelden.</p>
+
+    <div class="player-pick-grid-wrap">
+      <div class="player-pick-grid" id="player-pick-grid"></div>
+    </div>
+
+    <button class="welcome-skip" onclick="closeWelcomeModal(false)" data-i18n="welcome.skip">Nur ansehen ohne Auswahl</button>
+  </div>
+</div>
+
+<!-- ── EDIT EXPENSE MODAL ── -->
+<div class="mo" id="mo-edit-expense">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" data-i18n="expenses.edit_title">Auslage bearbeiten</h2><button class="mo-close btn-icon" onclick="closeMo('mo-edit-expense')"><i data-lucide="x"></i></button></div>
+    <div class="fg"><label class="fl" data-i18n="expenses.amount">Betrag</label><input type="number" id="eex-amount" class="fi" data-i18n-placeholder="expenses.amount_placeholder" placeholder="3000" min="1" step="0.01"></div>
+    <div class="fg"><label class="fl" data-i18n="expenses.date">Datum</label><input type="date" id="eex-date" class="fi"></div>
+    <div class="fg"><label class="fl" data-i18n="expenses.note">Notiz</label><input type="text" id="eex-note" class="fi" data-i18n-placeholder="expenses.note_placeholder" placeholder="z.B. Rechnung Halle 2026"></div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-edit-expense')" data-i18n="expenses.cancel">Abbrechen</button>
+      <button class="btn btn-pri" onclick="saveEditedExpense()"><i data-lucide="save"></i> <span data-i18n="expenses.save">Speichern</span></button>
+    </div>
+  </div>
+</div>
+
+<div class="mo" id="mo-expense">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" data-i18n="expenses.title">Auslage erfassen</h2><button class="mo-close btn-icon" onclick="closeMo('mo-expense')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" data-i18n="expenses.desc">Trage hier Rechnungen ein, die du aus eigener Tasche für die Plätze bezahlt hast.</p>
+    <div class="fg"><label class="fl" data-i18n="expenses.amount">Betrag</label><input type="number" id="ex-amount" class="fi" data-i18n-placeholder="expenses.amount_placeholder" placeholder="3000" min="1" step="0.01"></div>
+    <div class="fg"><label class="fl" data-i18n="expenses.date">Datum</label><input type="date" id="ex-date" class="fi"></div>
+    <div class="fg"><label class="fl" data-i18n="expenses.note">Notiz</label><input type="text" id="ex-note" class="fi" data-i18n-placeholder="expenses.note_placeholder" placeholder="z.B. Rechnung Halle 2026"></div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-expense')" data-i18n="expenses.cancel">Abbrechen</button>
+      <button class="btn btn-pri" onclick="saveExpense()"><i data-lucide="save"></i> <span data-i18n="expenses.save">Speichern</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ── DELETE EXPENSE CONFIRM MODAL ── -->
+<div class="mo" id="mo-del-expense">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" data-i18n="expenses.delete_confirm">Wirklich löschen?</h2><button class="mo-close btn-icon" onclick="closeMo('mo-del-expense')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" data-i18n="expenses.delete_confirm_desc">Bist du sicher, dass du diese Auslage entfernen möchtest? Dies kann nicht rückgängig gemacht werden.</p>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-del-expense')" data-i18n="expenses.cancel">Abbrechen</button>
+      <button class="btn btn-dan" onclick="confirmDeleteExpense()"><i data-lucide="trash-2"></i> <span data-i18n="expenses.delete">Löschen</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ── CANCEL COURT CONFIRM MODAL ── -->
+<div class="mo" id="mo-del-court">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" id="mo-del-court-title" data-i18n="court.cancel_title">Court stornieren?</h2><button class="mo-close btn-icon" onclick="closeMo('mo-del-court')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" data-i18n="court.cancel_desc">Willst du diesen Court wirklich stornieren? Alle eingetragenen Spieler auf diesem Court werden entfernt.</p>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-del-court')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-dan" onclick="confirmCancelCourt()" data-i18n="court.cancel_btn">Ja, stornieren</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ADD SESSION MODAL ── -->
+<div class="mo" id="mo-add-session">
+  <div class="mo-box">
+    <div class="mo-head">
+      <h2 class="mo-title" data-i18n="modal.add_session">Session hinzufügen</h2>
+      <button class="mo-close btn-icon" onclick="closeMo('mo-add-session')">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    <div class="fg">
+      <label class="fl" for="add-sess-date" data-i18n="modal.date">Datum</label>
+      <input type="date" id="add-sess-date" class="fi" style="max-width:180px;">
+    </div>
+    <div class="fg">
+      <label class="fl" for="add-sess-start" data-i18n="modal.start_time">Startzeit</label>
+      <input type="time" id="add-sess-start" class="fi" style="max-width:150px;">
+    </div>
+    <div class="fg">
+      <label class="fl" for="add-sess-end" data-i18n="modal.end_time">Endzeit</label>
+      <input type="time" id="add-sess-end" class="fi" style="max-width:150px;">
+    </div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-add-session')" data-i18n="modal.cancel">
+        Abbrechen
+      </button>
+      <button class="btn btn-pri" onclick="saveAddSession()">
+        <i data-lucide="calendar-plus"></i> <span data-i18n="modal.create">Anlegen</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ── ADMIN SET PLAYER PIN MODAL ── -->
+<div class="mo" id="mo-admin-set-pin">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" data-i18n="admin_pin.title">Spieler-PIN ändern</h2><button class="mo-close btn-icon" onclick="closeMo('mo-admin-set-pin')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" id="masp-sub"></p>
+    <div class="fg"><label class="fl" data-i18n="admin_pin.label">Neuer 4-stelliger PIN</label><input type="password" id="masp-pin" class="fi" maxlength="4" inputmode="numeric" placeholder="••••" style="max-width:140px;letter-spacing:.35em"></div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-admin-set-pin')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-pri" onclick="saveAdminSetPin()"><i data-lucide="key-round"></i> <span data-i18n="admin_pin.save">Speichern</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ── CHANGE USER PIN MODAL ── -->
+<div class="mo" id="mo-user-pin">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" data-i18n="own_pin.title">Eigenen PIN ändern</h2><button class="mo-close btn-icon" onclick="closeMo('mo-user-pin')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" data-i18n="own_pin.desc">Bitte zuerst den aktuellen PIN bestätigen und danach den neuen 4-stelligen PIN eingeben.</p>
+    <div class="fg"><label class="fl" data-i18n="own_pin.current">Aktueller PIN</label><input type="password" id="cup-old" class="fi" maxlength="4" inputmode="numeric" placeholder="••••" style="max-width:140px;letter-spacing:.35em"></div>
+    <div class="fg"><label class="fl" data-i18n="own_pin.new">Neuer PIN</label><input type="password" id="cup-new1" class="fi" maxlength="4" inputmode="numeric" placeholder="••••" style="max-width:140px;letter-spacing:.35em"></div>
+    <div class="fg"><label class="fl" data-i18n="own_pin.confirm">Neuen PIN wiederholen</label><input type="password" id="cup-new2" class="fi" maxlength="4" inputmode="numeric" placeholder="••••" style="max-width:140px;letter-spacing:.35em"></div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-user-pin')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-pri" onclick="saveOwnPin()"><i data-lucide="key-round"></i> <span data-i18n="own_pin.save">PIN speichern</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ── CHANGE USER CONTACT MODAL ── -->
+<div class="mo" id="mo-user-contact">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" data-i18n="own_email.title">E-Mail-Adresse ändern</h2><button class="mo-close btn-icon" onclick="closeMo('mo-user-contact')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" data-i18n="own_email.desc">Trage hier deine E-Mail-Adresse ein, um bei Änderungen benachrichtigt zu werden.</p>
+    <div class="fg"><label class="fl" data-i18n="own_email.label">E-Mail-Adresse</label><input type="email" id="cuc-contact" class="fi" data-i18n-placeholder="own_email.placeholder" placeholder="max@mail.de"></div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-user-contact')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-pri" onclick="saveOwnContact()"><i data-lucide="mail"></i> <span data-i18n="own_email.save">Speichern</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ── EMOJI PICKER MODAL ── -->
+<div class="mo" id="mo-emoji">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" data-i18n="icon.title">Icon auswählen</h2><button class="mo-close btn-icon" onclick="closeMo('mo-emoji')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" id="emoji-subtitle" data-i18n="icon.subtitle">Wähle ein Icon für deinen Avatar.</p>
+    <div class="emoji-grid" id="emoji-grid"></div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-emoji')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-dan" onclick="resetPlayerIcon()"><i data-lucide="undo-2"></i> <span data-i18n="icon.reset">Zurücksetzen</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ── MODALS ── -->
+<!-- Add/Edit Player -->
+<div class="mo" id="mo-player">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" id="mo-player-title" data-i18n="players.add_title">Spieler</h2><button class="mo-close btn-icon" onclick="closeMo('mo-player')"><i data-lucide="x"></i></button></div>
+    <div class="fg"><label class="fl" data-i18n="players.name">Name</label><input type="text" id="p-name" class="fi" data-i18n-placeholder="players.name_placeholder" placeholder="Max Mustermann"></div>
+    <div class="fg"><label class="fl" data-i18n="players.contact">Kontakt (optional)</label><input type="text" id="p-contact" class="fi" data-i18n-placeholder="players.contact_placeholder" placeholder="max@mail.de"></div>
+    
+    <div class="fg" id="p-admin-wrap" style="display:none; margin-top:var(--sp2);">
+      <label class="fl" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
+        <input type="checkbox" id="p-admin" style="width:16px; height:16px;"> 
+        <span data-i18n="players.admin_cb">Dieser Spieler bekommt Admin-Rechte</span>
+      </label>
+    </div>
+
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-player')" data-i18n="players.cancel">Abbrechen</button>
+      <button class="btn btn-pri" onclick="savePlayer()" id="save-p-btn" data-i18n="players.save_edit">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Transaction -->
+<div class="mo" id="mo-tx">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" id="mo-tx-title" data-i18n="transactions.title">Zahlung</h2><button class="mo-close btn-icon" onclick="closeMo('mo-tx')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" id="mo-tx-sub"></p>
+    <div class="fg"><label class="fl" data-i18n="transactions.amount">Betrag</label><input type="number" id="tx-amount" class="fi" placeholder="50" min="1" step="1"></div>
+    <div class="fg"><label class="fl" data-i18n="transactions.note">Notiz (optional)</label><input type="text" id="tx-note" class="fi" data-i18n-placeholder="transactions.note_placeholder" placeholder="PayPal März"></div>
+    <div class="mo-foot" style="flex-direction:column;gap:var(--sp2)">
+      <div style="display:flex;gap:var(--sp2);width:100%">
+        <button class="btn btn-ok" onclick="doTx(true)" style="flex:1"><i data-lucide="plus"></i> <span data-i18n="transactions.credit">Aufladen</span></button>
+        <button class="btn btn-dan" onclick="doTx(false)" style="flex:1"><i data-lucide="minus"></i> <span data-i18n="transactions.debit">Abbuchen</span></button>
+      </div>
+      <button class="btn btn-sec" onclick="closeMo('mo-tx')" style="width:100%" data-i18n="transactions.cancel">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Charge confirm -->
+<div class="mo" id="mo-charge">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" data-i18n="charge.title">Session abrechnen</h2><button class="mo-close btn-icon" onclick="closeMo('mo-charge')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" id="mo-charge-desc"></p>
+    <div id="mo-charge-list" class="mb4"></div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-charge')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-pri" onclick="doCharge()"><i data-lucide="credit-card"></i> <span data-i18n="charge.confirm">Abrechnen</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin slot picker -->
+<div class="mo" id="mo-slot">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" id="mo-slot-title" data-i18n="slot.title">Slot belegen</h2><button class="mo-close btn-icon" onclick="closeMo('mo-slot')"><i data-lucide="x"></i></button></div>
+    <div id="mo-slot-list" style="max-height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:var(--sp2)"></div>
+    <div class="mo-foot">
+      <button class="btn btn-dan" onclick="clearSlot()"><i data-lucide="x"></i> <span data-i18n="slot.clear">Slot leeren</span></button>
+      <button class="btn btn-sec" onclick="closeMo('mo-slot')" data-i18n="modal.close">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Guest signup/waitlist -->
+<div class="mo" id="mo-signup">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" id="mo-signup-title" data-i18n="signup.title">Anmelden</h2><button class="mo-close btn-icon" onclick="closeMo('mo-signup')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" id="mo-signup-desc"></p>
+    <div id="mo-signup-body" style="display:flex;flex-direction:column;gap:var(--sp3)"></div>
+    <div class="mo-foot"><button class="btn btn-sec" onclick="closeMo('mo-signup')" data-i18n="modal.cancel">Abbrechen</button></div>
+  </div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<!-- ── Team Randomizer Modal ── -->
+<div class="mo" id="mo-teams" onclick="if(event.target===this)closeMo('mo-teams')">
+  <div class="mo-box" style="max-width:480px;width:95%;position:relative">
+    <button class="mo-close btn-icon" style="position:absolute;top:var(--sp5);right:var(--sp5);z-index:10" onclick="closeMo('mo-teams')"><i data-lucide="x"></i></button>
+    <div class="mo-head">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <span class="mo-title" data-i18n="teams.title">Teams würfeln</span>
+        <span class="mo-subtitle" data-i18n="teams.subtitle" style="font-size:var(--text-xs);color:var(--txm);font-weight:400;line-height:1.4">Spieler vor Ort schnell auf die Courts verteilen. Die Zuteilung ist temporär und wird nicht gespeichert.</span>
+      </div>
+    </div>
+    <div id="mo-teams-body" style="padding:var(--sp4);display:flex;flex-direction:column;gap:var(--sp4)"></div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-teams')" data-i18n="modal.close">Schließen</button>
+      <button class="btn btn-pri" onclick="shuffleTeams()"><i data-lucide="shuffle"></i> <span data-i18n="teams.shuffle">Neu würfeln</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- LEAVE CONFIRM MODAL -->
+<div class="mo" id="mo-leave-confirm">
+  <div class="mo-box">
+    <div class="mo-head">
+      <h2 class="mo-title" data-i18n="leave.title">Abmelden bestätigen</h2>
+      <button class="mo-close btn-icon" onclick="closeMo('mo-leave-confirm')"><i data-lucide="x"></i></button>
+    </div>
+    <p class="txsm txm mb4" id="mo-leave-desc" data-i18n="leave.desc">Bist du sicher, dass du dich abmelden möchtest?</p>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-leave-confirm')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-dan" id="mo-leave-confirm-btn" onclick="confirmLeave()"><i data-lucide="log-out"></i> <span data-i18n="leave.confirm">Abmelden</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Transaktion Löschen Bestätigung -->
+<div class="mo" id="mo-delete-tx-confirm">
+  <div class="mo-box">
+    <div class="mo-head">
+      <h2 class="mo-title" data-i18n="transactions.delete_confirm">Buchung löschen</h2>
+      <button class="mo-close btn-icon" onclick="closeMo('mo-delete-tx-confirm')">
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+    
+    <p class="txsm txm mb4" id="mo-delete-tx-desc" data-i18n="transactions.delete_confirm_desc">
+      Möchtest du diese Buchung wirklich unwiderruflich löschen? Das Guthaben des Spielers wird sofort angepasst.
+    </p>
+    
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-delete-tx-confirm')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-dan" onclick="confirmDeleteTx()">
+        <i data-lucide="trash-2"></i> <span data-i18n="transactions.edit_delete">Löschen</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT TRANSACTION MODAL -->
+<div class="mo" id="mo-edit-tx">
+  <div class="mo-box">
+    <div class="mo-head">
+      <h2 class="mo-title" data-i18n="transactions.edit">Transaktion bearbeiten</h2>
+      <button class="mo-close btn-icon" onclick="closeMo('mo-edit-tx')"><i data-lucide="x"></i></button>
+    </div>
+    <p class="txsm txm mb4" id="mo-edit-tx-sub"></p>
+    <div class="fg">
+      <label class="fl" data-i18n="transactions.amount">Betrag</label>
+      <input type="number" id="etx-amount" class="fi" min="0.01" step="0.01" style="max-width:150px">
+    </div>
+    <div class="fg">
+      <label class="fl" data-i18n="transactions.note">Notiz (optional)</label>
+      <input type="text" id="etx-note" class="fi" data-i18n-placeholder="transactions.note_placeholder" placeholder="z.B. PayPal März">
+    </div>
+    <div class="fg">
+      <label class="fl" data-i18n="transactions.date">Datum</label>
+      <input type="date" id="etx-date" class="fi" style="max-width:180px">
+    </div>
+    <div class="mo-foot">
+      <button class="btn btn-dan" onclick="deleteEditTx()"><i data-lucide="trash-2"></i> <span data-i18n="transactions.edit_delete">Löschen</span></button>
+      <button class="btn btn-sec" onclick="closeMo('mo-edit-tx')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-pri" onclick="saveEditTx()"><i data-lucide="save"></i> <span data-i18n="transactions.edit_save">Speichern</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ── FIRST SETUP MODAL ── -->
+<div class="welcome-overlay" id="setup-overlay">
+  <div class="welcome-box" style="max-width:380px">
+    <div class="welcome-branding" style="margin-bottom:16px">
+      <svg class="welcome-logo" width="44" height="44" viewBox="0 0 28 28" fill="none" style="color:var(--pri)">
+        <circle cx="14" cy="3" r="1.5" fill="currentColor"/>
+        <line x1="14" y1="4.5" x2="14" y2="6.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+        <rect x="7.5" y="6" width="13" height="16" rx="5" stroke="currentColor" stroke-width="2" fill="var(--bg,white)"/>
+        <g stroke="currentColor" stroke-linecap="round" fill="none">
+          <path d="M 8,9 Q 5,7.5 4,6" stroke-width="1.5"/>
+          <path d="M 20,9 Q 23,7.5 24,6" stroke-width="1.5"/>
+          <path d="M 8,20 Q 5.5,21.5 5.5,23" stroke-width="1.5"/>
+          <path d="M 20,20 Q 22.5,21.5 22.5,23" stroke-width="1.5"/>
+        </g>
+        <line x1="7.5" y1="14" x2="20.5" y2="14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <span class="welcome-brand-text" data-i18n="welcome.title">Courtle</span>
+      <div class="setup-hero" style="font-size:22px;font-weight:800;text-transform:uppercase;letter-spacing:.02em;color:var(--tx);text-align:center;margin-top:14px" data-i18n="setup.title">Ersteinrichtung</div>
+    </div>
+    <p class="txsm txm" style="margin-bottom:16px;text-align:center" data-i18n="setup.desc">Lege Team-Namen und ersten Admin-Spieler an.</p>
+    <div class="fg mb4"><label class="fl" data-i18n="setup.team_name">Team-Name</label><input type="text" id="setup-teamname" class="fi" data-i18n-placeholder="setup.team_name_placeholder" placeholder="z.B. Padel-Frechen"></div>
+    <div class="fg mb4"><label class="fl" data-i18n="setup.admin_name">Admin-Name</label><input type="text" id="setup-name" class="fi" data-i18n-placeholder="setup.admin_name_placeholder" placeholder="Dein Name"></div>
+    <div class="fg mb4"><label class="fl" data-i18n="setup.pin">PIN (4 Ziffern)</label><input type="password" id="setup-pin" class="fi" maxlength="4" inputmode="numeric" placeholder="••••" style="max-width:140px;letter-spacing:.35em"></div>
+    <div class="fg mb4"><label class="fl" data-i18n="setup.pin_confirm">PIN wiederholen</label><input type="password" id="setup-pin2" class="fi" maxlength="4" inputmode="numeric" placeholder="••••" style="max-width:140px;letter-spacing:.35em"></div>
+    <div id="setup-err" class="txsm" style="color:var(--err);text-align:center;min-height:1.4em"></div>
+    <button class="welcome-skip" onclick="setupFirstAdmin()" data-i18n="setup.save">Speichern</button>
+  </div>
+</div>
+<!-- ── SERIES EDIT MODAL ── -->
+<div class="mo" id="mo-series-edit">
+  <div class="mo-box">
+    <div class="mo-head"><h2 class="mo-title" id="mo-series-title" data-i18n="series.new">Neue Serie</h2><button class="mo-close btn-icon" onclick="closeMo('mo-series-edit')"><i data-lucide="x"></i></button></div>
+    <input type="hidden" id="series-edit-id">
+    <div class="mo-body">
+      <div class="fg"><label class="fl" data-i18n="players.name">Name</label><input type="text" id="series-edit-name" class="fi" data-i18n-placeholder="series.name_placeholder" placeholder="z. B. Dienstag Abend"></div>
+      
+      <div class="fg"><label class="fl" for="series-edit-location" data-i18n="settings.series_location">Standard-Adresse</label><input type="text" id="series-edit-location" class="fi" data-i18n-placeholder="settings.series_location_placeholder" placeholder="z. B. Padel Arena Köln, Musterstraße 1"></div>
+      
+      <div class="fg"><label class="fl" data-i18n="settings.series_days">Wochentage</label><div style="display:flex;gap:8px;flex-wrap:wrap" id="series-edit-days">
+        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="1"> <span data-i18n="day.mon">Mo</span></label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="2"> <span data-i18n="day.tue">Di</span></label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="3"> <span data-i18n="day.wed">Mi</span></label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="4"> <span data-i18n="day.thu">Do</span></label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="5"> <span data-i18n="day.fri">Fr</span></label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="6"> <span data-i18n="day.sat">Sa</span></label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="0"> <span data-i18n="day.sun">So</span></label>
+      </div></div>
+      
+      <div class="mo-row-2">
+        <div class="fg"><label class="fl" for="series-edit-time-start" data-i18n="settings.series_time_start">Session-Zeit (Start)</label><input type="time" id="series-edit-time-start" class="fi" value="19:00"></div>
+        <div class="fg"><label class="fl" for="series-edit-time-end" data-i18n="settings.series_time_end">Session-Zeit (Ende)</label><input type="time" id="series-edit-time-end" class="fi" value="21:00"></div>
+      </div>
+      
+      <div class="mo-row-2">
+        <div class="fg"><label class="fl" for="series-edit-courts" data-i18n="settings.series_courts">Anzahl Courts</label><input type="number" id="series-edit-courts" class="fi" value="2"></div>
+        <div class="fg"><label class="fl" for="series-edit-price" data-i18n="settings.series_cost">Kosten pro Spieler</label><input type="number" id="series-edit-price" class="fi" placeholder="16"></div>
+      </div>
+      
+      <div class="fg">
+        <label class="fl" for="series-edit-occurrences" data-i18n="settings.series_occurrences">Wie viele Termine im Voraus anzeigen?</label>
+        <input type="number" id="series-edit-occurrences" class="fi" value="6">
+        <p class="txxs txm mt1" data-i18n="series.occurrences_hint">Bestimmt, wie viele zukünftige Spieltage automatisch im Voraus generiert werden.</p>
+      </div>
+      
+      <div class="fg">
+        <label class="fl" for="series-edit-cancel-hours" data-i18n="series.cancel_hours_label">Abmeldefrist</label>
+        <input type="text" id="series-edit-cancel-hours" class="fi" placeholder="7:00">
+        <p class="txxs txm mt1" data-i18n="series.cancel_hours_hint">Frist in Stunden:Minuten vor Spielbeginn, bis zu der sich Spieler kostenlos abmelden können (z. B. 7:00).</p>
+      </div>
+      
+    </div>
+    <div class="mo-foot"><button class="btn btn-sec" onclick="closeMo('mo-series-edit')" data-i18n="modal.cancel">Abbrechen</button><button class="btn btn-pri" onclick="saveSeriesEdit()"><i data-lucide="save"></i> <span data-i18n="misc.save">Speichern</span></button></div>
+  </div>
+</div>
+
+<!-- ── REUSABLE CONFIRM MODAL ── -->
+<div class="mo" id="mo-confirm">
+  <div class="mo-box">
+    <div class="mo-head">
+      <h2 class="mo-title" id="mo-confirm-title" data-i18n="confirm.delete_player">Wirklich löschen?</h2>
+      <button class="mo-close btn-icon" onclick="closeMo('mo-confirm')"><i data-lucide="x"></i></button>
+    </div>
+    <p class="txsm txm mb4" id="mo-confirm-desc" data-i18n="confirm.delete_player_desc">Bist du sicher?</p>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-confirm')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-dan" id="mo-confirm-btn" onclick="confirmModalAction()"><i data-lucide="trash-2"></i> <span data-i18n="expenses.delete">Löschen</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ── SESSION DETAILS MODAL ── -->
+<div class="mo" id="mo-session-details" onclick="if(event.target===this)closeMo('mo-session-details')">
+  <div class="mo-box" style="max-width:540px;width:95%;position:relative">
+    <button class="mo-close btn-icon" style="position:absolute;top:var(--sp5);right:var(--sp5);z-index:10" onclick="closeMo('mo-session-details')"><i data-lucide="x"></i></button>
+    <div id="mo-sd-body" style="display:flex;flex-direction:column;gap:var(--sp4);padding:var(--sp1) 0">
+      <!-- Dynamically filled in app.js -->
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
+

@@ -1,0 +1,14 @@
+courtle_data/
+*.db
+.DS_Store
+/vendor/
+tests/courtle_test_data/
+docker-compose.dev.yml
+docker-compose.test.yml
+tests/node_modules/
+tests/test-results/
+tests/playwright-report/
+/test-results/
+*.db-wal
+.opencode/
+data/

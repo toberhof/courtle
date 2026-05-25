@@ -1,0 +1,14 @@
+services:
+  courtle:
+    build: .
+    container_name: courtle_app
+    ports:
+      - "8012:80"
+    volumes:
+      # Mount your SQLite DB directory (must be writable by www-data)
+      - courtle_data:/var/www/courtle_data
+    restart: unless-stopped
+
+volumes:
+  courtle_data:
+
