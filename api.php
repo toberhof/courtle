@@ -274,7 +274,7 @@ function get_server_build(): string {
             return $build;
         }
     }
-    return '416';
+    return '417';
 }
 
 function json_out(mixed $data, int $code = 200): never {
