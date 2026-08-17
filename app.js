@@ -1,7 +1,7 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:402
+// built:413
 let S = {
   players: [],
   transactions: [],
@@ -316,7 +316,6 @@ function generateSeriesDates(series) {
   const dayMap = series.daysOfWeek || [2];
   const occurrences = series.occurrences || 6;
   const d = new Date();
-  d.setDate(d.getDate() + ((dayMap[0] - d.getDay() + 7) % 7 || 7));
 
   let count = 0;
   const maxIterations = occurrences * 7 * 2;
@@ -330,11 +329,7 @@ function generateSeriesDates(series) {
         count++;
       }
     }
-    if (dayMap.includes(d.getDay()) && dayMap.indexOf(d.getDay()) === dayMap.length - 1) {
-      d.setDate(d.getDate() + 7);
-    } else {
-      d.setDate(d.getDate() + 1);
-    }
+    d.setDate(d.getDate() + 1);
     iter++;
   }
   return dates.sort();
@@ -440,23 +435,61 @@ function getSessionName(date) {
 }
 
 function getSessionTime(date) {
-  const sess = S.sessions.find(s => s.date === date);
-  let start = sess?.timeStart ?? String(S.cfg.srtimestart ?? '19:00');
-  let end   = sess?.timeEnd   ?? String(S.cfg.srtimeend   ?? '21:00');
-  if (S.series && S.cfg.sr_enabled !== '0' && !sess) {
+  const sess = S.sessions?.find(s => s.date === date);
+  let start = sess?.timeStart;
+  let end   = sess?.timeEnd;
+
+  if ((!start || !end) && S.series && S.cfg.sr_enabled !== '0') {
+    const dObj = new Date(date + 'T00:00:00');
+    const dayOfWeek = dObj.getDay();
     for (const series of S.series) {
       if (!series.enabled) continue;
-      if (generateSeriesDates(series).includes(date)) {
-        start = series.timeStart ?? start;
-        end = series.timeEnd ?? end;
+      const days = series.daysOfWeek || [2];
+      if (days.includes(dayOfWeek) || generateSeriesDates(series).includes(date)) {
+        if (!start) start = series.timeStart;
+        if (!end) end = series.timeEnd;
         break;
       }
     }
   }
+
+  if (!start) start = String(S.cfg.srtimestart ?? '19:00');
+  if (!end)   end   = String(S.cfg.srtimeend   ?? '21:00');
+
   const fmt = t => t.length === 4
       ? t.slice(0,2) + ':' + t.slice(2)
       : t;
   return { start: fmt(start), end: fmt(end) };
+}
+
+function getCourtLabel(dateOrSess, ci) {
+  let sess = typeof dateOrSess === 'string' ? S.sessions?.find(s => s.date === dateOrSess) : dateOrSess;
+  let customName = sess?.courtNames?.[ci];
+  if (!customName && S.series && S.cfg.sr_enabled !== '0') {
+    const date = typeof dateOrSess === 'string' ? dateOrSess : dateOrSess?.date;
+    if (date) {
+      const dObj = new Date(date + 'T00:00:00');
+      const dayOfWeek = dObj.getDay();
+      for (const series of S.series) {
+        if (!series.enabled) continue;
+        const days = series.daysOfWeek || [2];
+        if (days.includes(dayOfWeek) || generateSeriesDates(series).includes(date)) {
+          if (series.courtNames?.[ci]) {
+            customName = series.courtNames[ci];
+            break;
+          }
+        }
+      }
+    }
+  }
+  if (customName && String(customName).trim() !== '') {
+    const trimmed = String(customName).trim();
+    if (/^\d+$/.test(trimmed)) {
+      return `${t('session.court')} ${trimmed}`;
+    }
+    return trimmed;
+  }
+  return `${t('session.court')} ${ci + 1}`;
 }
 
 // ════════════════════════════════════════
@@ -1074,7 +1107,7 @@ function buildSessionCard(date, isNextSession = false) {
     if (groupCourts) {
       slotChips += `<div class="court-container">
         <div class="court-header">
-           <span class="court-title"><i data-lucide="map-pin"></i> ${t('session.court')} ${ci + 1}</span>
+           <span class="court-title"><i data-lucide="map-pin"></i> ${esc(getCourtLabel(sess, ci))}</span>
         </div>
         <div class="court-slots-grid">`;
     }
@@ -1256,12 +1289,15 @@ function parseCancelHours(str) {
 
 function getEffectiveCancelHours(date) {
   const sess = S.sessions?.find(s => s.date === date);
-  if (sess && sess.cancelHours !== null && sess.cancelHours !== undefined) return sess.cancelHours;
+  if (sess && sess.cancelHours !== null && sess.cancelHours !== undefined) return parseFloat(sess.cancelHours);
   if (S.series && S.cfg.sr_enabled !== '0') {
+    const dObj = new Date(date + 'T00:00:00');
+    const dayOfWeek = dObj.getDay();
     for (const series of S.series) {
       if (!series.enabled) continue;
-      if (generateSeriesDates(series).includes(date)) {
-        if (series.cancelHours !== null && series.cancelHours !== undefined) return series.cancelHours;
+      const days = series.daysOfWeek || [2];
+      if (days.includes(dayOfWeek) || generateSeriesDates(series).includes(date)) {
+        if (series.cancelHours !== null && series.cancelHours !== undefined) return parseFloat(series.cancelHours);
       }
     }
   }
@@ -1357,9 +1393,9 @@ async function leaveSession(date) {
   } catch(e) {
     await loadState();
     renderSessions();
+    if (isAdmin) renderAdminPlan();
     
-    // Unser eingebauter Schutz-Hinweis!
-    showToast('Abmelden fehlgeschlagen. Vielleicht schon abgerechnet?');
+    showToast(e.message ? '❌ ' + e.message : 'Abmelden fehlgeschlagen.');
   }
 }
 
@@ -1782,6 +1818,14 @@ function renderAdminPlan() {
          onchange="planDetailChange('cancelHours', parseCancelHours(this.value))">
     </div>
     <p class="txxs tx-m" style="margin:2px 0 0 var(--sp2)">${t('session.cancel_deadline_hint')}</p>
+    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
+      <span class="tx-sm tx-m">${t('session.court_numbers')}:</span>
+      <input type="text" id="plan-court-names-input" class="fi" placeholder="${t('session.court_numbers_placeholder')}"
+         style="flex:1;min-width:200px;font-size:var(--text-sm)"
+         value="${esc((sess.courtNames || []).join(', '))}"
+         onchange="planDetailChange('courtNames', this.value.split(',').map(s => s.trim()).filter(Boolean))">
+    </div>
+    <p class="txxs tx-m" style="margin:2px 0 0 var(--sp2)">${t('session.court_numbers_hint')}</p>
     <div class="flex g2 wrap" style="margin-top:var(--sp3)">
       <button class="btn btn-pri btn-sm" onclick="savePlanDetails()"><i data-lucide="save"></i> ${t('misc.save')}</button>
       ${cancelBtn}
@@ -1801,7 +1845,7 @@ function renderAdminPlan() {
   sess.courts.forEach((slots, ci) => {
     const isDisabled = sess.disabledCourts.includes(ci);
     html += `<div class="court-sep just-b">
-      <div class="flex items-c g2"><i data-lucide="map-pin" style="width:14px;height:14px;color:var(--pri)"></i> ${t('session.court')} ${ci + 1} ${isDisabled ? '<span class="badge bg-err">' + t('session.cancelled') + '</span>' : ''}</div>
+      <div class="flex items-c g2"><i data-lucide="map-pin" style="width:14px;height:14px;color:var(--pri)"></i> ${esc(getCourtLabel(planDate, ci))} ${isDisabled ? '<span class="badge bg-err">' + t('session.cancelled') + '</span>' : ''}</div>
       ${!sess.charged ? `<button class="btn btn-xs ${isDisabled ? 'btn-ok' : 'btn-dan'}" onclick="toggleCourt('${planDate}', ${ci})">${isDisabled ? t('session.activate') : t('session.deactivate')}</button>` : ''}
       ${isDisabled && !sess.charged ? `<button class="btn btn-xs btn-dan" onclick="deleteCourt('${planDate}', ${ci})"><i data-lucide="trash-2"></i></button>` : ''}
     </div>`;
@@ -2136,7 +2180,7 @@ async function removeWaitlist(date, idx) {
 // ── Admin Slot Modal ──
 function openSlotModal(date, ci, si) {
   slotCtx = { date, ci, si };
-  document.getElementById('mo-slot-title').textContent = `${t('session.court')} ${ci + 1} – ${t('session.position')} ${si + 1}`;
+  document.getElementById('mo-slot-title').textContent = `${getCourtLabel(date, ci)} – ${t('session.position')} ${si + 1}`;
   const danBtn = document.getElementById('mo-slot').querySelector('.btn-dan');
   if (danBtn) danBtn.style.display = '';
   const sess = getOrSess(date);
@@ -2554,13 +2598,13 @@ function sessionCard(entry) {
   const slotCount = mySlots.length;
   const totalPrice = slotCount * sessionCost;
 
-  const hasDetails = sess.location || sess.note || priceDiffers || (!sess.charged && !sess.cancelled);
+  const hasDetails = sess.location || sess.note || priceDiffers || (!isPast && !sess.charged && !sess.cancelled);
 
   const detailsHtml = [];
   if (sess.location) detailsHtml.push(`<div class="bk-location"><i data-lucide="map-pin" style="width:12px;height:12px;flex-shrink:0"></i>${esc(sess.location)}</div>`);
   if (sess.note) detailsHtml.push(`<div class="bk-comment"><i data-lucide="message-square" style="width:12px;height:12px;flex-shrink:0"></i>${esc(sess.note)}</div>`);
   if (priceDiffers) detailsHtml.push(`<div class="bk-price"><i data-lucide="tag" style="width:12px;height:12px;flex-shrink:0"></i>${fmtE(sessionCost)} ${t('session.per_slot')}</div>`);
-  if (!sess.charged && !sess.cancelled) {
+  if (!isPast && !sess.charged && !sess.cancelled) {
     const deadline = getCancelDeadline(date);
     const within = isWithinCancelWindow(date);
     const deadlineStr = fmtDateTime(deadline);
@@ -2775,7 +2819,7 @@ function openSessionDetailsModal(date) {
     if (groupCourts) {
       slotChips += `<div class="court-container">
         <div class="court-header">
-           <span class="court-title"><i data-lucide="map-pin" style="width:12px;height:12px"></i> ${t('session.court')} ${ci + 1}</span>
+           <span class="court-title"><i data-lucide="map-pin" style="width:12px;height:12px"></i> ${esc(getCourtLabel(sess, ci))}</span>
         </div>
         <div class="court-slots-grid">`;
     }
@@ -3416,6 +3460,8 @@ function syncSettings() {
     if (privMode) privMode.checked = S.cfg.privacy_mode === '1';
     const showDeadline = document.getElementById('disp-show-cancel-deadline');
     if (showDeadline) showDeadline.checked = S.cfg.show_cancel_deadline !== '0';
+    const autoCompact = document.getElementById('sys-auto-compact-slots');
+    if (autoCompact) autoCompact.checked = S.cfg.auto_compact_slots === '1';
     const teamName = document.getElementById('disp-team-name');
     if (teamName) teamName.value = S.cfg.team_name || '';
     const sysLang = document.getElementById('sys-language');
@@ -3461,6 +3507,7 @@ async function saveSystemSettings() {
         sr_enabled: document.getElementById('sys-series-enabled').checked ? '1' : '0',
         cancel_hours: String(cancelHours),
         team_name: document.getElementById('disp-team-name').value.trim(),
+        auto_compact_slots: document.getElementById('sys-auto-compact-slots')?.checked ? '1' : '0',
     };
     try {
         await apiFetch('PUT', '/config', settings);
@@ -3488,6 +3535,7 @@ function renderSeries() {
     const days = s.daysOfWeek.map(d => dayNames[d]).join(', ');
     const priceLabel = s.price !== null && s.price !== undefined ? `${fmtE(s.price)} ${t('session.per_slot')}` : t('session.default_price');
     const cancelLabel = s.cancelHours !== null && s.cancelHours !== undefined ? ` · Abmeldung bis ${formatCancelHours(s.cancelHours)} vorher` : '';
+    const courtNamesLabel = s.courtNames && s.courtNames.length ? ` · Courts: ${s.courtNames.join(', ')}` : '';
     return `<div class="card mb3">
       <div class="flex items-c just-b">
         <div class="flex items-c g2">
@@ -3497,7 +3545,7 @@ function renderSeries() {
         <span class="badge ${s.enabled ? 'bg-ok' : 'bg-m'}">${s.enabled ? t('series.active', 'Aktiv') : t('series.inactive', 'Inaktiv')}</span>
       </div>
       <div class="txsm txm" style="margin-top:8px">
-        <div>${days} · ${s.timeStart}–${s.timeEnd} · ${s.courts} ${t('session.court_s', 'Court(s)')} · ${t('series.occurrences_count', '{count} Termine').replace('{count}', s.occurrences)}${cancelLabel}</div>
+        <div>${days} · ${s.timeStart}–${s.timeEnd} · ${s.courts} ${t('session.court_s', 'Court(s)')}${courtNamesLabel} · ${t('series.occurrences_count', '{count} Termine').replace('{count}', s.occurrences)}${cancelLabel}</div>
         <div>${priceLabel}${s.location ? ' · ' + esc(s.location) : ''}</div>
       </div>
       <div class="flex g2 items-c" style="margin-top:var(--sp3)">
@@ -3519,6 +3567,7 @@ async function openAddSeries() {
   document.getElementById('series-edit-courts').value = 2;
   document.getElementById('series-edit-price').value = '';
   document.getElementById('series-edit-cancel-hours').value = '';
+  document.getElementById('series-edit-court-names').value = '';
   document.getElementById('series-edit-location').value = '';
   document.querySelectorAll('#series-edit-days input').forEach(cb => cb.checked = false);
   document.querySelector('#series-edit-days input[value="2"]').checked = true;
@@ -3537,6 +3586,7 @@ function openSeriesEdit(id) {
   document.getElementById('series-edit-courts').value = s.courts || 2;
   document.getElementById('series-edit-price').value = s.price !== null && s.price !== undefined ? s.price : '';
   document.getElementById('series-edit-cancel-hours').value = s.cancelHours !== null && s.cancelHours !== undefined ? formatCancelHours(s.cancelHours) : '';
+  document.getElementById('series-edit-court-names').value = (s.courtNames || []).join(', ');
   document.getElementById('series-edit-location').value = s.location || '';
   document.querySelectorAll('#series-edit-days input').forEach(cb => {
     cb.checked = (s.daysOfWeek || []).includes(parseInt(cb.value));
@@ -3553,6 +3603,8 @@ async function saveSeriesEdit() {
     showToast('Bitte mindestens einen Wochentag auswählen.');
     return;
   }
+  const courtNamesRaw = document.getElementById('series-edit-court-names').value.trim();
+  const courtNames = courtNamesRaw ? courtNamesRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
   const body = {
     name: document.getElementById('series-edit-name').value.trim(),
     daysOfWeek: selectedDays,
@@ -3562,6 +3614,7 @@ async function saveSeriesEdit() {
     courts: parseInt(document.getElementById('series-edit-courts').value) || 2,
     price: document.getElementById('series-edit-price').value ? parseFloat(document.getElementById('series-edit-price').value) : null,
     cancelHours: document.getElementById('series-edit-cancel-hours').value ? parseCancelHours(document.getElementById('series-edit-cancel-hours').value) : null,
+    courtNames: courtNames,
     location: document.getElementById('series-edit-location').value.trim() || null,
   };
   try {
@@ -3782,8 +3835,20 @@ function confirmLogout() {
 // ════════════════════════════════════════
 let pendingConfirmCallback = null;
 
-function openMo(id) { document.getElementById(id).classList.add('open'); lucide.createIcons(); }
-function closeMo(id) { document.getElementById(id).classList.remove('open'); }
+function openMo(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.add('open');
+  document.body.style.overflow = 'hidden';
+  lucide.createIcons();
+}
+function closeMo(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('open');
+  if (!document.querySelector('.mo.open, .welcome-overlay.open, .pin-modal-overlay.open')) {
+    document.body.style.overflow = '';
+  }
+}
 
 function showConfirmModal(title, desc, btnHtml, btnClass, callback) {
   document.getElementById('mo-confirm-title').textContent = title;
@@ -3833,11 +3898,12 @@ function showToast(msg) { const t = document.getElementById('toast'); t.textCont
 
 async function loadState() {
   try {
-    const keys = ['players', 'sessions', 'config'];
+    const keys = ['players', 'sessions', 'config', 'series'];
     const requests = [
       apiFetch('GET', '/players'),
       apiFetch('GET', '/sessions'),
-      apiFetch('GET', '/config')
+      apiFetch('GET', '/config'),
+      apiFetch('GET', '/series')
     ];
 
     if (_token) {
@@ -3846,11 +3912,6 @@ async function loadState() {
       
       keys.push('expenses');
       requests.push(apiFetch('GET', '/expenses'));
-
-      if (isAdmin) {
-        keys.push('series');
-        requests.push(apiFetch('GET', '/series'));
-      }
     }
 
     const results = await Promise.all(requests);
@@ -4277,6 +4338,9 @@ async function savePlanDetails() {
     if (_planDetailChanges.name !== undefined) {
       updates.name = _planDetailChanges.name === '' ? null : _planDetailChanges.name;
     }
+    if (_planDetailChanges.courtNames !== undefined) {
+      updates.courtNames = _planDetailChanges.courtNames;
+    }
 
     await apiFetch('PUT', '/sessions/' + planDate, updates);
     await loadState();
@@ -4537,3 +4601,26 @@ window.addEventListener('resize', function() {
   }
   if (isAdmin) renderAll(); else renderSessions();
 });
+
+// iOS WebKit / PWA Viewport & Virtual Keyboard Reset
+// Prevents position:fixed elements from being stuck halfway up the screen after keyboard dismiss
+if (typeof window !== 'undefined') {
+  document.addEventListener('focusout', function(e) {
+    if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+      setTimeout(function() {
+        if (!document.activeElement || !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+          window.scrollTo(window.scrollX, window.scrollY);
+        }
+      }, 50);
+    }
+  }, { passive: true });
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', function() {
+      var bnav = document.getElementById('bottom-nav');
+      if (bnav) {
+        bnav.style.transform = 'translate3d(0,0,0)';
+      }
+    }, { passive: true });
+  }
+}

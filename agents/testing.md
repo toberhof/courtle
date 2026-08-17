@@ -36,7 +36,13 @@ npx playwright test ui-flows.spec.js --project=chromium
 # 2. Run all tests on Chromium only
 npx playwright test --project=chromium
 
-# 3. Run a specific test case by matching its name
+# 3. Run dedicated iOS / iPhone PWA mobile suite (iPhone 14 WebKit)
+npx playwright test ios-pwa.spec.js --project=ios
+
+# 4. Run all tests on iOS (iPhone 14)
+npx playwright test --project=ios
+
+# 5. Run a specific test case by matching its name
 npx playwright test -g "Series CRUD" --project=chromium
 ```
 

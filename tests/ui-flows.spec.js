@@ -375,10 +375,9 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     // Create
     await page.locator('#mo-add-session .btn-pri').click();
     await expect(page.locator('#mo-add-session')).not.toHaveClass(/open/, { timeout: 5000 });
-    await page.waitForTimeout(500);
-
     // Session should now be in the dropdown (formatted as localised date)
-    await expect(page.locator('#session-selector')).toContainText(/Mai 26/);
+    const monthShort = future.toLocaleDateString('de-DE', { month: 'short' }).replace('.', '');
+    await expect(page.locator('#session-selector')).toContainText(new RegExp(`${monthShort}.*26`));
   });
 });
 

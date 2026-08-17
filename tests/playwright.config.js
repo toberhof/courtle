@@ -31,7 +31,11 @@ export default defineConfig({
     },
     {
       name: 'webkit',
-      use: { ...devices['iPhone 14'] }, // Test iOS mobile layout
+      use: { ...devices['Desktop Safari'] },
+    },
+    {
+      name: 'ios',
+      use: { ...devices['iPhone 14'] }, // Test iOS mobile layout (iPhone 14 WebKit)
     },
     {
       name: 'galaxy-s24',

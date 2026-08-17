@@ -6,6 +6,7 @@
 
 define('DB_PATH', getenv('COURTLE_DB_PATH') ?: (getenv('DB_PATH') ?: '/var/www/courtle_data/courtle.db'));
 define('SESSION_LIFETIME', 3600 * 24 * 30);
+date_default_timezone_set(getenv('COURTLE_TIMEZONE') ?: (getenv('TZ') ?: 'Europe/Berlin'));
 $allowed_origins = ['*'];
 
 // Proxy-Check für Cloudflare & Traefik
@@ -207,7 +208,9 @@ function init_db(PDO $db): void {
         "ALTER TABLE series ADD COLUMN cancel_hours REAL DEFAULT NULL",
         "ALTER TABLE sessions ADD COLUMN name TEXT DEFAULT NULL",
         "ALTER TABLE players ADD COLUMN language TEXT DEFAULT NULL",
-        "ALTER TABLE players ADD COLUMN theme TEXT DEFAULT 'auto'"
+        "ALTER TABLE players ADD COLUMN theme TEXT DEFAULT 'auto'",
+        "ALTER TABLE sessions ADD COLUMN court_names TEXT",
+        "ALTER TABLE series ADD COLUMN court_names TEXT"
     ];
 
     foreach ($migrations as $sql) {
@@ -289,10 +292,13 @@ function get_performer_id(): string {
     return $player_id ?? 'unknown';  // Always returns player ID (or unknown)
 }
 
-// ── Cancel Deadline Helpers ──
 function get_series_for_date(PDO $db, string $date): ?array {
+    $srEnabled = $db->query("SELECT value FROM config WHERE key='sr_enabled'")->fetchColumn();
+    if ($srEnabled === '0') return null;
+
     $stmt = $db->query("SELECT * FROM series WHERE enabled = 1 ORDER BY id ASC");
     $series = $stmt->fetchAll();
+    $today = date('Y-m-d');
     foreach ($series as $s) {
         $days = json_decode($s['days_of_week'], true) ?? [2];
         $occ = (int)($s['occurrences'] ?: 6);
@@ -303,11 +309,14 @@ function get_series_for_date(PDO $db, string $date): ?array {
         $maxIter = $occ * 7 * 2;
         while ($count < $occ && $iter < $maxIter) {
             if (in_array((int)$d->format('w'), $days)) {
-                if ($d->format('Y-m-d') === $date) {
-                    $found = true;
-                    break;
+                $ds = $d->format('Y-m-d');
+                if ($ds >= $today) {
+                    if ($ds === $date) {
+                        $found = true;
+                        break;
+                    }
+                    $count++;
                 }
-                $count++;
             }
             $d->modify('+1 day');
             $iter++;
@@ -317,9 +326,25 @@ function get_series_for_date(PDO $db, string $date): ?array {
     return null;
 }
 
+function get_series_by_weekday(PDO $db, string $date): ?array {
+    $srEnabled = $db->query("SELECT value FROM config WHERE key='sr_enabled'")->fetchColumn();
+    if ($srEnabled === '0') return null;
+
+    $stmt = $db->query("SELECT * FROM series WHERE enabled = 1 ORDER BY id ASC");
+    $series = $stmt->fetchAll();
+    $w = (int)date('w', strtotime($date));
+    foreach ($series as $s) {
+        $days = json_decode($s['days_of_week'], true) ?? [2];
+        if (in_array($w, $days, true)) {
+            return $s;
+        }
+    }
+    return null;
+}
+
 function get_effective_cancel_hours(PDO $db, string $date, ?float $sessionHours): float {
     if ($sessionHours !== null) return (float)$sessionHours;
-    $series = get_series_for_date($db, $date);
+    $series = get_series_for_date($db, $date) ?? get_series_by_weekday($db, $date);
     if ($series && $series['cancel_hours'] !== null) return (float)$series['cancel_hours'];
     $val = $db->query("SELECT value FROM config WHERE key='cancel_hours'")->fetchColumn();
     return $val !== false && $val !== '' ? (float)$val : 7.0;
@@ -327,7 +352,7 @@ function get_effective_cancel_hours(PDO $db, string $date, ?float $sessionHours)
 
 function get_effective_time_start(PDO $db, string $date, ?string $sessionTimeStart): string {
     if ($sessionTimeStart && trim($sessionTimeStart) !== '') return $sessionTimeStart;
-    $series = get_series_for_date($db, $date);
+    $series = get_series_for_date($db, $date) ?? get_series_by_weekday($db, $date);
     if ($series && $series['time_start']) return $series['time_start'];
     $val = $db->query("SELECT value FROM config WHERE key='srtimestart'")->fetchColumn();
     return $val ?: '19:00';
@@ -799,6 +824,7 @@ function handle_sessions_list(): void {
             'price'          => isset($s['price']) && $s['price'] !== null ? (float)$s['price'] : null,
             'cancelHours'    => isset($s['cancel_hours']) && $s['cancel_hours'] !== null ? (float)$s['cancel_hours'] : null,
             'name'           => $s['name'] ?? null,
+            'courtNames'     => json_decode($s['court_names'] ?? '[]', true) ?: [],
         ];
     }
     json_out($out);
@@ -806,7 +832,7 @@ function handle_sessions_list(): void {
 
 // ── Series ──
 function handle_series_list(): void {
-    require_auth(true);
+    // public endpoint
     $db   = db();
     $rows = $db->query("SELECT * FROM series ORDER BY id ASC")->fetchAll();
     $out  = [];
@@ -824,6 +850,7 @@ function handle_series_list(): void {
             'location'     => $r['location'] ?? null,
             'cancelHours'  => isset($r['cancel_hours']) && $r['cancel_hours'] !== null ? (float)$r['cancel_hours'] : null,
             'createdAt'    => $r['created_at'],
+            'courtNames'   => json_decode($r['court_names'] ?? '[]', true) ?: [],
         ];
     }
     json_out($out);
@@ -842,8 +869,9 @@ function handle_series_create(): void {
     $pr   = isset($b['price']) && $b['price'] !== '' ? (float)$b['price'] : null;
     $loc  = $b['location'] ?? null;
     $ch   = isset($b['cancelHours']) && $b['cancelHours'] !== '' ? (float)$b['cancelHours'] : null;
-    $db->prepare("INSERT INTO series (name, days_of_week, occurrences, time_start, time_end, courts, price, location, cancel_hours) VALUES (?,?,?,?,?,?,?,?,?)")
-       ->execute([$name, json_encode($days), $occ, $ts, $te, $co, $pr, $loc, $ch]);
+    $cn   = isset($b['courtNames']) && is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null;
+    $db->prepare("INSERT INTO series (name, days_of_week, occurrences, time_start, time_end, courts, price, location, cancel_hours, court_names) VALUES (?,?,?,?,?,?,?,?,?,?)")
+       ->execute([$name, json_encode($days), $occ, $ts, $te, $co, $pr, $loc, $ch, $cn]);
     json_out(['ok' => true, 'id' => (int)$db->lastInsertId()]);
 }
 
@@ -863,6 +891,7 @@ function handle_series_update(int $id): void {
     if (isset($b['price'])) { $fields[] = 'price=?'; $params[] = ($b['price'] === null || $b['price'] === '') ? null : (float)$b['price']; }
     if (isset($b['location'])) { $fields[] = 'location=?'; $params[] = $b['location']; }
     if (isset($b['cancelHours'])) { $fields[] = 'cancel_hours=?'; $params[] = ($b['cancelHours'] === null || $b['cancelHours'] === '') ? null : (float)$b['cancelHours']; }
+    if (isset($b['courtNames'])) { $fields[] = 'court_names=?'; $params[] = is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null; }
     if (empty($fields)) json_out(['ok' => true]);
     $params[] = $id;
     $db->prepare("UPDATE series SET " . implode(',', $fields) . " WHERE id=?")->execute($params);
@@ -982,6 +1011,9 @@ function handle_series_delete(int $id): void {
     }
     if (isset($b['name'])) {
         $db->prepare("UPDATE sessions SET name=? WHERE date=?")->execute([$b['name'] === '' || $b['name'] === null ? null : $b['name'], $date]);
+    }
+    if (isset($b['courtNames'])) {
+        $db->prepare("UPDATE sessions SET court_names=? WHERE date=?")->execute([is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null, $date]);
     }
     if (isset($b['courts'])) {
         // Get old courts for comparison
@@ -1197,6 +1229,7 @@ function handle_config_set(): void {
         'system_language',
         'time_format',
         'date_format',
+        'auto_compact_slots',
     ];
     foreach ($b as $k => $v) {
         if (!in_array($k, $allowed, true)) continue;
@@ -1380,10 +1413,27 @@ function handle_session_book(string $date): void {
         err('You can only book for yourself.', 403);
     }
 
-    $stmt = $db->prepare("SELECT charged FROM sessions WHERE date=?");
+    $stmt = $db->prepare("SELECT charged, cancelled FROM sessions WHERE date=?");
     $stmt->execute([$date]);
     $row = $stmt->fetch();
     if ($row && $row['charged']) err('This session has already been charged.', 403);
+    if ($row && $row['cancelled']) err('This session is cancelled.', 403);
+
+    // If session does not exist yet in DB, validate that it is an allowed upcoming series date
+    if (!$row && !token_valid(true)) {
+        $today = date('Y-m-d');
+        if ($date < $today) {
+            err('Cannot book past dates.', 400);
+        }
+        $series = get_series_for_date($db, $date);
+        if (!$series) {
+            err('Session date is not part of an active series.', 400);
+        }
+        $allowedCourts = (int)($series['courts'] ?? ($db->query("SELECT value FROM config WHERE key='courts'")->fetchColumn() ?: 2));
+        if ($ci < 0 || $ci >= $allowedCourts) {
+            err('Invalid court index.', 400);
+        }
+    }
 
     // Transaktion mit IMMEDIATE-Lock: SELECT + INSERT/UPDATE atomar, keine TOCTOU-Race-Condition
     $db->exec('BEGIN IMMEDIATE');
@@ -1444,15 +1494,15 @@ function handle_session_leave(string $date): void {
     // Transaktion mit IMMEDIATE-Lock, um Race-Conditions in der Waitlist-Promotion zu vermeiden
     $db->exec('BEGIN IMMEDIATE');
     
-    $stmt = $db->prepare("SELECT charged, waitlist FROM sessions WHERE date=?");
+    $stmt = $db->prepare("SELECT * FROM sessions WHERE date=?");
     $stmt->execute([$date]);
     $sess = $stmt->fetch();
     if ($sess && $sess['charged']) { $db->exec('ROLLBACK'); err('Already charged.', 403); }
 
     // Cancel deadline check (only for non-admins)
     if (!token_valid(true)) {
-        $cancelHours = $sess['cancel_hours'] ?? null;
-        $effectiveHours = get_effective_cancel_hours($db, $date, $cancelHours !== null ? (float)$cancelHours : null);
+        $cancelHours = isset($sess['cancel_hours']) && $sess['cancel_hours'] !== null ? (float)$sess['cancel_hours'] : null;
+        $effectiveHours = get_effective_cancel_hours($db, $date, $cancelHours);
         $timeStart = get_effective_time_start($db, $date, $sess['time_start'] ?? null);
         $timeFormatted = strlen($timeStart) === 4 ? substr($timeStart, 0, 2) . ':' . substr($timeStart, 2) : $timeStart;
         $sessionTimestamp = strtotime($date . ' ' . $timeFormatted);
@@ -1508,22 +1558,69 @@ function handle_session_leave(string $date): void {
         }
     }
 
-    // 🏆 Magie: Nachrücker von der Warteliste automatisch eintragen!
-    // Waitlist frisch aus DB lesen (innerhalb der Transaktion, kein Stale-Read)
-    $wlStmt = $db->prepare("SELECT waitlist FROM sessions WHERE date=?");
-    $wlStmt->execute([$date]);
-    $waitlist = json_decode($wlStmt->fetchColumn() ?: '[]', true);
-    
-    if (!empty($waitlist) && !empty($freed_slots)) {
-        foreach ($freed_slots as $slot) {
-            if (empty($waitlist)) break;
+    // 🏆 Auto-Nachrücken (Compaction) oder Standard-Warteliste
+    $autoCompact = $db->query("SELECT value FROM config WHERE key='auto_compact_slots'")->fetchColumn() === '1';
+
+    if ($autoCompact) {
+        $disabledCourts = json_decode($sess['disabled_courts'] ?? '[]', true) ?: [];
+        $numCourts = (int)($db->query("SELECT value FROM config WHERE key='courts'")->fetchColumn() ?: 2);
+
+        // Aktive Courts in Reihenfolge ermitteln
+        $activeCourtIndices = [];
+        for ($cIdx = 0; $cIdx < $numCourts; $cIdx++) {
+            if (!in_array($cIdx, $disabledCourts, true)) {
+                $activeCourtIndices[] = $cIdx;
+            }
+        }
+        $totalActiveCapacity = count($activeCourtIndices) * 4;
+
+        // Alle verbleibenden Spieler in bisheriger Reihenfolge holen
+        $stmtP = $db->prepare("SELECT player_id FROM courts WHERE session_date=? AND player_id IS NOT NULL AND player_id != '' ORDER BY court_index ASC, slot_index ASC");
+        $stmtP->execute([$date]);
+        $activePlayers = $stmtP->fetchAll(PDO::FETCH_COLUMN);
+
+        // Warteliste frisch aus DB lesen
+        $wlStmt = $db->prepare("SELECT waitlist FROM sessions WHERE date=?");
+        $wlStmt->execute([$date]);
+        $waitlist = json_decode($wlStmt->fetchColumn() ?: '[]', true) ?: [];
+
+        // Falls Kapazität frei und Warteliste gefüllt ist, nachrücken lassen
+        while (count($activePlayers) < $totalActiveCapacity && !empty($waitlist)) {
             $next_player = array_shift($waitlist);
-            $db->prepare("UPDATE courts SET player_id = ? WHERE session_date=? AND court_index=? AND slot_index=?")
-               ->execute([$next_player, $date, $slot['court_index'], $slot['slot_index']]);
-            // Log the promotion
-            log_session_history($db, $date, $next_player, 'promoted', $slot['court_index'], $slot['slot_index'], $performed_by, json_encode(['from_waitlist' => true]));
+            $activePlayers[] = $next_player;
+            log_session_history($db, $date, $next_player, 'promoted', null, null, $performed_by, json_encode(['from_waitlist' => true]));
         }
         $db->prepare("UPDATE sessions SET waitlist=? WHERE date=?")->execute([json_encode(array_values($waitlist)), $date]);
+
+        // Courts leeren und lückenlos von oben nach unten (Court 0 Slot 0 ...) neu auffüllen
+        $db->prepare("DELETE FROM courts WHERE session_date=?")->execute([$date]);
+        $ins = $db->prepare("INSERT INTO courts (session_date, court_index, slot_index, player_id) VALUES (?,?,?,?)");
+        $pIdx = 0;
+        foreach ($activeCourtIndices as $cIdx) {
+            for ($sIdx = 0; $sIdx < 4; $sIdx++) {
+                if (isset($activePlayers[$pIdx])) {
+                    $ins->execute([$date, $cIdx, $sIdx, $activePlayers[$pIdx]]);
+                    $pIdx++;
+                }
+            }
+        }
+    } else {
+        // Standard ohne Nachrücken: Nachrücker von der Warteliste direkt in die freigewordenen Slots
+        $wlStmt = $db->prepare("SELECT waitlist FROM sessions WHERE date=?");
+        $wlStmt->execute([$date]);
+        $waitlist = json_decode($wlStmt->fetchColumn() ?: '[]', true) ?: [];
+        
+        if (!empty($waitlist) && !empty($freed_slots)) {
+            foreach ($freed_slots as $slot) {
+                if (empty($waitlist)) break;
+                $next_player = array_shift($waitlist);
+                $db->prepare("UPDATE courts SET player_id = ? WHERE session_date=? AND court_index=? AND slot_index=?")
+                   ->execute([$next_player, $date, $slot['court_index'], $slot['slot_index']]);
+                // Log the promotion
+                log_session_history($db, $date, $next_player, 'promoted', $slot['court_index'], $slot['slot_index'], $performed_by, json_encode(['from_waitlist' => true]));
+            }
+            $db->prepare("UPDATE sessions SET waitlist=? WHERE date=?")->execute([json_encode(array_values($waitlist)), $date]);
+        }
     }
     
     $db->exec('COMMIT');
@@ -1552,8 +1649,28 @@ function handle_session_join_waitlist(string $date): void {
     
     $performed_by = get_performer_id();
     
+    $stmt = $db->prepare("SELECT charged, cancelled, waitlist FROM sessions WHERE date=?");
+    $stmt->execute([$date]);
+    $sess = $stmt->fetch();
+
+    if ($sess) {
+        if ($sess['charged']) err('This session has already been charged.', 403);
+        if ($sess['cancelled']) err('This session is cancelled.', 403);
+    } elseif (!token_valid(true)) {
+        $today = date('Y-m-d');
+        if ($date < $today) {
+            err('Cannot join waitlist for past dates.', 400);
+        }
+        $series = get_series_for_date($db, $date);
+        if (!$series) {
+            err('Session date is not part of an active series.', 400);
+        }
+    }
+
     $db->exec('BEGIN IMMEDIATE');
     
+    $db->prepare("INSERT OR IGNORE INTO sessions (date) VALUES (?)")->execute([$date]);
+
     $stmt = $db->prepare("SELECT waitlist FROM sessions WHERE date=?");
     $stmt->execute([$date]);
     $sess = $stmt->fetch();

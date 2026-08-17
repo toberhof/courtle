@@ -60,7 +60,7 @@ You are an expert Backend Developer specializing in lightweight PHP 8.2 and SQLi
 ### Series (Multiple Recurring Schedules)
 * The `series` table supports multiple independent recurring schedules. Each series has its own name, days of week, occurrences, times, courts, optional price override, and optional location.
 * **CRUD Endpoints**:
-  * `GET /series` — List all series (admin only)
+  * `GET /series` — List all series (public endpoint)
   * `POST /series` — Create a new series (admin only)
   * `PUT /series/:id` — Update a series (admin only)
   * `DELETE /series/:id` — Delete a series (admin only)

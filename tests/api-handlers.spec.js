@@ -585,4 +585,153 @@ test.describe('API Handler Integration Suite', () => {
     expect(players.find(p => p.id === alice.id).active).toBe(0);
   });
 
+  test('13 — Series Public Access and Non-Admin Booking Validation', async ({ request }) => {
+    // 1. Setup Admin & Player
+    const adminRes = await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } });
+    const admin = await adminRes.json();
+    const adminAuth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const adminToken = { 'X-Token': adminAuth.token, 'Content-Type': 'application/json' };
+
+    const playerRes = await request.post('/api.php/players', { headers: adminToken, data: { name: 'Bob', pin: '2222' } });
+    const bob = await playerRes.json();
+    const bobAuth = await (await request.post('/api.php/auth', { data: { player_id: bob.id, pin: '2222' } })).json();
+    const bobToken = { 'X-Token': bobAuth.token, 'Content-Type': 'application/json' };
+
+    // 2. Public GET /series without any token
+    const publicSeriesRes = await request.get('/api.php/series');
+    expect(publicSeriesRes.status()).toBe(200);
+    const initialSeries = await publicSeriesRes.json();
+    expect(Array.isArray(initialSeries)).toBe(true);
+
+    // 3. Create a series for tomorrow's day of week (occurrences: 2, courts: 2)
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowDay = tomorrow.getDay();
+    const tomorrowDS = tomorrow.toISOString().slice(0, 10);
+
+    const createSeriesRes = await request.post('/api.php/series', {
+      headers: adminToken,
+      data: {
+        name: 'Weekly Match',
+        daysOfWeek: [tomorrowDay],
+        occurrences: 2,
+        timeStart: '18:00',
+        timeEnd: '20:00',
+        courts: 2,
+      }
+    });
+    expect(createSeriesRes.status()).toBe(200);
+
+    // 4. Bob (non-admin) books tomorrow's date (valid series date, not in DB yet)
+    const validBookRes = await request.post(`/api.php/sessions/${tomorrowDS}/book`, {
+      headers: bobToken,
+      data: { court_index: 0, slot_index: 0, player_id: bob.id }
+    });
+    expect(validBookRes.status()).toBe(200);
+    const validBookJson = await validBookRes.json();
+    expect(validBookJson.ok).toBe(true);
+
+    // 5. Bob tries to book an invalid future date (e.g. 100 days from now, outside occurrences)
+    const farFuture = new Date();
+    farFuture.setDate(farFuture.getDate() + 100);
+    const farFutureDS = farFuture.toISOString().slice(0, 10);
+
+    const invalidDateRes = await request.post(`/api.php/sessions/${farFutureDS}/book`, {
+      headers: bobToken,
+      data: { court_index: 0, slot_index: 0, player_id: bob.id }
+    });
+    expect(invalidDateRes.status()).toBe(400);
+
+    // 6. Bob tries to book an invalid court index (e.g. court 5 when max is 2) on a new series date
+    const nextWeek = new Date(tomorrow);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    const nextWeekDS = nextWeek.toISOString().slice(0, 10);
+
+    const invalidCourtRes = await request.post(`/api.php/sessions/${nextWeekDS}/book`, {
+      headers: bobToken,
+      data: { court_index: 5, slot_index: 0, player_id: bob.id }
+    });
+    expect(invalidCourtRes.status()).toBe(400);
+  });
+
+  test('14 — Custom Court Names & Auto-Compaction on Leave', async ({ request }) => {
+    // 1. Setup Admin & Players
+    const adminRes = await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } });
+    const admin = await adminRes.json();
+    const adminAuth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const adminToken = { 'X-Token': adminAuth.token, 'Content-Type': 'application/json' };
+
+    // Enable auto_compact_slots in config
+    await request.put('/api.php/config', {
+      headers: adminToken,
+      data: { auto_compact_slots: '1', courts: '2' }
+    });
+
+    const players = [];
+    const tokens = [];
+    for (let i = 1; i <= 6; i++) {
+      const pRes = await request.post('/api.php/players', { headers: adminToken, data: { name: `P${i}`, pin: `${i}${i}${i}${i}` } });
+      const p = await pRes.json();
+      players.push(p);
+      const auth = await (await request.post('/api.php/auth', { data: { player_id: p.id, pin: `${i}${i}${i}${i}` } })).json();
+      tokens.push({ 'X-Token': auth.token, 'Content-Type': 'application/json' });
+    }
+
+    const testDate = '2026-11-20';
+
+    // 2. Set custom court names on session
+    const updateRes = await request.put(`/api.php/sessions/${testDate}`, {
+      headers: adminToken,
+      data: {
+        courtNames: ['Court 3', 'Court 7'],
+        timeStart: '18:00',
+        timeEnd: '20:00'
+      }
+    });
+    expect(updateRes.status()).toBe(200);
+
+    const sessionsRes = await request.get('/api.php/sessions');
+    const sessions = await sessionsRes.json();
+    const sess = sessions.find(s => s.date === testDate);
+    expect(sess).toBeTruthy();
+    expect(sess.courtNames).toEqual(['Court 3', 'Court 7']);
+
+    // 3. Book P1, P2, P3, P4 on Court 0, and P5 on Court 1
+    await request.post(`/api.php/sessions/${testDate}/book`, { headers: tokens[0], data: { court_index: 0, slot_index: 0, player_id: players[0].id } });
+    await request.post(`/api.php/sessions/${testDate}/book`, { headers: tokens[1], data: { court_index: 0, slot_index: 1, player_id: players[1].id } });
+    await request.post(`/api.php/sessions/${testDate}/book`, { headers: tokens[2], data: { court_index: 0, slot_index: 2, player_id: players[2].id } });
+    await request.post(`/api.php/sessions/${testDate}/book`, { headers: tokens[3], data: { court_index: 0, slot_index: 3, player_id: players[3].id } });
+    await request.post(`/api.php/sessions/${testDate}/book`, { headers: tokens[4], data: { court_index: 1, slot_index: 0, player_id: players[4].id } });
+
+    // 4. P2 leaves -> Auto-compaction should shift P3, P4, P5 up, leaving Court 0 full and Court 1 empty
+    const leaveRes = await request.post(`/api.php/sessions/${testDate}/leave`, {
+      headers: tokens[1],
+      data: { player_id: players[1].id }
+    });
+    expect(leaveRes.status()).toBe(200);
+
+    const afterLeaveRes = await request.get('/api.php/sessions');
+    const afterLeaveSess = (await afterLeaveRes.json()).find(s => s.date === testDate);
+    expect(afterLeaveSess.courts[0]).toEqual([players[0].id, players[2].id, players[3].id, players[4].id]);
+    expect(afterLeaveSess.courts[1]).toEqual([null, null, null, null]);
+
+    // 5. Add P6 to waitlist
+    const wlRes = await request.post(`/api.php/sessions/${testDate}/join-waitlist`, {
+      headers: tokens[5],
+      data: { player_id: players[5].id }
+    });
+    expect(wlRes.status()).toBe(200);
+
+    // 6. P3 leaves -> P4, P5 shift up, and P6 from waitlist fills the 4th slot
+    await request.post(`/api.php/sessions/${testDate}/leave`, {
+      headers: tokens[2],
+      data: { player_id: players[2].id }
+    });
+
+    const finalRes = await request.get('/api.php/sessions');
+    const finalSess = (await finalRes.json()).find(s => s.date === testDate);
+    expect(finalSess.courts[0]).toEqual([players[0].id, players[3].id, players[4].id, players[5].id]);
+    expect(finalSess.waitlist).toEqual([]);
+  });
+
 });

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:408-->
+<!--built:413-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=408">
+<link rel="stylesheet" href="style.css?build=413">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=408" defer></script>
-<script src="app.js?build=408" defer></script>
+<script src="i18n.js?build=413" defer></script>
+<script src="app.js?build=413" defer></script>
 
 <div class="app-shell">
 
@@ -346,6 +346,14 @@ if ('serviceWorker' in navigator) {
       </div>
 
       <div class="fg" style="margin-top:10px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="sys-auto-compact-slots" style="width:20px;height:20px">
+          <span data-i18n="settings.auto_compact_slots">Spieler-Slots automatisch nachrücken</span>
+        </label>
+        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.auto_compact_slots_hint">Rückt verbleibende Spieler bei einer Abmeldung automatisch in die vorderen Courts nach, sodass keine Lücken entstehen.</p>
+      </div>
+
+      <div class="fg" style="margin-top:10px">
         <button class="btn btn-pri btn-sm" onclick="saveSystemSettings()">
           <i data-lucide="save"></i> <span data-i18n="settings.save">Speichern</span>
         </button>
@@ -489,9 +497,11 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf)">(build 408)</span>
+  <span style="font-size:7px;color:var(--txf)">(build 413)</span>
 
 </footer>
+
+</div>
 
 <!-- ── BOTTOM NAV (mobile) ── -->
 <nav class="bottom-nav" id="bottom-nav">
@@ -541,8 +551,6 @@ if ('serviceWorker' in navigator) {
   <button onclick="showView('series');closeMobileAdminMenu()"><i data-lucide="repeat"></i> <span data-i18n="nav.series">Session Serien</span></button>
   <div class="bnav-divider"></div>
   <button onclick="showView('settings');closeMobileAdminMenu()"><i data-lucide="settings"></i> <span data-i18n="nav.settings">System</span></button>
-</div>
-
 </div>
 
 <!-- ── LANGUAGE MODAL ── -->
@@ -997,6 +1005,12 @@ if ('serviceWorker' in navigator) {
       <div class="mo-row-2">
         <div class="fg"><label class="fl" for="series-edit-courts" data-i18n="settings.series_courts">Anzahl Courts</label><input type="number" id="series-edit-courts" class="fi" value="2"></div>
         <div class="fg"><label class="fl" for="series-edit-price" data-i18n="settings.series_cost">Kosten pro Spieler</label><input type="number" id="series-edit-price" class="fi" placeholder="16"></div>
+      </div>
+
+      <div class="fg">
+        <label class="fl" for="series-edit-court-names" data-i18n="session.court_numbers">Court-Nummern / Namen</label>
+        <input type="text" id="series-edit-court-names" class="fi" data-i18n-placeholder="session.court_numbers_placeholder" placeholder="z. B. 3, 4 oder Center Court, Court 2">
+        <p class="txxs txm mt1" data-i18n="session.court_numbers_hint">Kommagetrennt für Court 1, Court 2, usw.</p>
       </div>
       
       <div class="fg">
