@@ -1,4 +1,6 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, devices } from '@playwright/test';
+
+test.use({ ...devices['iPhone 14'] });
 
 test.describe('iOS & iPhone PWA Mobile Suite', () => {
 

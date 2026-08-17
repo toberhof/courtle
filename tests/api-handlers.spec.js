@@ -734,4 +734,150 @@ test.describe('API Handler Integration Suite', () => {
     expect(finalSess.waitlist).toEqual([]);
   });
 
+  test('15 — Guest Booking, Access Control & Targeted Removal', async ({ request }) => {
+    const adminRes = await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } });
+    const admin = await adminRes.json();
+    const adminAuth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const adminToken = { 'X-Token': adminAuth.token, 'Content-Type': 'application/json' };
+
+    const p1Res = await request.post('/api.php/players', { headers: adminToken, data: { name: 'Alice', pin: '2222' } });
+    const alice = await p1Res.json();
+    const aliceAuth = await (await request.post('/api.php/auth', { data: { player_id: alice.id, pin: '2222' } })).json();
+    const aliceToken = { 'X-Token': aliceAuth.token, 'Content-Type': 'application/json' };
+
+    const p2Res = await request.post('/api.php/players', { headers: adminToken, data: { name: 'Bob', pin: '3333' } });
+    const bob = await p2Res.json();
+    const bobAuth = await (await request.post('/api.php/auth', { data: { player_id: bob.id, pin: '3333' } })).json();
+    const bobToken = { 'X-Token': bobAuth.token, 'Content-Type': 'application/json' };
+
+    const testDate = '2026-12-01';
+    await request.put(`/api.php/sessions/${testDate}`, {
+      headers: adminToken,
+      data: { courts: [[null, null, null, null], [null, null, null, null]] }
+    });
+
+    // Alice books for herself (slot 0) and a guest (slot 1)
+    const b1 = await request.post(`/api.php/sessions/${testDate}/book`, {
+      headers: aliceToken,
+      data: { court_index: 0, slot_index: 0, player_id: alice.id }
+    });
+    expect(b1.status()).toBe(200);
+
+    const guestPid = `${alice.id}|Gast Max`;
+    const b2 = await request.post(`/api.php/sessions/${testDate}/book`, {
+      headers: aliceToken,
+      data: { court_index: 0, slot_index: 1, player_id: guestPid }
+    });
+    expect(b2.status()).toBe(200);
+
+    // Bob tries to remove Alice's guest -> 403 Forbidden
+    const bobLeaveGuest = await request.post(`/api.php/sessions/${testDate}/leave`, {
+      headers: bobToken,
+      data: { court_index: 0, slot_index: 1, player_id: guestPid }
+    });
+    expect(bobLeaveGuest.status()).toBe(403);
+
+    // Alice removes her guest specifically via court_index and slot_index
+    const aliceLeaveGuest = await request.post(`/api.php/sessions/${testDate}/leave`, {
+      headers: aliceToken,
+      data: { court_index: 0, slot_index: 1, player_id: guestPid }
+    });
+    expect(aliceLeaveGuest.status()).toBe(200);
+
+    // Verify slot 1 is now empty while Alice (slot 0) remains
+    const sessRes = await request.get('/api.php/sessions');
+    const sess = (await sessRes.json()).find(s => s.date === testDate);
+    expect(sess.courts[0][0]).toBe(alice.id);
+    expect(sess.courts[0][1]).toBeNull();
+  });
+
+  test('16 — Cancellation Deadline Enforcement & Admin Override', async ({ request }) => {
+    const adminRes = await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } });
+    const admin = await adminRes.json();
+    const adminAuth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const adminToken = { 'X-Token': adminAuth.token, 'Content-Type': 'application/json' };
+
+    const pRes = await request.post('/api.php/players', { headers: adminToken, data: { name: 'Alice', pin: '2222' } });
+    const alice = await pRes.json();
+    const aliceAuth = await (await request.post('/api.php/auth', { data: { player_id: alice.id, pin: '2222' } })).json();
+    const aliceToken = { 'X-Token': aliceAuth.token, 'Content-Type': 'application/json' };
+
+    // Create session today with timeStart 1 hour from now, and cancel_hours: 4.0 (deadline was 3 hours ago)
+    const today = new Date().toISOString().slice(0, 10);
+    const now = new Date();
+    const targetHour = Math.min(23, now.getHours() + 1);
+    const timeStart = `${String(targetHour).padStart(2, '0')}:00`;
+
+    await request.put(`/api.php/sessions/${today}`, {
+      headers: adminToken,
+      data: {
+        courts: [[alice.id, null, null, null]],
+        timeStart,
+        cancelHours: 4.0 // deadline expired 3 hours ago
+      }
+    });
+
+    // Alice tries to leave -> 403 Forbidden ("Abmeldefrist abgelaufen")
+    const leaveRes = await request.post(`/api.php/sessions/${today}/leave`, {
+      headers: aliceToken,
+      data: { player_id: alice.id }
+    });
+    expect(leaveRes.status()).toBe(403);
+    const leaveErr = await leaveRes.json();
+    expect(leaveErr.error).toContain('Abmeldefrist');
+
+    // Admin overrides by updating session courts directly
+    const adminOverrideRes = await request.put(`/api.php/sessions/${today}`, {
+      headers: adminToken,
+      data: { courts: [[null, null, null, null]] }
+    });
+    expect(adminOverrideRes.status()).toBe(200);
+
+    const checkRes = await request.get('/api.php/sessions');
+    const checkSess = (await checkRes.json()).find(s => s.date === today);
+    expect(checkSess.courts[0][0]).toBeNull();
+  });
+
+  test('17 — Waitlist Multi-User Management & Removal', async ({ request }) => {
+    const adminRes = await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } });
+    const admin = await adminRes.json();
+    const adminAuth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const adminToken = { 'X-Token': adminAuth.token, 'Content-Type': 'application/json' };
+
+    const p1 = await (await request.post('/api.php/players', { headers: adminToken, data: { name: 'P1', pin: '1001' } })).json();
+    const p2 = await (await request.post('/api.php/players', { headers: adminToken, data: { name: 'P2', pin: '1002' } })).json();
+    const p3 = await (await request.post('/api.php/players', { headers: adminToken, data: { name: 'P3', pin: '1003' } })).json();
+
+    const t1 = { 'X-Token': (await (await request.post('/api.php/auth', { data: { player_id: p1.id, pin: '1001' } })).json()).token, 'Content-Type': 'application/json' };
+    const t2 = { 'X-Token': (await (await request.post('/api.php/auth', { data: { player_id: p2.id, pin: '1002' } })).json()).token, 'Content-Type': 'application/json' };
+    const t3 = { 'X-Token': (await (await request.post('/api.php/auth', { data: { player_id: p3.id, pin: '1003' } })).json()).token, 'Content-Type': 'application/json' };
+
+    const futureDate = '2026-12-15';
+    // Full court
+    await request.put(`/api.php/sessions/${futureDate}`, {
+      headers: adminToken,
+      data: { courts: [['dummy1', 'dummy2', 'dummy3', 'dummy4']] }
+    });
+
+    // P1, P2, P3 join waitlist
+    await request.post(`/api.php/sessions/${futureDate}/join-waitlist`, { headers: t1, data: { player_id: p1.id } });
+    await request.post(`/api.php/sessions/${futureDate}/join-waitlist`, { headers: t2, data: { player_id: p2.id } });
+    await request.post(`/api.php/sessions/${futureDate}/join-waitlist`, { headers: t3, data: { player_id: p3.id } });
+
+    let sess = (await (await request.get('/api.php/sessions')).json()).find(s => s.date === futureDate);
+    expect(sess.waitlist).toEqual([p1.id, p2.id, p3.id]);
+
+    // P2 leaves waitlist via leave endpoint
+    await request.post(`/api.php/sessions/${futureDate}/leave`, { headers: t2, data: { player_id: p2.id } });
+
+    sess = (await (await request.get('/api.php/sessions')).json()).find(s => s.date === futureDate);
+    expect(sess.waitlist).toEqual([p1.id, p3.id]);
+
+    // P1 leaves waitlist
+    await request.post(`/api.php/sessions/${futureDate}/leave`, { headers: t1, data: { player_id: p1.id } });
+
+    sess = (await (await request.get('/api.php/sessions')).json()).find(s => s.date === futureDate);
+    expect(sess.waitlist).toEqual([p3.id]);
+  });
+
 });

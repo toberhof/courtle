@@ -1,7 +1,7 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:413
+// built:415
 let S = {
   players: [],
   transactions: [],
@@ -103,6 +103,7 @@ async function persistSession(sess, interactionPids = []) {
     await apiFetch('PUT', '/sessions/' + sess.date, {
       courts: sess.courts,
       disabledCourts: sess.disabledCourts || [],
+      courtNames: sess.courtNames || [],
       waitlist: sess.waitlist || [],
       interaction_pids: interactionPids,
       note: sess.note ?? '',
@@ -410,6 +411,7 @@ function getOrSess(date) {
   if (s.courts) for (var ci = 0; ci < s.courts.length; ci++) while (s.courts[ci].length < 4) s.courts[ci].push(null);
   if (!s.waitlist) s.waitlist = [];
   if (!s.disabledCourts) s.disabledCourts = [];
+  if (!s.courtNames) s.courtNames = [];
   if (s.cancelled === undefined) s.cancelled = false;
   return s;
 }
@@ -1071,7 +1073,7 @@ function renderSessions() {
   const playerHash = S.players.map(p => p.emoji || '').join('');
   const hash = JSON.stringify([guestId, playerHash, sorted.map(d => {
     const s = getOrSess(d);
-    return [d, s.courts, s.waitlist, s.note, s.location, s.charged, s.disabledCourts, s.cancelled];
+    return [d, s.courts, s.waitlist, s.note, s.location, s.charged, s.disabledCourts, s.cancelled, s.courtNames];
   })]);
   if (window._lastSessionHash === hash) return;
   window._lastSessionHash = hash;
@@ -1208,7 +1210,7 @@ function buildSessionCard(date, isNextSession = false) {
   const cardCls = (isNextSession ? 'sc next-up' : 'sc') + (groupCourts ? ' courts-grouped' : '');
 
   const detailsHtml = [];
-  if (sess.location) detailsHtml.push(`<div class="sc-location"><i data-lucide="map-pin" style="width:12px;height:12px;flex-shrink:0"></i>${esc(sess.location)}</div>`);
+  if (sess.location && !privacy) detailsHtml.push(`<div class="sc-location"><i data-lucide="map-pin" style="width:12px;height:12px;flex-shrink:0"></i>${esc(sess.location)}</div>`);
   if (sess.note) detailsHtml.push(`<div class="sc-comment"><i data-lucide="message-square" style="width:12px;height:12px;flex-shrink:0"></i>${esc(sess.note)}</div>`);
 
   const hasDetails = detailsHtml.length > 0;
@@ -1818,14 +1820,6 @@ function renderAdminPlan() {
          onchange="planDetailChange('cancelHours', parseCancelHours(this.value))">
     </div>
     <p class="txxs tx-m" style="margin:2px 0 0 var(--sp2)">${t('session.cancel_deadline_hint')}</p>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
-      <span class="tx-sm tx-m">${t('session.court_numbers')}:</span>
-      <input type="text" id="plan-court-names-input" class="fi" placeholder="${t('session.court_numbers_placeholder')}"
-         style="flex:1;min-width:200px;font-size:var(--text-sm)"
-         value="${esc((sess.courtNames || []).join(', '))}"
-         onchange="planDetailChange('courtNames', this.value.split(',').map(s => s.trim()).filter(Boolean))">
-    </div>
-    <p class="txxs tx-m" style="margin:2px 0 0 var(--sp2)">${t('session.court_numbers_hint')}</p>
     <div class="flex g2 wrap" style="margin-top:var(--sp3)">
       <button class="btn btn-pri btn-sm" onclick="savePlanDetails()"><i data-lucide="save"></i> ${t('misc.save')}</button>
       ${cancelBtn}
@@ -1844,10 +1838,26 @@ function renderAdminPlan() {
   let html = '';
   sess.courts.forEach((slots, ci) => {
     const isDisabled = sess.disabledCourts.includes(ci);
-    html += `<div class="court-sep just-b">
-      <div class="flex items-c g2"><i data-lucide="map-pin" style="width:14px;height:14px;color:var(--pri)"></i> ${esc(getCourtLabel(planDate, ci))} ${isDisabled ? '<span class="badge bg-err">' + t('session.cancelled') + '</span>' : ''}</div>
-      ${!sess.charged ? `<button class="btn btn-xs ${isDisabled ? 'btn-ok' : 'btn-dan'}" onclick="toggleCourt('${planDate}', ${ci})">${isDisabled ? t('session.activate') : t('session.deactivate')}</button>` : ''}
-      ${isDisabled && !sess.charged ? `<button class="btn btn-xs btn-dan" onclick="deleteCourt('${planDate}', ${ci})"><i data-lucide="trash-2"></i></button>` : ''}
+    const customName = (sess.courtNames && sess.courtNames[ci]) ? sess.courtNames[ci] : '';
+    html += `<div class="court-sep just-b" style="align-items:center;margin-top:var(--sp4);margin-bottom:var(--sp2);gap:var(--sp2)">
+      <div class="flex items-c g2" style="flex:1;min-width:0;flex-wrap:wrap">
+        <i data-lucide="map-pin" style="width:14px;height:14px;color:var(--pri);flex-shrink:0"></i>
+        <span style="font-weight:700;font-size:var(--text-xs);text-transform:uppercase;letter-spacing:.06em;color:var(--txm)">${t('session.court')} ${ci + 1}</span>
+        <input type="text"
+               id="court-name-input-${ci}"
+               class="fi court-name-input"
+               style="max-width:170px;padding:2px 8px;font-size:var(--text-xs);font-weight:600;height:28px"
+               placeholder="${t('session.court_number_placeholder')}"
+               value="${esc(customName)}"
+               onchange="changeCourtName('${planDate}', ${ci}, this.value)"
+               title="${t('session.court_numbers')}"
+               ${sess.charged ? 'disabled' : ''}>
+        ${isDisabled ? '<span class="badge bg-err">' + t('session.cancelled') + '</span>' : ''}
+      </div>
+      <div class="flex items-c g2" style="flex-shrink:0">
+        ${!sess.charged ? `<button class="btn btn-xs ${isDisabled ? 'btn-ok' : 'btn-dan'}" onclick="toggleCourt('${planDate}', ${ci})">${isDisabled ? t('session.activate') : t('session.deactivate')}</button>` : ''}
+        ${isDisabled && !sess.charged ? `<button class="btn btn-xs btn-dan" onclick="deleteCourt('${planDate}', ${ci})"><i data-lucide="trash-2"></i></button>` : ''}
+      </div>
     </div>`;
 
     if (isDisabled) {
@@ -1992,6 +2002,26 @@ async function renderSessionHistory(date) {
 }
 
 
+async function changeCourtName(date, ci, val) {
+  const sess = getOrSess(date);
+  if (!sess.courtNames) sess.courtNames = [];
+  while (sess.courtNames.length < sess.courts.length) {
+    sess.courtNames.push('');
+  }
+  sess.courtNames[ci] = val.trim();
+  const inMemory = S.sessions?.find(s => s.date === date);
+  if (inMemory) {
+    inMemory.courtNames = [...sess.courtNames];
+  }
+  try {
+    await apiFetch('PUT', '/sessions/' + date, { courtNames: sess.courtNames });
+    renderSessions();
+    showToast(t('toast.saved'));
+  } catch(e) {
+    showToast('⚠️ ' + e.message);
+  }
+}
+
 let courtToCancel = null;
 async function toggleCourt(date, ci) {
   const sess = getOrSess(date);
@@ -2025,6 +2055,9 @@ async function deleteCourt(date, ci) {
   if (!confirm(t('session.confirm_delete_court').replace('{n}', ci + 1))) return;
   const sess = getOrSess(date);
   sess.courts.splice(ci, 1);
+  if (sess.courtNames && sess.courtNames.length > ci) {
+    sess.courtNames.splice(ci, 1);
+  }
   sess.disabledCourts = sess.disabledCourts.filter(i => i !== ci).map(i => i > ci ? i - 1 : i);
   await persistSession(sess);
   renderAdminPlan(); renderSessions();
@@ -2809,7 +2842,7 @@ function openSessionDetailsModal(date) {
   }
 
   const detailsHtml = [];
-  if (sess.location) detailsHtml.push(`<div class="sc-location" style="display:flex;align-items:center;gap:var(--sp1);font-size:var(--text-xs);color:var(--txm)"><i data-lucide="map-pin" style="width:12px;height:12px;flex-shrink:0"></i>${esc(sess.location)}</div>`);
+  if (sess.location && !privacy) detailsHtml.push(`<div class="sc-location" style="display:flex;align-items:center;gap:var(--sp1);font-size:var(--text-xs);color:var(--txm)"><i data-lucide="map-pin" style="width:12px;height:12px;flex-shrink:0"></i>${esc(sess.location)}</div>`);
   if (sess.note) detailsHtml.push(`<div class="sc-comment" style="display:flex;align-items:center;gap:var(--sp1);font-size:var(--text-xs);color:var(--txm)"><i data-lucide="message-square" style="width:12px;height:12px;flex-shrink:0"></i>${esc(sess.note)}</div>`);
 
   const groupCourts = S.cfg.display_court_grouping !== '0';

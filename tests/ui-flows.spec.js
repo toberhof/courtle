@@ -20,6 +20,7 @@ async function navigateAdmin(page, viewName) {
 }
 
 test.describe('UI E2E Suite — Admin & Feature Flows', () => {
+  let aToken;
 
   const TOMORROW = (() => {
     const d = new Date();
@@ -39,6 +40,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
       data: { player_id: admin.id, pin: '1111' },
     })).json();
     const token = auth.token;
+    aToken = token;
 
     await request.put('/api.php/config', {
       headers: { 'Content-Type': 'application/json', 'X-Token': token },
@@ -379,6 +381,170 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     const monthShort = future.toLocaleDateString('de-DE', { month: 'short' }).replace('.', '');
     await expect(page.locator('#session-selector')).toContainText(new RegExp(`${monthShort}.*26`));
   });
+
+  test('15 — Court Name inline editing via Court Section in Admin Plan', async ({ page, request }) => {
+    await navigateAdmin(page, 'admin-plan');
+    await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
+    await page.selectOption('#session-selector', TOMORROW);
+    await page.waitForTimeout(500);
+
+    // Find input for Court 1 (court index 0) and Court 2 (court index 1)
+    const court1Input = page.locator('#court-name-input-0');
+    const court2Input = page.locator('#court-name-input-1');
+    await expect(court1Input).toBeVisible();
+    await expect(court2Input).toBeVisible();
+
+    // Change Court 1 name to "Center Court" and Court 2 name to "Court 7"
+    await court1Input.fill('Center Court');
+    await court1Input.dispatchEvent('change');
+    await page.waitForTimeout(300);
+
+    await court2Input.fill('Court 7');
+    await court2Input.dispatchEvent('change');
+    await page.waitForTimeout(500);
+
+    // Verify session updated via API
+    const sessRes = await request.get('/api.php/sessions');
+    const sessList = await sessRes.json();
+    const sess = sessList.find(s => s.date === TOMORROW);
+    expect(sess.courtNames).toEqual(['Center Court', 'Court 7']);
+
+    // Navigate to sessions view and verify labels on dashboard card
+    if (await page.locator('#nav-sessions').isVisible()) {
+      await page.click('#nav-sessions');
+    } else {
+      await page.click('#bnav-sessions');
+    }
+    await expect(page.locator('#view-sessions')).toHaveClass(/active/);
+    await expect(page.locator('#sessions-container')).toContainText('Center Court');
+    await expect(page.locator('#sessions-container')).toContainText('Court 7');
+  });
+
+  test('16 — Player Search and Sorting via UI', async ({ page, request }) => {
+    // Add extra players
+    await request.post('/api.php/players', {
+      headers: { 'Content-Type': 'application/json', 'X-Token': aToken },
+      data: { name: 'Zack', pin: '9999', admin: false }
+    });
+    await request.post('/api.php/players', {
+      headers: { 'Content-Type': 'application/json', 'X-Token': aToken },
+      data: { name: 'Berta', pin: '8888', admin: false }
+    });
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await navigateAdmin(page, 'players');
+    await expect(page.locator('#view-players')).toHaveClass(/active/);
+
+    const grid = page.locator('#players-grid');
+    await expect(grid).toContainText('Zack');
+    await expect(grid).toContainText('Berta');
+    await expect(grid).toContainText('Admin');
+
+    // Search for "Berta"
+    await page.fill('#player-search', 'Berta');
+    await expect(grid).toContainText('Berta');
+    await expect(grid).not.toContainText('Zack');
+
+    // Clear search
+    await page.fill('#player-search', '');
+    await expect(grid).toContainText('Zack');
+    await expect(grid).toContainText('Berta');
+
+    // Sort Z-A
+    await page.selectOption('#player-sort', 'name_desc');
+    await page.waitForTimeout(300);
+    const firstCard = grid.locator('.pc').first();
+    await expect(firstCard).toContainText('Zack');
+  });
+
+  test('17 — Court Deactivation & Reactivation in Session Planner', async ({ page }) => {
+    await navigateAdmin(page, 'admin-plan');
+    await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
+    await page.selectOption('#session-selector', TOMORROW);
+    await page.waitForTimeout(500);
+
+    // Deactivate Court 2 (second .court-sep)
+    const court2DeactivateBtn = page.locator('.court-sep button.btn-dan').last();
+    await court2DeactivateBtn.click();
+
+    // Confirm deactivation modal
+    const delModal = page.locator('#mo-del-court');
+    await expect(delModal).toHaveClass(/open/);
+    await delModal.locator('.btn-dan').click();
+    await expect(delModal).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Verify Court 2 has cancelled notice/badge in admin plan
+    await expect(page.locator('#plan-slots-editor')).toContainText(/storniert|Abgesagt/);
+
+    // Check sessions view shows cancelled info
+    if (await page.locator('#nav-sessions').isVisible()) {
+      await page.click('#nav-sessions');
+    } else {
+      await page.click('#bnav-sessions');
+    }
+    await expect(page.locator('#view-sessions')).toHaveClass(/active/);
+
+    // Navigate back to admin plan and reactivate Court 2
+    await navigateAdmin(page, 'admin-plan');
+    await page.selectOption('#session-selector', TOMORROW);
+    await page.waitForTimeout(500);
+
+    const activateBtn = page.locator('.court-sep button.btn-ok').first();
+    await activateBtn.click();
+    await page.waitForTimeout(500);
+
+    // Verify activate button changed back to deactivate
+    await expect(page.locator('.court-sep button.btn-dan').last()).toBeVisible();
+  });
+
+  test('18 — Privacy Mode UI Toggle & Anonymous Card Display', async ({ page, request }) => {
+    // Book tomorrow's session with a player and set custom location
+    const pRes = await request.post('/api.php/players', {
+      headers: { 'Content-Type': 'application/json', 'X-Token': aToken },
+      data: { name: 'HiddenPlayer', pin: '4444', admin: false }
+    });
+    const player = await pRes.json();
+    await request.put(`/api.php/sessions/${TOMORROW}`, {
+      headers: { 'Content-Type': 'application/json', 'X-Token': aToken },
+      data: {
+        courts: [[player.id, null, null, null], [null, null, null, null]],
+        location: 'Geheimstraße 42'
+      }
+    });
+
+    // Navigate to settings and enable privacy mode
+    await navigateAdmin(page, 'settings');
+    await expect(page.locator('#view-settings')).toHaveClass(/active/);
+
+    const privCheck = page.locator('#disp-privacy-mode');
+    if (!await privCheck.isChecked()) {
+      await privCheck.check();
+    }
+    await page.locator('button[onclick="saveDisplaySettings()"]').click();
+    await page.waitForTimeout(500);
+
+    // Clear session to simulate anonymous visitor
+    await page.evaluate(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+    });
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Close welcome overlay if open
+    const welcome = page.locator('#welcome-overlay');
+    if (await welcome.isVisible()) {
+      const closeBtn = welcome.locator('.modal-close, button:has-text("Schließen"), button:has-text("✕")').first();
+      if (await closeBtn.isVisible()) await closeBtn.click();
+    }
+
+    // Check sessions view: "Gebucht" is displayed, but neither "HiddenPlayer" nor "Geheimstraße 42" are shown
+    const container = page.locator('#sessions-container');
+    await expect(container).toContainText('Gebucht');
+    await expect(container).not.toContainText('HiddenPlayer');
+    await expect(container).not.toContainText('Geheimstraße 42');
+  });
 });
 
 // ── Public booking flow: fresh login via welcome + PIN overlay ──
@@ -549,5 +715,66 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
 
     // Badge removed from session selector (status tags removed from plan view)
     // await expect(page.locator('#session-selector-box')).toContainText('Abgerechnet');
+  });
+
+  test('19 — Personal Financial Timeline ("Bilanz") & Gamified Runway', async ({ page, request }) => {
+    const aRes = await request.get('/api.php/players');
+    const players = await aRes.json();
+    const alice = players.find(p => p.name === 'Alice');
+
+    // Deposit 50€ for Alice and create booking
+    const admin = players.find(p => p.name === 'Admin');
+    const auth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    await request.post('/api.php/transactions', {
+      headers: { 'Content-Type': 'application/json', 'X-Token': auth.token },
+      data: { player_id: alice.id, credit: true, amount: 50, date: '2026-05-01', note: 'Deposit' },
+    });
+
+    // Login as Alice via welcome + PIN keypad
+    await page.click('#player-pick-grid button:has-text("Alice")');
+    await expect(page.locator('#upin-overlay')).toHaveClass(/open/);
+    const key2 = page.locator('.pkey', { hasText: '2' }).first();
+    await key2.click(); await key2.click(); await key2.click(); await key2.click();
+    await expect(page.locator('#upin-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Navigate to Bilanz
+    if (await page.locator('#nav-my-transactions').isVisible()) {
+      await page.click('#nav-my-transactions');
+    } else {
+      await page.click('#bnav-my-transactions');
+    }
+    await expect(page.locator('#view-my-transactions')).toHaveClass(/active/);
+
+    // Verify Team-Kasse card and Runway indicator
+    await expect(page.locator('#my-group-pool')).toBeVisible();
+    await expect(page.locator('#my-runway-indicator')).toBeVisible();
+
+    // Verify CSV download link exists
+    await expect(page.locator('.btn-csv-link')).toBeVisible();
+  });
+
+  test('20 — Dark & Light Theme Toggle and Persistence', async ({ page }) => {
+    // Check initial theme
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+
+    // Login as Alice
+    await page.click('#player-pick-grid button:has-text("Alice")');
+    await expect(page.locator('#upin-overlay')).toHaveClass(/open/);
+    const key2 = page.locator('.pkey', { hasText: '2' }).first();
+    await key2.click(); await key2.click(); await key2.click(); await key2.click();
+    await expect(page.locator('#upin-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Toggle theme to dark
+    await page.evaluate(() => toggleTheme());
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    // Reload page to verify persistence
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+
+    // Toggle back to light
+    await page.evaluate(() => toggleTheme());
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   });
 });
