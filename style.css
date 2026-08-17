@@ -2379,3 +2379,77 @@ body:has(.pin-modal-overlay.open) {
 .grouped-session-row-amount.cr {
   color: var(--pri);
 }
+
+/* Courtle In-App Update Banner (Actual Budget Style) */
+.courtle-update-banner {
+  position: fixed;
+  top: max(var(--sp3), env(safe-area-inset-top, var(--sp3)));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: var(--sp3);
+  padding: 8px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--pri);
+  border-radius: var(--rd-full);
+  box-shadow: 0 10px 30px rgba(0,0,0,.25), 0 0 16px oklch(from var(--pri) l c h / .25);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--tx);
+  animation: slideDownUpdate .35s cubic-bezier(0.16, 1, 0.3, 1);
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+}
+.courtle-update-banner.dismissing {
+  opacity: 0;
+  transform: translate(-50%, -20px);
+  transition: opacity .25s ease, transform .25s ease;
+}
+.courtle-update-banner-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: oklch(from var(--pri) l c h / .15);
+  color: var(--pri);
+  flex-shrink: 0;
+}
+.courtle-update-banner-title {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--tx);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.courtle-update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp2);
+  flex-shrink: 0;
+}
+.courtle-update-banner-close {
+  background: none;
+  border: none;
+  color: var(--txm);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--tr), background var(--tr);
+}
+.courtle-update-banner-close:hover {
+  color: var(--tx);
+  background: oklch(from var(--tx) l c h / .08);
+}
+@keyframes slideDownUpdate {
+  from { opacity: 0; transform: translate(-50%, -20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}

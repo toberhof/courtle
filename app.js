@@ -1,7 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:415
+// built:416
+const CLIENT_BUILD = 416;
 let S = {
   players: [],
   transactions: [],
@@ -83,6 +84,9 @@ async function apiFetch(method, path, body, sendToken = true) {
     }
 
     if (!r.ok) throw new Error(json.error || r.statusText);
+    const serverBuild = r.headers.get('X-Courtle-Build');
+    if (serverBuild) checkAppBuild(serverBuild);
+
     const dbInit = r.headers.get('X-DB-Init');
     if (dbInit) {
       showToast('✅ DB wurde automatisch migriert / geheilt.');
@@ -3969,6 +3973,7 @@ async function loadState() {
     S.sessions = Array.isArray(sessions) ? sessions : [];
     window._dbSessionDates = new Set(S.sessions.map(s => s.date));
     S.cfg = { ...S.cfg, ...config };
+    if (config && config.server_build) checkAppBuild(config.server_build);
     S.series = Array.isArray(series) ? series : [];
     applyTeamName();
     
@@ -4656,4 +4661,93 @@ if (typeof window !== 'undefined') {
       }
     }, { passive: true });
   }
+
+  document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'visible') {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(r) { r.update().catch(function() {}); });
+        }).catch(function() {});
+      }
+      if (typeof loadState === 'function') {
+        loadState().catch(function() {});
+      }
+    }
+  });
+
+  window.addEventListener('pageshow', function(e) {
+    if (e.persisted && typeof loadState === 'function') {
+      loadState().catch(function() {});
+    }
+  });
+}
+
+// ════════════════════════════════════════
+// APP UPDATE & BUILD SYNC
+// ════════════════════════════════════════
+let _updatePromptShown = false;
+
+function checkAppBuild(serverBuild) {
+  const sb = parseInt(serverBuild, 10);
+  if (!isNaN(sb) && sb > CLIENT_BUILD) {
+    promptAppUpdate(sb);
+  }
+}
+
+function promptAppUpdate(newBuild) {
+  if (_updatePromptShown || document.getElementById('courtle-update-banner')) return;
+  _updatePromptShown = true;
+  const banner = document.createElement('div');
+  banner.id = 'courtle-update-banner';
+  banner.className = 'courtle-update-banner';
+  banner.innerHTML = `
+    <div class="courtle-update-banner-icon">
+      <i data-lucide="sparkles" style="width:14px;height:14px"></i>
+    </div>
+    <div class="courtle-update-banner-title">
+      ${t('update.banner_title', 'Neues Update verfügbar')}
+    </div>
+    <div class="courtle-update-banner-actions">
+      <button class="btn btn-pri btn-xs" onclick="forceAppUpdate()">${t('update.now', 'Jetzt aktualisieren')}</button>
+      <button class="courtle-update-banner-close" onclick="dismissAppUpdate()" title="${t('update.dismiss', 'Später')}">
+        <i data-lucide="x" style="width:14px;height:14px"></i>
+      </button>
+    </div>
+  `;
+  document.body.appendChild(banner);
+  if (window.lucide) lucide.createIcons();
+}
+
+function dismissAppUpdate() {
+  const banner = document.getElementById('courtle-update-banner');
+  if (banner) {
+    banner.classList.add('dismissing');
+    setTimeout(() => banner.remove(), 250);
+  }
+}
+
+async function forceAppUpdate() {
+  const banner = document.getElementById('courtle-update-banner');
+  if (banner) {
+    banner.innerHTML = `<span style="display:flex;align-items:center;gap:6px"><i data-lucide="refresh-cw" style="width:14px;height:14px"></i> ${t('update.checking')}</span>`;
+    if (window.lucide) lucide.createIcons();
+  }
+  showToast(t('update.checking'));
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    }
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      for (const reg of regs) {
+        await reg.update().catch(() => {});
+        await reg.unregister().catch(() => {});
+      }
+    }
+  } catch(e) {
+    console.error('Update cache error:', e);
+  }
+  const cleanUrl = window.location.origin + window.location.pathname + '?_t=' + Date.now();
+  window.location.replace(cleanUrl);
 }

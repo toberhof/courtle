@@ -263,9 +263,24 @@ function init_db(PDO $db): void {
 }
 
 // ── Helpers ──
+function get_server_build(): string {
+    static $build = null;
+    if ($build !== null) return $build;
+    $indexPath = __DIR__ . '/index.html';
+    if (file_exists($indexPath)) {
+        $content = file_get_contents($indexPath, false, null, 0, 400);
+        if (preg_match('/<!--built:(\d+)-->/', $content, $m)) {
+            $build = $m[1];
+            return $build;
+        }
+    }
+    return '416';
+}
+
 function json_out(mixed $data, int $code = 200): never {
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');
+    header('X-Courtle-Build: ' . get_server_build());
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
 }
@@ -1199,6 +1214,7 @@ function handle_config_get(): void {
     $rows = db()->query("SELECT key, value FROM config WHERE key != 'admin_pin_hash'")->fetchAll();
     $out = [];
     foreach ($rows as $r) $out[$r['key']] = $r['value'];
+    $out['server_build'] = get_server_build();
     json_out($out);
 }
 

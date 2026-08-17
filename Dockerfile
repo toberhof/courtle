@@ -11,8 +11,8 @@ RUN apt-get update && apt-get install -y \
 # 2. Enable PHP extensions for PDO and SQLite
 RUN docker-php-ext-install pdo pdo_sqlite
 
-# 3. Enable Apache mod_rewrite + mod_remoteip (essential for API routing and proxy trust)
-RUN a2enmod rewrite remoteip
+# 3. Enable Apache mod_rewrite + mod_remoteip + mod_headers (essential for API routing, proxy trust & cache control)
+RUN a2enmod rewrite remoteip headers
 
 # 4. Apache proxy trust config (Cloudflare / Traefik)
 COPY courtle.conf /etc/apache2/conf-available/courtle.conf

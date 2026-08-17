@@ -880,4 +880,11 @@ test.describe('API Handler Integration Suite', () => {
     expect(sess.waitlist).toEqual([p3.id]);
   });
 
+  test('18 — Server Build Header & Config Version Delivery', async ({ request }) => {
+    const configRes = await request.get('/api.php/config');
+    expect(configRes.headers()['x-courtle-build']).toBeDefined();
+    const config = await configRes.json();
+    expect(config.server_build).toBeDefined();
+    expect(parseInt(config.server_build, 10)).toBeGreaterThan(0);
+  });
 });

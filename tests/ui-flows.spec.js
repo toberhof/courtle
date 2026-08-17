@@ -777,4 +777,20 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     await page.evaluate(() => toggleTheme());
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   });
+
+  test('21 — In-App Update Prompt Banner and Manual Trigger', async ({ page }) => {
+    // Verify manual update button exists in desktop/mobile menu
+    await expect(page.locator('button[onclick*="forceAppUpdate"]').first()).toBeAttached();
+
+    // Trigger update prompt banner via checkAppBuild with higher build number
+    await page.evaluate(() => checkAppBuild(999));
+    const banner = page.locator('#courtle-update-banner');
+    await expect(banner).toBeVisible();
+    await expect(banner).toContainText('Neues Update verfügbar');
+    await expect(banner.locator('button.btn-pri')).toContainText('Jetzt aktualisieren');
+
+    // Test dismiss button
+    await banner.locator('.courtle-update-banner-close').click();
+    await expect(banner).not.toBeVisible({ timeout: 3000 });
+  });
 });
