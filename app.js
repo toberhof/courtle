@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 438;
+const CLIENT_BUILD = 439;
 let S = {
   players: [],
   transactions: [],
@@ -2183,7 +2183,6 @@ function renderAdminPlan(keepDetailsOpen) {
             <button class="btn btn-sec btn-sm" id="plan-more-btn" onclick="togglePlanMoreMenu(event)" aria-label="${esc(t('planner.more'))}"><i data-lucide="more-horizontal"></i></button>
             <div class="plan-more-dd" id="plan-more-dd">
               <button class="plan-more-item" onclick="openAddSessionModal();closePlanMoreMenu()"><i data-lucide="calendar-plus"></i> ${t('session.new')}</button>
-              <button class="plan-more-item" onclick="openTeamRandomizer('${sessId}');closePlanMoreMenu()"><i data-lucide="shuffle"></i> Team-Randomizer</button>
               ${!sess.charged ? `<button class="plan-more-item ${isCancelled ? '' : 'dan'}" onclick="toggleSessionCancel();closePlanMoreMenu()"><i data-lucide="${isCancelled ? 'rotate-ccw' : 'x-circle'}"></i> ${cancelActionLabel}</button>` : ''}
               ${isCancelled && !sess.charged ? `<button class="plan-more-item dan" onclick="deleteSession();closePlanMoreMenu()"><i data-lucide="trash-2"></i> ${t('misc.delete')}</button>` : ''}
             </div>
