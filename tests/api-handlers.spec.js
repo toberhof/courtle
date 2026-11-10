@@ -887,4 +887,55 @@ test.describe('API Handler Integration Suite', () => {
     expect(config.server_build).toBeDefined();
     expect(parseInt(config.server_build, 10)).toBeGreaterThan(0);
   });
+
+  test('19 — Database Export & Import — full state backup and restoration', async ({ request }) => {
+    // 0. Setup admin player
+    const admin = await (await request.post('/api.php/players', {
+      data: { name: 'Admin', pin: '1111' },
+    })).json();
+    const auth = await (await request.post('/api.php/auth', {
+      data: { player_id: admin.id, pin: '1111' },
+    })).json();
+    const token = auth.token;
+
+    // 1. Unauthenticated / non-admin access should be denied
+    const denied = await request.get('/api.php/export');
+    expect(denied.status()).toBe(401);
+
+    // 2. Perform export as admin
+    const exportRes = await request.get('/api.php/export', {
+      headers: { 'X-Token': token },
+    });
+    expect(exportRes.status()).toBe(200);
+    const dump = await exportRes.json();
+    expect(Array.isArray(dump.players)).toBe(true);
+    expect(Array.isArray(dump.transactions)).toBe(true);
+    expect(Array.isArray(dump.sessions)).toBe(true);
+    expect(dump.players.length).toBeGreaterThan(0);
+
+    const originalNames = dump.players.map(p => p.name);
+
+    // 3. Create a temporary player
+    await request.post('/api.php/players', {
+      headers: { 'Content-Type': 'application/json', 'X-Token': token },
+      data: { name: 'TempPlayerToDelete', pin: '9999' },
+    });
+
+    const playersBefore = await (await request.get('/api.php/players')).json();
+    expect(playersBefore.some(p => p.name === 'TempPlayerToDelete')).toBe(true);
+
+    // 4. Import the original dump back
+    const importRes = await request.post('/api.php/import', {
+      headers: { 'Content-Type': 'application/json', 'X-Token': token },
+      data: dump,
+    });
+    expect(importRes.status()).toBe(200);
+    const importJson = await importRes.json();
+    expect(importJson.ok).toBe(true);
+
+    // 5. Verify database was restored and TempPlayerToDelete is gone
+    const playersAfter = await (await request.get('/api.php/players')).json();
+    expect(playersAfter.some(p => p.name === 'TempPlayerToDelete')).toBe(false);
+    expect(playersAfter.map(p => p.name)).toEqual(expect.arrayContaining(originalNames));
+  });
 });

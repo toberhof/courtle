@@ -18,7 +18,7 @@ Courtle follows a direct, vanilla philosophy: no complex build steps, compilers,
 ├── courtle-icon-180.png    # Apple touch icon
 ├── courtle-icon-192.png    # PWA icon (192×192)
 ├── courtle-icon-512.png    # PWA icon (512×512)
-├── Dockerfile              # php:8.2-apache + SQLite + vendored fonts & icons
+├── Dockerfile              # php:8.4-apache + SQLite + vendored fonts & icons
 ├── docker-compose.yml      # Production/release only
 ├── docker-compose.dev.yml  # Local development with live reload
 ├── docker-compose.test.yml # Test environment
@@ -51,7 +51,7 @@ Open **http://localhost:8080** in your browser.
 
 ## 3. Manual Setup (Without Docker)
 
-If you prefer to run Courtle natively without Docker, ensure you have **PHP 8.2+** with the `pdo_sqlite` and `sqlite3` extensions installed.
+If you prefer to run Courtle natively without Docker, ensure you have **PHP 8.4+** with the `pdo_sqlite` and `sqlite3` extensions installed.
 
 1. Create a `data/` directory in the project root:
    ```bash
@@ -67,7 +67,7 @@ If you prefer to run Courtle natively without Docker, ensure you have **PHP 8.2+
 
 ## 4. Docker Container Architecture
 
-* **Base Image:** `php:8.2-apache`
+* **Base Image:** `php:8.4-apache`
 * **Apache Modules:** `mod_rewrite` is enabled to support clean API routing; `mod_remoteip` is enabled to preserve client IP addresses when behind reverse proxies.
 * **Local Assets:** Fonts and Lucide JS are downloaded and vendored during the Docker build stage. **No external CDNs** are contacted by the client at runtime, maximizing privacy and offline reliability.
 * **Permissions:** The entrypoint script (`docker-entrypoint.sh`) ensures that the database storage path is writable by `www-data` before dropping privileges.

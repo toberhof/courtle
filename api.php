@@ -1,7 +1,7 @@
 <?php
 // ═══════════════════════════════════════════════
 //  Courtle – API Backend
-//  PHP 8.2 + SQLite (PDO)
+//  PHP 8.4 + SQLite (PDO)
 // ═══════════════════════════════════════════════
 
 define('DB_PATH', getenv('COURTLE_DB_PATH') ?: (getenv('DB_PATH') ?: '/var/www/courtle_data/courtle.db'));
@@ -31,7 +31,7 @@ header('Access-Control-Allow-Headers: Content-Type, X-Token');
 header('Access-Control-Expose-Headers: X-DB-Init');
 
 // Preflight-Anfragen (OPTIONS) sofort beantworten
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { 
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') { 
     http_response_code(204); 
     exit; 
 }
@@ -53,7 +53,14 @@ function db(): PDO {
     }
     // Sicheres Init: prüft ob Tabellen existieren (auch bei Race-Condition)
     $hasTables = $pdo->query("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='config'")->fetchColumn();
-    if (!$hasTables) init_db($pdo);
+    if (!$hasTables) {
+        init_db($pdo);
+    } else {
+        $ver = (int)$pdo->query("SELECT value FROM config WHERE key='schema_version'")->fetchColumn();
+        if ($ver < 2) {
+            migrate_v2_sessions($pdo);
+        }
+    }
     return $pdo;
 }
 
@@ -62,6 +69,7 @@ function handle_system_init(): void {
     require_auth(true); // Nur Admins dürfen das!
     $db = db();
     init_db($db);
+    migrate_v2_sessions($db);
     json_out(['ok' => true, 'message' => 'Datenbank-Struktur erfolgreich geprüft und aktualisiert.']);
 }
 
@@ -112,7 +120,8 @@ function init_db(PDO $db): void {
     )");
     
     $db->exec("CREATE TABLE IF NOT EXISTS sessions (
-        date TEXT PRIMARY KEY,
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
         charged INTEGER DEFAULT 0,
         disabled_courts TEXT DEFAULT '[]',
         waitlist TEXT DEFAULT '[]',
@@ -123,15 +132,16 @@ function init_db(PDO $db): void {
         location TEXT DEFAULT NULL,
         price REAL DEFAULT NULL,
         cancel_hours REAL DEFAULT NULL,
-        name TEXT DEFAULT NULL
+        name TEXT DEFAULT NULL,
+        court_names TEXT
     )");
     
     $db->exec("CREATE TABLE IF NOT EXISTS courts (
-        session_date TEXT NOT NULL, 
+        session_id TEXT NOT NULL, 
         court_index INTEGER NOT NULL, 
         slot_index INTEGER NOT NULL, 
         player_id TEXT, 
-        PRIMARY KEY(session_date, court_index, slot_index)
+        PRIMARY KEY(session_id, court_index, slot_index)
     )");
     
     $db->exec("CREATE TABLE IF NOT EXISTS expenses (
@@ -144,6 +154,7 @@ function init_db(PDO $db): void {
     
     $db->exec("CREATE TABLE IF NOT EXISTS session_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT, 
+        session_id TEXT,
         session_date TEXT NOT NULL, 
         player_id TEXT, 
         action TEXT NOT NULL, 
@@ -260,6 +271,137 @@ function init_db(PDO $db): void {
         $db->prepare("INSERT INTO series (name, days_of_week, occurrences, time_start, time_end, courts, price, location) VALUES (?,?,?,?,?,?,?,?)")
            ->execute(['Standard-Serie', $days, $occ, $ts, $te, $co, $pr, $loc]);
     }
+    
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_courts_session ON courts(session_id)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_session_history_session ON session_history(session_id)");
+    $db->prepare("INSERT OR IGNORE INTO config (key, value) VALUES ('schema_version', '2')")->execute();
+}
+
+function uuid_v4(): string {
+    $data = random_bytes(16);
+    $data[6] = chr(ord($data[6]) & 0x0f | 0x40); // set version to 0100 (v4)
+    $data[8] = chr(ord($data[8]) & 0x3f | 0x80); // set bits 6-7 to 10
+    return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($data), 4));
+}
+
+function is_uuid(string $str): bool {
+    return (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $str);
+}
+
+function migrate_v2_sessions(PDO $db): void {
+    // Check if sessions table has id column
+    $cols = $db->query("PRAGMA table_info(sessions)")->fetchAll();
+    $hasId = false;
+    foreach ($cols as $col) {
+        if ($col['name'] === 'id') {
+            $hasId = true;
+            break;
+        }
+    }
+    if ($hasId) {
+        $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', '2')")->execute();
+        return;
+    }
+
+    // Check if session_history has session_id column
+    $histCols = $db->query("PRAGMA table_info(session_history)")->fetchAll();
+    $histHasSessionId = false;
+    foreach ($histCols as $col) {
+        if ($col['name'] === 'session_id') {
+            $histHasSessionId = true;
+            break;
+        }
+    }
+    if (!$histHasSessionId) {
+        try {
+            $db->exec("ALTER TABLE session_history ADD COLUMN session_id TEXT");
+        } catch (Throwable $e) {}
+    }
+
+    $db->exec("PRAGMA foreign_keys = OFF;");
+    $db->beginTransaction();
+    try {
+        $db->exec("CREATE TABLE sessions_new (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            charged INTEGER DEFAULT 0,
+            disabled_courts TEXT DEFAULT '[]',
+            waitlist TEXT DEFAULT '[]',
+            note TEXT NOT NULL DEFAULT '',
+            time_start TEXT,
+            time_end TEXT,
+            cancelled INTEGER DEFAULT 0,
+            location TEXT DEFAULT NULL,
+            price REAL DEFAULT NULL,
+            cancel_hours REAL DEFAULT NULL,
+            name TEXT DEFAULT NULL,
+            court_names TEXT
+        )");
+
+        $db->exec("CREATE TABLE courts_new (
+            session_id TEXT NOT NULL,
+            court_index INTEGER NOT NULL,
+            slot_index INTEGER NOT NULL,
+            player_id TEXT,
+            PRIMARY KEY(session_id, court_index, slot_index)
+        )");
+
+        $oldSessions = $db->query("SELECT * FROM sessions")->fetchAll();
+        $insSess = $db->prepare("INSERT INTO sessions_new 
+            (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
+        $insCourts = $db->prepare("INSERT OR IGNORE INTO courts_new (session_id, court_index, slot_index, player_id) VALUES (?,?,?,?)");
+        $updHist = $db->prepare("UPDATE session_history SET session_id = ? WHERE session_date = ?");
+
+        foreach ($oldSessions as $s) {
+            $uuid = uuid_v4();
+            $date = $s['date'];
+            $insSess->execute([
+                $uuid,
+                $date,
+                (int)($s['charged'] ?? 0),
+                $s['disabled_courts'] ?? '[]',
+                $s['waitlist'] ?? '[]',
+                $s['note'] ?? '',
+                $s['time_start'] ?? null,
+                $s['time_end'] ?? null,
+                (int)($s['cancelled'] ?? 0),
+                $s['location'] ?? null,
+                isset($s['price']) && $s['price'] !== null ? (float)$s['price'] : null,
+                isset($s['cancel_hours']) && $s['cancel_hours'] !== null ? (float)$s['cancel_hours'] : null,
+                $s['name'] ?? null,
+                $s['court_names'] ?? null
+            ]);
+
+            // In old courts table, the column was session_date
+            $stmtSlots = $db->prepare("SELECT court_index, slot_index, player_id FROM courts WHERE session_date = ?");
+            $stmtSlots->execute([$date]);
+            foreach ($stmtSlots->fetchAll() as $slot) {
+                $insCourts->execute([$uuid, (int)$slot['court_index'], (int)$slot['slot_index'], $slot['player_id']]);
+            }
+
+            $updHist->execute([$uuid, $date]);
+        }
+
+        $db->exec("DROP TABLE sessions;");
+        $db->exec("ALTER TABLE sessions_new RENAME TO sessions;");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);");
+
+        $db->exec("DROP TABLE courts;");
+        $db->exec("ALTER TABLE courts_new RENAME TO courts;");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_courts_session ON courts(session_id);");
+        $db->exec("CREATE INDEX IF NOT EXISTS idx_session_history_session ON session_history(session_id);");
+
+        $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', '2')")->execute();
+
+        $db->commit();
+    } catch (Throwable $e) {
+        $db->rollBack();
+        throw $e;
+    } finally {
+        $db->exec("PRAGMA foreign_keys = ON;");
+    }
 }
 
 // ── Helpers ──
@@ -274,7 +416,7 @@ function get_server_build(): string {
             return $build;
         }
     }
-    return '417';
+    return '418';
 }
 
 function json_out(mixed $data, int $code = 200): never {
@@ -291,12 +433,30 @@ function body(): array {
 }
 function gid(): string { return bin2hex(random_bytes(8)); }
 
+function get_session_row(PDO $db, string $idOrDate): ?array {
+    // 1. Direct match by UUID / id
+    $stmt = $db->prepare("SELECT * FROM sessions WHERE id = ?");
+    $stmt->execute([$idOrDate]);
+    $row = $stmt->fetch();
+    if ($row) return $row;
+
+    // 2. Fallback match by date (for legacy clients)
+    $stmt = $db->prepare("SELECT * FROM sessions WHERE date = ? ORDER BY time_start ASC, id ASC LIMIT 1");
+    $stmt->execute([$idOrDate]);
+    return $stmt->fetch() ?: null;
+}
+
 // ── Session History Helper ──
-function log_session_history($db, $session_date, $player_id, $action, $court_index, $slot_index, $performed_by, $details_json = null) {
-    $sql = "INSERT INTO session_history (session_date, player_id, action, court_index, slot_index, timestamp, performed_by, details) VALUES (?,?,?,?,?,?,?,?)";
+function log_session_history($db, $session_id, $player_id, $action, $court_index, $slot_index, $performed_by, $details_json = null, $session_date = null) {
+    if (!$session_date) {
+        $stmt = $db->prepare("SELECT date FROM sessions WHERE id = ?");
+        $stmt->execute([$session_id]);
+        $session_date = $stmt->fetchColumn() ?: date('Y-m-d');
+    }
+    $sql = "INSERT INTO session_history (session_id, session_date, player_id, action, court_index, slot_index, timestamp, performed_by, details) VALUES (?,?,?,?,?,?,?,?,?)";
     $stmt = $db->prepare($sql);
     if (!$stmt) return;
-    $stmt->execute([$session_date, $player_id, $action, $court_index, $slot_index, date('c'), $performed_by, $details_json]);
+    $stmt->execute([$session_id, $session_date, $player_id, $action, $court_index, $slot_index, date('c'), $performed_by, $details_json]);
 }
 
 // Get performer ID (always valid player ID or 'unknown')
@@ -307,13 +467,14 @@ function get_performer_id(): string {
     return $player_id ?? 'unknown';  // Always returns player ID (or unknown)
 }
 
-function get_series_for_date(PDO $db, string $date): ?array {
+function get_all_series_for_date(PDO $db, string $date): array {
     $srEnabled = $db->query("SELECT value FROM config WHERE key='sr_enabled'")->fetchColumn();
-    if ($srEnabled === '0') return null;
+    if ($srEnabled === '0') return [];
 
-    $stmt = $db->query("SELECT * FROM series WHERE enabled = 1 ORDER BY id ASC");
+    $stmt = $db->query("SELECT * FROM series WHERE enabled = 1 ORDER BY time_start ASC, id ASC");
     $series = $stmt->fetchAll();
     $today = date('Y-m-d');
+    $res = [];
     foreach ($series as $s) {
         $days = json_decode($s['days_of_week'], true) ?? [2];
         $occ = (int)($s['occurrences'] ?: 6);
@@ -336,9 +497,20 @@ function get_series_for_date(PDO $db, string $date): ?array {
             $d->modify('+1 day');
             $iter++;
         }
-        if ($found) return $s;
+        if ($found) $res[] = $s;
     }
-    return null;
+    return $res;
+}
+
+function get_series_for_date(PDO $db, string $date, ?string $timeStart = null): ?array {
+    $seriesList = get_all_series_for_date($db, $date);
+    if (empty($seriesList)) return null;
+    if ($timeStart !== null) {
+        foreach ($seriesList as $s) {
+            if (($s['time_start'] ?? null) === $timeStart) return $s;
+        }
+    }
+    return $seriesList[0] ?? null;
 }
 
 function get_series_by_weekday(PDO $db, string $date): ?array {
@@ -401,6 +573,7 @@ function require_auth(bool $admin = false): void {
 }
 
 // ── Router ──
+if (!isset($_SERVER['REQUEST_METHOD'])) return;
 $method = $_SERVER['REQUEST_METHOD'];
 $path   = trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/');
 // Strip base path if needed (e.g. /padel/api.php/players → players)
@@ -724,7 +897,7 @@ function handle_player_delete(string $id): void {
     $db = db();
     $db->prepare("UPDATE courts SET player_id=NULL WHERE player_id=? OR player_id=? OR player_id=?")->execute([$id, $id.'|g1', $id.'|g2']);
     // Wartelisten-Einträge entfernen
-    $wlSessions = $db->query("SELECT date, waitlist FROM sessions")->fetchAll();
+    $wlSessions = $db->query("SELECT id, waitlist FROM sessions")->fetchAll();
     foreach ($wlSessions as $s) {
         $wl = json_decode($s['waitlist'], true) ?? [];
         $changed = false;
@@ -734,7 +907,7 @@ function handle_player_delete(string $id): void {
         }
         if ($changed) {
             $wl = array_values($wl);
-            $db->prepare("UPDATE sessions SET waitlist=? WHERE date=?")->execute([json_encode($wl), $s['date']]);
+            $db->prepare("UPDATE sessions SET waitlist=? WHERE id=?")->execute([json_encode($wl), $s['id']]);
         }
     }
     $db->prepare("UPDATE players SET active=0 WHERE id=?")->execute([$id]);
@@ -804,11 +977,11 @@ function handle_tx_delete(?string $id): void {
 function handle_sessions_list(): void {
     // public endpoint
     $db   = db();
-    $rows = $db->query("SELECT * FROM sessions")->fetchAll();
+    $rows = $db->query("SELECT * FROM sessions ORDER BY date ASC, time_start ASC, id ASC")->fetchAll();
     $out  = [];
     foreach ($rows as $s) {
-        $courts_raw = $db->prepare("SELECT court_index, slot_index, player_id FROM courts WHERE session_date=? ORDER BY court_index, slot_index");
-        $courts_raw->execute([$s['date']]);
+        $courts_raw = $db->prepare("SELECT court_index, slot_index, player_id FROM courts WHERE session_id=? ORDER BY court_index, slot_index");
+        $courts_raw->execute([$s['id']]);
         $slots = $courts_raw->fetchAll();
         // Rebuild courts array
         $courts = [];
@@ -817,8 +990,9 @@ function handle_sessions_list(): void {
         }
         ksort($courts);
         foreach ($courts as &$c) ksort($c);
-        // Vollständiges N×4-Array bauen (fehlende Slots mit null auffüllen)
-        $numCourts = intval($db->query("SELECT value FROM config WHERE key='courts'")->fetchColumn() ?: 2);
+        
+        $maxCourtIdx = !empty($courts) ? max(array_keys($courts)) + 1 : 0;
+        $numCourts = max($maxCourtIdx, intval($db->query("SELECT value FROM config WHERE key='courts'")->fetchColumn() ?: 2));
         $fullCourts = [];
         for ($ci = 0; $ci < $numCourts; $ci++) {
             for ($si = 0; $si < 4; $si++) {
@@ -826,10 +1000,11 @@ function handle_sessions_list(): void {
             }
         }
         $out[] = [
+            'id'             => $s['id'],
             'date'           => $s['date'],
             'charged'        => (bool)$s['charged'],
-            'disabledCourts' => json_decode($s['disabled_courts'], true),
-            'waitlist'       => json_decode($s['waitlist'], true),
+            'disabledCourts' => json_decode($s['disabled_courts'], true) ?: [],
+            'waitlist'       => json_decode($s['waitlist'], true) ?: [],
             'courts'         => array_values(array_map('array_values', $fullCourts)),
             'note'           => $s['note'] ?? '',
             'timeStart'      => $s['time_start'] ?? null,
@@ -920,198 +1095,184 @@ function handle_series_delete(int $id): void {
     json_out(['ok' => true]);
 }
 
-        function handle_session_update(string $date): void {
+function handle_session_update(string $idOrDate): void {
     require_auth(true);
     $b  = body();
     $db = db();
 
+    $sess = get_session_row($db, $idOrDate);
+    $sessId = $sess ? $sess['id'] : (is_uuid($idOrDate) ? $idOrDate : uuid_v4());
+    $sessDate = $sess ? $sess['date'] : ($b['date'] ?? (preg_match('/^\d{4}-\d{2}-\d{2}$/', $idOrDate) ? $idOrDate : date('Y-m-d')));
+
     // Charged-Check vor allen Mutationen
-    $stmt = $db->prepare("SELECT charged FROM sessions WHERE date=?");
-    $stmt->execute([$date]);
-    $row = $stmt->fetch();
-    if ($row && $row['charged']) {
-        // Nur blocken wenn tatsächlich was geändert werden soll (reine GET-artige Aufrufe ignorieren)
+    if ($sess && $sess['charged']) {
         $hasMutations = isset($b['timeStart']) || isset($b['timeEnd']) || isset($b['newDate'])
             || isset($b['disabledCourts']) || isset($b['waitlist']) || isset($b['note'])
             || isset($b['location']) || isset($b['courts']) || isset($b['cancelled']) || isset($b['price'])
-            || isset($b['name']);
+            || isset($b['name']) || isset($b['courtNames']);
         if ($hasMutations) {
             err('This session has already been charged. No more changes are possible.', 403);
         }
     }
 
-    if (isset($b['timeStart'])) {
-        $db->prepare("UPDATE sessions SET time_start=? WHERE date=?")
-           ->execute([$b['timeStart'], $date]);
-    }
-    if (isset($b['timeEnd'])) {
-        $db->prepare("UPDATE sessions SET time_end=? WHERE date=?")
-           ->execute([$b['timeEnd'], $date]);
-    }
     if (isset($b['newDate'])) {
         $newDate = $b['newDate'];
-        if ($newDate === $date) json_out(['ok' => true]);
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $newDate)) err('Invalid date format.', 400);
+        if ($sess && $sess['charged']) err('Session has already been charged. Cannot move.', 403);
 
-        $stmt = $db->prepare("SELECT charged FROM sessions WHERE date=? AND (cancelled IS NULL OR cancelled = 0)");
-        $stmt->execute([$newDate]);
-        if ($stmt->fetch()) err('Target date already exists.', 400);
-
-        $stmt = $db->prepare("SELECT charged FROM sessions WHERE date=?");
-        $stmt->execute([$date]);
-        $row = $stmt->fetch();
-        if ($row && $row['charged']) err('Session has already been charged. Cannot move.', 403);
-
-        $db->exec('PRAGMA foreign_keys=OFF');
         $db->beginTransaction();
-        $db->prepare("UPDATE courts SET session_date=? WHERE session_date=?")->execute([$newDate, $date]);
-        $db->prepare("UPDATE session_history SET session_date=? WHERE session_date=?")->execute([$newDate, $date]);
-        $db->prepare("UPDATE sessions SET date=? WHERE date=?")->execute([$newDate, $date]);
-        $db->prepare("INSERT OR IGNORE INTO sessions (date, charged, disabled_courts, waitlist, note, cancelled) VALUES (?, 0, '[]', '[]', '', 1)")
-           ->execute([$date]);
+        $db->prepare("UPDATE sessions SET date=? WHERE id=?")->execute([$newDate, $sessId]);
+        $db->prepare("UPDATE session_history SET session_date=? WHERE session_id=?")->execute([$newDate, $sessId]);
         $db->commit();
-        $db->exec('PRAGMA foreign_keys=ON');
-        json_out(['ok' => true, 'newDate' => $newDate]);
+        $sessDate = $newDate;
     }
 
-    // Get performer ID (handles both player and admin sessions)
+    // Upsert session row if not exists
+    if (!$sess) {
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?)")
+           ->execute([
+               $sessId,
+               $sessDate,
+               $b['timeStart'] ?? null,
+               $b['timeEnd'] ?? null,
+               $b['location'] ?? null,
+               isset($b['price']) && $b['price'] !== null ? (float)$b['price'] : null,
+               isset($b['cancelHours']) && $b['cancelHours'] !== null ? (float)$b['cancelHours'] : null,
+               $b['name'] ?? null,
+               isset($b['courtNames']) && is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : '[]'
+           ]);
+    }
+
+    if (isset($b['timeStart'])) {
+        $db->prepare("UPDATE sessions SET time_start=? WHERE id=?")->execute([$b['timeStart'], $sessId]);
+    }
+    if (isset($b['timeEnd'])) {
+        $db->prepare("UPDATE sessions SET time_end=? WHERE id=?")->execute([$b['timeEnd'], $sessId]);
+    }
+
     $performed_by = get_performer_id();
 
     // Get current session data for comparison
-    $stmt = $db->prepare("SELECT disabled_courts, waitlist FROM sessions WHERE date=?");
-    $stmt->execute([$date]);
+    $stmt = $db->prepare("SELECT disabled_courts, waitlist FROM sessions WHERE id=?");
+    $stmt->execute([$sessId]);
     $current = $stmt->fetch();
-    $old_disabled = $current ? json_decode($current['disabled_courts'], true) : [];
-    $old_waitlist = $current ? json_decode($current['waitlist'], true) : [];
-    
-    // Upsert session row
-    $db->prepare("INSERT OR IGNORE INTO sessions (date) VALUES (?)")->execute([$date]);
-    
+    $old_disabled = $current ? (json_decode($current['disabled_courts'], true) ?: []) : [];
+    $old_waitlist = $current ? (json_decode($current['waitlist'], true) ?: []) : [];
+
     // Log court cancellations
     if (isset($b['disabledCourts'])) {
         $new_disabled = $b['disabledCourts'];
         $cancelled = array_diff($new_disabled, $old_disabled);
         foreach ($cancelled as $ci) {
-            log_session_history($db, $date, null, 'court_cancelled', $ci, null, $performed_by);
+            log_session_history($db, $sessId, null, 'court_cancelled', $ci, null, $performed_by, null, $sessDate);
         }
-        $db->prepare("UPDATE sessions SET disabled_courts=? WHERE date=?")->execute([json_encode($b['disabledCourts']), $date]);
+        $db->prepare("UPDATE sessions SET disabled_courts=? WHERE id=?")->execute([json_encode($b['disabledCourts']), $sessId]);
     }
-    
+
     // Log waitlist changes
     if (isset($b['waitlist'])) {
         $new_waitlist = $b['waitlist'];
-        // Find joined (in new but not in old)
         $joined = array_diff($new_waitlist, $old_waitlist);
         foreach ($joined as $pid) {
-            log_session_history($db, $date, $pid, 'waitlist_join', null, null, $performed_by);
+            log_session_history($db, $sessId, $pid, 'waitlist_join', null, null, $performed_by, null, $sessDate);
         }
-        // Find left (in old but not in new)
         $left = array_diff($old_waitlist, $new_waitlist);
         foreach ($left as $pid) {
-            log_session_history($db, $date, $pid, 'waitlist_leave', null, null, $performed_by);
+            log_session_history($db, $sessId, $pid, 'waitlist_leave', null, null, $performed_by, null, $sessDate);
         }
-        $db->prepare("UPDATE sessions SET waitlist=? WHERE date=?")->execute([json_encode($b['waitlist']), $date]);
+        $db->prepare("UPDATE sessions SET waitlist=? WHERE id=?")->execute([json_encode($b['waitlist']), $sessId]);
     }
+
     if (isset($b['note'])) {
-        $db->prepare("UPDATE sessions SET note=? WHERE date=?")->execute([$b['note'], $date]);
+        $db->prepare("UPDATE sessions SET note=? WHERE id=?")->execute([$b['note'], $sessId]);
     }
     if (isset($b['location'])) {
-        $db->prepare("UPDATE sessions SET location=? WHERE date=?")->execute([$b['location'], $date]);
+        $db->prepare("UPDATE sessions SET location=? WHERE id=?")->execute([$b['location'], $sessId]);
     }
     if (isset($b['price'])) {
-        $db->prepare("UPDATE sessions SET price=? WHERE date=?")->execute([$b['price'] === null ? null : (float)$b['price'], $date]);
+        $db->prepare("UPDATE sessions SET price=? WHERE id=?")->execute([$b['price'] === null ? null : (float)$b['price'], $sessId]);
     }
     if (isset($b['cancelHours'])) {
-        $db->prepare("UPDATE sessions SET cancel_hours=? WHERE date=?")->execute([$b['cancelHours'] === null || $b['cancelHours'] === '' ? null : (float)$b['cancelHours'], $date]);
+        $db->prepare("UPDATE sessions SET cancel_hours=? WHERE id=?")->execute([$b['cancelHours'] === null || $b['cancelHours'] === '' ? null : (float)$b['cancelHours'], $sessId]);
     }
     if (isset($b['name'])) {
-        $db->prepare("UPDATE sessions SET name=? WHERE date=?")->execute([$b['name'] === '' || $b['name'] === null ? null : $b['name'], $date]);
+        $db->prepare("UPDATE sessions SET name=? WHERE id=?")->execute([$b['name'] === '' || $b['name'] === null ? null : $b['name'], $sessId]);
     }
     if (isset($b['courtNames'])) {
-        $db->prepare("UPDATE sessions SET court_names=? WHERE date=?")->execute([is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null, $date]);
+        $db->prepare("UPDATE sessions SET court_names=? WHERE id=?")->execute([is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null, $sessId]);
     }
+
     if (isset($b['courts'])) {
         // Get old courts for comparison
-        $stmt_old = $db->prepare("SELECT court_index, slot_index, player_id FROM courts WHERE session_date=?");
-        $stmt_old->execute([$date]);
+        $stmt_old = $db->prepare("SELECT court_index, slot_index, player_id FROM courts WHERE session_id=?");
+        $stmt_old->execute([$sessId]);
         $old_slots = [];
         foreach ($stmt_old->fetchAll() as $row) {
             $key = $row['court_index'] . '|' . $row['slot_index'];
             $old_slots[$key] = $row['player_id'];
         }
-        
-        // Replace all court slots
-        $db->prepare("DELETE FROM courts WHERE session_date=?")->execute([$date]);
-        $stmt = $db->prepare("INSERT INTO courts (session_date, court_index, slot_index, player_id) VALUES (?,?,?,?)");
-        
+
+        $db->prepare("DELETE FROM courts WHERE session_id=?")->execute([$sessId]);
+        $stmt = $db->prepare("INSERT INTO courts (session_id, court_index, slot_index, player_id) VALUES (?,?,?,?)");
+
         foreach ($b['courts'] as $ci => $slots) {
             foreach ($slots as $si => $pid) {
-                $stmt->execute([$date, $ci, $si, $pid ?: null]);
-                
-                // Log changes
+                $stmt->execute([$sessId, $ci, $si, $pid ?: null]);
+
                 $key = $ci . '|' . $si;
                 $old_pid = $old_slots[$key] ?? null;
-                
+
                 if ($old_pid !== $pid) {
                     if ($old_pid && !$pid) {
-                        // Slot was cleared (removal)
                         $base = explode('|', $old_pid)[0];
-                        log_session_history($db, $date, $base, 'leave', $ci, $si, $performed_by);
+                        log_session_history($db, $sessId, $base, 'leave', $ci, $si, $performed_by, null, $sessDate);
                     } elseif (!$old_pid && $pid) {
-                        // Slot was filled (new booking)
                         $base = explode('|', $pid)[0];
                         $isGuest = str_contains($pid, '|');
                         $details = $isGuest ? json_encode(['guest' => true, 'full_id' => $pid]) : null;
-                        log_session_history($db, $date, $base, 'book', $ci, $si, $performed_by, $details);
+                        log_session_history($db, $sessId, $base, 'book', $ci, $si, $performed_by, $details, $sessDate);
                     } elseif ($old_pid && $pid && $old_pid !== $pid) {
-                        // Slot changed from one player to another (remove old, add new)
                         $base_old = explode('|', $old_pid)[0];
-                        log_session_history($db, $date, $base_old, 'leave', $ci, $si, $performed_by);
+                        log_session_history($db, $sessId, $base_old, 'leave', $ci, $si, $performed_by, null, $sessDate);
                         $base_new = explode('|', $pid)[0];
                         $isGuest = str_contains($pid, '|');
                         $details = $isGuest ? json_encode(['guest' => true, 'full_id' => $pid]) : null;
-                        log_session_history($db, $date, $base_new, 'book', $ci, $si, $performed_by, $details);
+                        log_session_history($db, $sessId, $base_new, 'book', $ci, $si, $performed_by, $details, $sessDate);
                     }
                 }
             }
         }
     }
+
     if (isset($b['interaction_pids'])) {
         $now = date('c');
         foreach ($b['interaction_pids'] as $pid) {
             $base = explode('|', $pid)[0];
-            $db->prepare("UPDATE players SET last_interaction=? WHERE id=?")
-            ->execute([$now, $base]);
+            $db->prepare("UPDATE players SET last_interaction=? WHERE id=?")->execute([$now, $base]);
         }
     }
+
     if (isset($b['cancelled'])) {
-        if ($b['cancelled']) {
-            $db->prepare("INSERT OR REPLACE INTO sessions (date, charged, disabled_courts, waitlist, note, cancelled) VALUES (?, 0, '[]', '[]', '', 1)")
-               ->execute([$date]);
-        } else {
-            $db->prepare("UPDATE sessions SET cancelled=0 WHERE date=?")
-               ->execute([$date]);
-        }
-        json_out(['ok' => true]);
+        $db->prepare("UPDATE sessions SET cancelled=? WHERE id=?")->execute([$b['cancelled'] ? 1 : 0, $sessId]);
     }
-    json_out(['ok' => true]);
+
+    json_out(['ok' => true, 'id' => $sessId, 'date' => $sessDate]);
 }
 
-function handle_session_delete(string $date): void {
+function handle_session_delete(string $idOrDate): void {
     require_auth(true);
     $db = db();
 
-    $stmt = $db->prepare("SELECT charged, cancelled FROM sessions WHERE date=?");
-    $stmt->execute([$date]);
-    $row = $stmt->fetch();
+    $sess = get_session_row($db, $idOrDate);
+    if (!$sess) err('Session not found.', 404);
+    if (!$sess['cancelled']) err('Only cancelled sessions can be deleted.', 400);
+    if ($sess['charged']) err('Already charged sessions cannot be deleted.', 400);
 
-    if (!$row) err('Session not found.', 404);
-    if (!$row['cancelled']) err('Only cancelled sessions can be deleted.', 400);
-    if ($row['charged']) err('Already charged sessions cannot be deleted.', 400);
-
-    $db->prepare("DELETE FROM courts WHERE session_date=?")->execute([$date]);
-    $db->prepare("DELETE FROM session_history WHERE session_date=?")->execute([$date]);
-    $db->prepare("DELETE FROM sessions WHERE date=?")->execute([$date]);
+    $sessId = $sess['id'];
+    $db->prepare("DELETE FROM courts WHERE session_id=?")->execute([$sessId]);
+    $db->prepare("DELETE FROM session_history WHERE session_id=?")->execute([$sessId]);
+    $db->prepare("DELETE FROM sessions WHERE id=?")->execute([$sessId]);
 
     json_out(['ok' => true]);
 }
@@ -1153,20 +1314,22 @@ function handle_expense_delete(string $id): void {
 function handle_charge(): void {
     require_auth(true);
     $b    = body();
-    $date = $b['date'] ?? '';
+    $idOrDate = $b['id'] ?? $b['date'] ?? '';
     // NEU: Wir holen uns die Liste der Barzahler aus dem Request
     $paidPids = $b['paid_pids'] ?? []; 
     
-    if (!$date) err('Date is required.');
+    if (!$idOrDate) err('Session ID or Date is required.');
     $db   = db();
 
-    $stmt = $db->prepare("SELECT charged FROM sessions WHERE date=?");
-    $stmt->execute([$date]);
-    $row = $stmt->fetch();
-    if ($row && $row['charged']) err('Already charged.');
+    $sess = get_session_row($db, $idOrDate);
+    if (!$sess) err('Session not found.', 404);
+    if ($sess['charged']) err('Already charged.');
 
-    $courts_stmt = $db->prepare("SELECT court_index, player_id FROM courts WHERE session_date=? AND player_id IS NOT NULL");
-    $courts_stmt->execute([$date]);
+    $sessId = $sess['id'];
+    $date = $sess['date'];
+
+    $courts_stmt = $db->prepare("SELECT court_index, player_id FROM courts WHERE session_id=? AND player_id IS NOT NULL");
+    $courts_stmt->execute([$sessId]);
     $slots = $courts_stmt->fetchAll();
 
     // Group by baseId
@@ -1181,30 +1344,28 @@ function handle_charge(): void {
     $now  = date('c');
     
     // Session-specific price override
-    $stmt_price = $db->prepare("SELECT price FROM sessions WHERE date=?");
-    $stmt_price->execute([$date]);
-    $row_price = $stmt_price->fetch();
-    if ($row_price && $row_price['price'] !== null) {
-        $cost = (float)$row_price['price'];
+    if ($sess['price'] !== null) {
+        $cost = (float)$sess['price'];
     }
     
     // Vorbereitetes Statement für Transaktionen
     $tx = $db->prepare("INSERT INTO transactions (id,player_id,credit,amount,date,created_at,note) VALUES (?,?,?,?,?,?,?)");
     
+    $timeLabel = $sess['time_start'] ? " ({$sess['time_start']})" : "";
     foreach ($counts as $pid => $n) {
         $amt  = $cost * $n;
-        $note = $n > 1 ? "Session $date (+" . ($n-1) . " Guest)" : "Session $date";
+        $note = $n > 1 ? "Session $date$timeLabel (+" . ($n-1) . " Guest)" : "Session $date$timeLabel";
         
         // 1. Abrechnung (Abbuchung)
         $tx->execute([gid(), $pid, 0, $amt, $date, $now, $note]);
         
         // 2. Falls Spieler in der 'paid_pids' Liste: Barzahlung/Gegenbuchung
         if (in_array($pid, $paidPids)) {
-            $tx->execute([gid(), $pid, 1, $amt, $date, $now, "Direct payment $date"]);
+            $tx->execute([gid(), $pid, 1, $amt, $date, $now, "Direct payment $date$timeLabel"]);
         }
     }
     
-    $db->prepare("UPDATE sessions SET charged=1 WHERE date=?")->execute([$date]);
+    $db->prepare("UPDATE sessions SET charged=1 WHERE id=?")->execute([$sessId]);
     json_out(['ok' => true, 'charged' => count($counts), 'slots' => array_sum($counts)]);
 }
 
@@ -1360,8 +1521,10 @@ function handle_import(): void {
            ->execute([$t['id'], $t['player_id'], (int)$t['credit'], (float)$t['amount'], $t['date'], $t['created_at'] ?? date('c'), $t['note'] ?? null]);
     }
     foreach (($b['sessions'] ?? []) as $s) {
-        $db->prepare("INSERT OR IGNORE INTO sessions (date,charged,disabled_courts,waitlist,note,time_start,time_end,cancelled,location,price,cancel_hours,name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+        $sessId = $s['id'] ?? uuid_v4();
+        $db->prepare("INSERT OR IGNORE INTO sessions (id,date,charged,disabled_courts,waitlist,note,time_start,time_end,cancelled,location,price,cancel_hours,name,court_names) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
             ->execute([
+                $sessId,
                 $s['date'],
                 !empty($s['charged']) ? 1 : 0,
                 $s['disabled_courts'] ?? '[]',
@@ -1373,12 +1536,16 @@ function handle_import(): void {
                 $s['location'] ?? null,
                 isset($s['price']) && $s['price'] !== null ? (float)$s['price'] : null,
                 isset($s['cancel_hours']) && $s['cancel_hours'] !== null ? (float)$s['cancel_hours'] : null,
-                $s['name'] ?? null
+                $s['name'] ?? null,
+                $s['court_names'] ?? '[]'
             ]);
     }
     foreach (($b['courts'] ?? []) as $c) {
-        $db->prepare("INSERT OR IGNORE INTO courts (session_date,court_index,slot_index,player_id) VALUES (?,?,?,?)")
-            ->execute([$c['session_date'], (int)$c['court_index'], (int)$c['slot_index'], $c['player_id'] ?: null]);
+        $sid = $c['session_id'] ?? $c['session_date'] ?? null;
+        if ($sid) {
+            $db->prepare("INSERT OR IGNORE INTO courts (session_id,court_index,slot_index,player_id) VALUES (?,?,?,?)")
+                ->execute([$sid, (int)$c['court_index'], (int)$c['slot_index'], $c['player_id'] ?: null]);
+        }
     }
     foreach (($b['expenses'] ?? []) as $ex) {
         $db->prepare("INSERT OR IGNORE INTO expenses (id,amount,date,note,created_at) VALUES (?,?,?,?,?)")
@@ -1391,9 +1558,11 @@ function handle_import(): void {
             ]);
     }
     foreach (($b['session_history'] ?? []) as $sh) {
-        $db->prepare("INSERT OR IGNORE INTO session_history (id,session_date,player_id,action,court_index,slot_index,timestamp,performed_by,details) VALUES (?,?,?,?,?,?,?,?,?)")
+        $sid = $sh['session_id'] ?? null;
+        $db->prepare("INSERT OR IGNORE INTO session_history (id,session_id,session_date,player_id,action,court_index,slot_index,timestamp,performed_by,details) VALUES (?,?,?,?,?,?,?,?,?,?)")
             ->execute([
                 $sh['id'],
+                $sid,
                 $sh['session_date'],
                 $sh['player_id'],
                 $sh['action'],
@@ -1411,7 +1580,7 @@ function handle_import(): void {
     json_out(['ok' => true]);
 }
 
-function handle_session_book(string $date): void {
+function handle_session_book(string $idOrDate): void {
     require_auth();
     $db = db();
     $b = body();
@@ -1429,19 +1598,20 @@ function handle_session_book(string $date): void {
         err('You can only book for yourself.', 403);
     }
 
-    $stmt = $db->prepare("SELECT charged, cancelled FROM sessions WHERE date=?");
-    $stmt->execute([$date]);
-    $row = $stmt->fetch();
-    if ($row && $row['charged']) err('This session has already been charged.', 403);
-    if ($row && $row['cancelled']) err('This session is cancelled.', 403);
+    $sess = get_session_row($db, $idOrDate);
+    if ($sess && $sess['charged']) err('This session has already been charged.', 403);
+    if ($sess && $sess['cancelled']) err('This session is cancelled.', 403);
+
+    $date = $sess ? $sess['date'] : ($b['date'] ?? (preg_match('/^\d{4}-\d{2}-\d{2}$/', $idOrDate) ? $idOrDate : date('Y-m-d')));
+    $sessId = $sess ? $sess['id'] : (is_uuid($idOrDate) ? $idOrDate : uuid_v4());
 
     // If session does not exist yet in DB, validate that it is an allowed upcoming series date
-    if (!$row && !token_valid(true)) {
+    if (!$sess && !token_valid(true)) {
         $today = date('Y-m-d');
         if ($date < $today) {
             err('Cannot book past dates.', 400);
         }
-        $series = get_series_for_date($db, $date);
+        $series = get_series_for_date($db, $date, $b['timeStart'] ?? null);
         if (!$series) {
             err('Session date is not part of an active series.', 400);
         }
@@ -1454,10 +1624,22 @@ function handle_session_book(string $date): void {
     // Transaktion mit IMMEDIATE-Lock: SELECT + INSERT/UPDATE atomar, keine TOCTOU-Race-Condition
     $db->exec('BEGIN IMMEDIATE');
     
-    $db->prepare("INSERT OR IGNORE INTO sessions (date) VALUES (?)")->execute([$date]);
+    if (!$sess) {
+        $timeStart = $b['timeStart'] ?? ($series['time_start'] ?? null);
+        $timeEnd = $b['timeEnd'] ?? ($series['time_end'] ?? null);
+        $loc = $b['location'] ?? ($series['location'] ?? null);
+        $pr = isset($b['price']) && $b['price'] !== null ? (float)$b['price'] : (isset($series['price']) && $series['price'] !== null ? (float)$series['price'] : null);
+        $ch = isset($b['cancelHours']) && $b['cancelHours'] !== null ? (float)$b['cancelHours'] : (isset($series['cancel_hours']) && $series['cancel_hours'] !== null ? (float)$series['cancel_hours'] : null);
+        $name = $b['name'] ?? ($series['name'] ?? null);
+        $cn = isset($b['courtNames']) ? (is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null) : ($series['court_names'] ?? '[]');
 
-    $stmt = $db->prepare("SELECT player_id FROM courts WHERE session_date=? AND court_index=? AND slot_index=?");
-    $stmt->execute([$date, $ci, $si]);
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?)")
+           ->execute([$sessId, $date, $timeStart, $timeEnd, $loc, $pr, $ch, $name, $cn]);
+    }
+
+    $stmt = $db->prepare("SELECT player_id FROM courts WHERE session_id=? AND court_index=? AND slot_index=?");
+    $stmt->execute([$sessId, $ci, $si]);
     $existing = $stmt->fetch();
     
     if ($existing && !empty($existing['player_id'])) {
@@ -1471,9 +1653,9 @@ function handle_session_book(string $date): void {
     
     // Court sichern! (Entweder Reihe auf den Spieler updaten oder neu anlegen)
     if ($existing) {
-        $db->prepare("UPDATE courts SET player_id=? WHERE session_date=? AND court_index=? AND slot_index=?")->execute([$pid, $date, $ci, $si]);
+        $db->prepare("UPDATE courts SET player_id=? WHERE session_id=? AND court_index=? AND slot_index=?")->execute([$pid, $sessId, $ci, $si]);
     } else {
-        $db->prepare("INSERT INTO courts (session_date, court_index, slot_index, player_id) VALUES (?,?,?,?)")->execute([$date, $ci, $si, $pid]);
+        $db->prepare("INSERT INTO courts (session_id, court_index, slot_index, player_id) VALUES (?,?,?,?)")->execute([$sessId, $ci, $si, $pid]);
     }
     
     $db->exec('COMMIT');
@@ -1481,15 +1663,15 @@ function handle_session_book(string $date): void {
     // Log the booking (use base ID for foreign key constraint)
     $performed_by = get_performer_id();
     $details = $isGuest ? json_encode(['guest' => true, 'full_id' => $pid]) : null;
-    log_session_history($db, $date, $base, 'book', $ci, $si, $performed_by, $details);
+    log_session_history($db, $sessId, $base, 'book', $ci, $si, $performed_by, $details, $date);
     
     $db->prepare("UPDATE players SET last_interaction=? WHERE id=?")->execute([date('c'), $base]);
     
-    json_out(['ok' => true]);
+    json_out(['ok' => true, 'id' => $sessId]);
 }
 
 
-function handle_session_leave(string $date): void {
+function handle_session_leave(string $idOrDate): void {
     require_auth();
     $db = db();
     $b = body();
@@ -1510,10 +1692,12 @@ function handle_session_leave(string $date): void {
     // Transaktion mit IMMEDIATE-Lock, um Race-Conditions in der Waitlist-Promotion zu vermeiden
     $db->exec('BEGIN IMMEDIATE');
     
-    $stmt = $db->prepare("SELECT * FROM sessions WHERE date=?");
-    $stmt->execute([$date]);
-    $sess = $stmt->fetch();
-    if ($sess && $sess['charged']) { $db->exec('ROLLBACK'); err('Already charged.', 403); }
+    $sess = get_session_row($db, $idOrDate);
+    if (!$sess) { $db->exec('ROLLBACK'); err('Session not found.', 404); }
+    if ($sess['charged']) { $db->exec('ROLLBACK'); err('Already charged.', 403); }
+
+    $sessId = $sess['id'];
+    $date = $sess['date'];
 
     // Cancel deadline check (only for non-admins)
     if (!token_valid(true)) {
@@ -1534,8 +1718,8 @@ function handle_session_leave(string $date): void {
     
     // Fall 1: Nur einen gezielten Slot leeren (z.B. Gast entfernen) -> UPDATE auf NULL
     if ($ci !== null && $si !== null) {
-        $stmt = $db->prepare("SELECT player_id FROM courts WHERE session_date=? AND court_index=? AND slot_index=?");
-        $stmt->execute([$date, $ci, $si]);
+        $stmt = $db->prepare("SELECT player_id FROM courts WHERE session_id=? AND court_index=? AND slot_index=?");
+        $stmt->execute([$sessId, $ci, $si]);
         $slot_data = $stmt->fetch();
         if ($slot_data && $slot_data['player_id']) {
             $freed_slots[] = [
@@ -1544,21 +1728,21 @@ function handle_session_leave(string $date): void {
                 'player_id' => $slot_data['player_id']
             ];
         }
-        $db->prepare("UPDATE courts SET player_id = NULL WHERE session_date=? AND court_index=? AND slot_index=?")->execute([$date, $ci, $si]);
+        $db->prepare("UPDATE courts SET player_id = NULL WHERE session_id=? AND court_index=? AND slot_index=?")->execute([$sessId, $ci, $si]);
     } 
     // Fall 2: Kompletten Spieler (inkl. Gäste) vom ganzen Tag abmelden -> UPDATE auf NULL
     elseif ($baseId) {
-        $stmt = $db->prepare("SELECT court_index, slot_index, player_id FROM courts WHERE session_date=? AND (player_id=? OR player_id=? OR player_id=?)");
-        $stmt->execute([$date, $baseId, $baseId . '|g1', $baseId . '|g2']);
+        $stmt = $db->prepare("SELECT court_index, slot_index, player_id FROM courts WHERE session_id=? AND (player_id=? OR player_id=? OR player_id=?)");
+        $stmt->execute([$sessId, $baseId, $baseId . '|g1', $baseId . '|g2']);
         $freed_slots = $stmt->fetchAll();
         
-        $db->prepare("UPDATE courts SET player_id = NULL WHERE session_date=? AND (player_id=? OR player_id=? OR player_id=?)")->execute([$date, $baseId, $baseId . '|g1', $baseId . '|g2']);
+        $db->prepare("UPDATE courts SET player_id = NULL WHERE session_id=? AND (player_id=? OR player_id=? OR player_id=?)")->execute([$sessId, $baseId, $baseId . '|g1', $baseId . '|g2']);
         
         // War der User auf der Warteliste?
-        $waitlist = json_decode($sess['waitlist'] ?? '[]', true);
+        $waitlist = json_decode($sess['waitlist'] ?? '[]', true) ?: [];
         if (in_array($baseId, $waitlist)) {
             $waitlist = array_values(array_filter($waitlist, fn($x) => $x !== $baseId));
-            $db->prepare("UPDATE sessions SET waitlist=? WHERE date=?")->execute([json_encode($waitlist), $date]);
+            $db->prepare("UPDATE sessions SET waitlist=? WHERE id=?")->execute([json_encode($waitlist), $sessId]);
             $sess['waitlist'] = json_encode($waitlist);
         }
     } else {
@@ -1570,7 +1754,7 @@ function handle_session_leave(string $date): void {
     foreach ($freed_slots as $slot) {
         $log_player_id = $baseId ?? ($slot['player_id'] ? explode('|', $slot['player_id'])[0] : null);
         if ($log_player_id) {
-            log_session_history($db, $date, $log_player_id, 'leave', $slot['court_index'], $slot['slot_index'], $performed_by);
+            log_session_history($db, $sessId, $log_player_id, 'leave', $slot['court_index'], $slot['slot_index'], $performed_by, null, $date);
         }
     }
 
@@ -1591,51 +1775,51 @@ function handle_session_leave(string $date): void {
         $totalActiveCapacity = count($activeCourtIndices) * 4;
 
         // Alle verbleibenden Spieler in bisheriger Reihenfolge holen
-        $stmtP = $db->prepare("SELECT player_id FROM courts WHERE session_date=? AND player_id IS NOT NULL AND player_id != '' ORDER BY court_index ASC, slot_index ASC");
-        $stmtP->execute([$date]);
+        $stmtP = $db->prepare("SELECT player_id FROM courts WHERE session_id=? AND player_id IS NOT NULL AND player_id != '' ORDER BY court_index ASC, slot_index ASC");
+        $stmtP->execute([$sessId]);
         $activePlayers = $stmtP->fetchAll(PDO::FETCH_COLUMN);
 
         // Warteliste frisch aus DB lesen
-        $wlStmt = $db->prepare("SELECT waitlist FROM sessions WHERE date=?");
-        $wlStmt->execute([$date]);
+        $wlStmt = $db->prepare("SELECT waitlist FROM sessions WHERE id=?");
+        $wlStmt->execute([$sessId]);
         $waitlist = json_decode($wlStmt->fetchColumn() ?: '[]', true) ?: [];
 
         // Falls Kapazität frei und Warteliste gefüllt ist, nachrücken lassen
         while (count($activePlayers) < $totalActiveCapacity && !empty($waitlist)) {
             $next_player = array_shift($waitlist);
             $activePlayers[] = $next_player;
-            log_session_history($db, $date, $next_player, 'promoted', null, null, $performed_by, json_encode(['from_waitlist' => true]));
+            log_session_history($db, $sessId, $next_player, 'promoted', null, null, $performed_by, json_encode(['from_waitlist' => true]), $date);
         }
-        $db->prepare("UPDATE sessions SET waitlist=? WHERE date=?")->execute([json_encode(array_values($waitlist)), $date]);
+        $db->prepare("UPDATE sessions SET waitlist=? WHERE id=?")->execute([json_encode(array_values($waitlist)), $sessId]);
 
         // Courts leeren und lückenlos von oben nach unten (Court 0 Slot 0 ...) neu auffüllen
-        $db->prepare("DELETE FROM courts WHERE session_date=?")->execute([$date]);
-        $ins = $db->prepare("INSERT INTO courts (session_date, court_index, slot_index, player_id) VALUES (?,?,?,?)");
+        $db->prepare("DELETE FROM courts WHERE session_id=?")->execute([$sessId]);
+        $ins = $db->prepare("INSERT INTO courts (session_id, court_index, slot_index, player_id) VALUES (?,?,?,?)");
         $pIdx = 0;
         foreach ($activeCourtIndices as $cIdx) {
             for ($sIdx = 0; $sIdx < 4; $sIdx++) {
                 if (isset($activePlayers[$pIdx])) {
-                    $ins->execute([$date, $cIdx, $sIdx, $activePlayers[$pIdx]]);
+                    $ins->execute([$sessId, $cIdx, $sIdx, $activePlayers[$pIdx]]);
                     $pIdx++;
                 }
             }
         }
     } else {
         // Standard ohne Nachrücken: Nachrücker von der Warteliste direkt in die freigewordenen Slots
-        $wlStmt = $db->prepare("SELECT waitlist FROM sessions WHERE date=?");
-        $wlStmt->execute([$date]);
+        $wlStmt = $db->prepare("SELECT waitlist FROM sessions WHERE id=?");
+        $wlStmt->execute([$sessId]);
         $waitlist = json_decode($wlStmt->fetchColumn() ?: '[]', true) ?: [];
         
         if (!empty($waitlist) && !empty($freed_slots)) {
             foreach ($freed_slots as $slot) {
                 if (empty($waitlist)) break;
                 $next_player = array_shift($waitlist);
-                $db->prepare("UPDATE courts SET player_id = ? WHERE session_date=? AND court_index=? AND slot_index=?")
-                   ->execute([$next_player, $date, $slot['court_index'], $slot['slot_index']]);
+                $db->prepare("UPDATE courts SET player_id = ? WHERE session_id=? AND court_index=? AND slot_index=?")
+                   ->execute([$next_player, $sessId, $slot['court_index'], $slot['slot_index']]);
                 // Log the promotion
-                log_session_history($db, $date, $next_player, 'promoted', $slot['court_index'], $slot['slot_index'], $performed_by, json_encode(['from_waitlist' => true]));
+                log_session_history($db, $sessId, $next_player, 'promoted', $slot['court_index'], $slot['slot_index'], $performed_by, json_encode(['from_waitlist' => true]), $date);
             }
-            $db->prepare("UPDATE sessions SET waitlist=? WHERE date=?")->execute([json_encode(array_values($waitlist)), $date]);
+            $db->prepare("UPDATE sessions SET waitlist=? WHERE id=?")->execute([json_encode(array_values($waitlist)), $sessId]);
         }
     }
     
@@ -1648,7 +1832,7 @@ function handle_session_leave(string $date): void {
     json_out(['ok' => true]);
 }
 
-function handle_session_join_waitlist(string $date): void {
+function handle_session_join_waitlist(string $idOrDate): void {
     require_auth();
     $db = db();
     $b = body();
@@ -1665,9 +1849,9 @@ function handle_session_join_waitlist(string $date): void {
     
     $performed_by = get_performer_id();
     
-    $stmt = $db->prepare("SELECT charged, cancelled, waitlist FROM sessions WHERE date=?");
-    $stmt->execute([$date]);
-    $sess = $stmt->fetch();
+    $sess = get_session_row($db, $idOrDate);
+    $date = $sess ? $sess['date'] : ($b['date'] ?? (preg_match('/^\d{4}-\d{2}-\d{2}$/', $idOrDate) ? $idOrDate : date('Y-m-d')));
+    $sessId = $sess ? $sess['id'] : (is_uuid($idOrDate) ? $idOrDate : uuid_v4());
 
     if ($sess) {
         if ($sess['charged']) err('This session has already been charged.', 403);
@@ -1677,7 +1861,7 @@ function handle_session_join_waitlist(string $date): void {
         if ($date < $today) {
             err('Cannot join waitlist for past dates.', 400);
         }
-        $series = get_series_for_date($db, $date);
+        $series = get_series_for_date($db, $date, $b['timeStart'] ?? null);
         if (!$series) {
             err('Session date is not part of an active series.', 400);
         }
@@ -1685,36 +1869,61 @@ function handle_session_join_waitlist(string $date): void {
 
     $db->exec('BEGIN IMMEDIATE');
     
-    $db->prepare("INSERT OR IGNORE INTO sessions (date) VALUES (?)")->execute([$date]);
+    if (!$sess) {
+        $timeStart = $b['timeStart'] ?? ($series['time_start'] ?? null);
+        $timeEnd = $b['timeEnd'] ?? ($series['time_end'] ?? null);
+        $loc = $b['location'] ?? ($series['location'] ?? null);
+        $pr = isset($b['price']) && $b['price'] !== null ? (float)$b['price'] : (isset($series['price']) && $series['price'] !== null ? (float)$series['price'] : null);
+        $ch = isset($b['cancelHours']) && $b['cancelHours'] !== null ? (float)$b['cancelHours'] : (isset($series['cancel_hours']) && $series['cancel_hours'] !== null ? (float)$series['cancel_hours'] : null);
+        $name = $b['name'] ?? ($series['name'] ?? null);
+        $cn = isset($b['courtNames']) ? (is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null) : ($series['court_names'] ?? '[]');
 
-    $stmt = $db->prepare("SELECT waitlist FROM sessions WHERE date=?");
-    $stmt->execute([$date]);
-    $sess = $stmt->fetch();
-    if (!$sess) { $db->exec('ROLLBACK'); err('Session not found.', 404); }
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?)")
+           ->execute([$sessId, $date, $timeStart, $timeEnd, $loc, $pr, $ch, $name, $cn]);
+    }
+
+    $stmt = $db->prepare("SELECT waitlist FROM sessions WHERE id=?");
+    $stmt->execute([$sessId]);
+    $sessRow = $stmt->fetch();
+    if (!$sessRow) { $db->exec('ROLLBACK'); err('Session not found.', 404); }
     
-    $waitlist = json_decode($sess['waitlist'] ?? '[]', true);
+    $waitlist = json_decode($sessRow['waitlist'] ?? '[]', true) ?: [];
     if (in_array($player_id, $waitlist)) {
         $db->exec('ROLLBACK');
         err('Already on waitlist.');
     }
     
     $waitlist[] = $player_id;
-    $db->prepare("UPDATE sessions SET waitlist=? WHERE date=?")->execute([json_encode($waitlist), $date]);
+    $db->prepare("UPDATE sessions SET waitlist=? WHERE id=?")->execute([json_encode($waitlist), $sessId]);
     
     $db->exec('COMMIT');
     
-    log_session_history($db, $date, $player_id, 'waitlist_join', null, null, $performed_by);
+    log_session_history($db, $sessId, $player_id, 'waitlist_join', null, null, $performed_by, null, $date);
     
-    json_out(['ok' => true]);
+    json_out(['ok' => true, 'id' => $sessId]);
 }
 
 // ── Session History ──
 function handle_session_history_get(): void {
     require_auth(true); // Admin only
+    $sessionId = $_GET['session_id'] ?? $_GET['id'] ?? '';
     $date = $_GET['date'] ?? '';
     $db = db();
     
-    if ($date) {
+    if ($sessionId) {
+        $stmt = $db->prepare("
+            SELECT sh.*, 
+                   p.name as player_name, 
+                   p2.name as performed_by_name
+            FROM session_history sh 
+            LEFT JOIN players p ON sh.player_id = p.id 
+            LEFT JOIN players p2 ON sh.performed_by = p2.id 
+            WHERE sh.session_id = ? 
+            ORDER BY sh.timestamp DESC
+        ");
+        $stmt->execute([$sessionId]);
+    } elseif ($date) {
         $stmt = $db->prepare("
             SELECT sh.*, 
                    p.name as player_name, 

@@ -1,5 +1,5 @@
-# Base image: PHP 8.2 with built-in Apache web server
-FROM php:8.2-apache
+# Base image: PHP 8.4 with built-in Apache web server
+FROM php:8.4-apache
 
 # 1. System updates and SQLite libraries
 # The rm at the end clears the apt cache to keep the image small

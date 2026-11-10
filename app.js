@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:417
-const CLIENT_BUILD = 417;
+const CLIENT_BUILD = 419;
 let S = {
   players: [],
   transactions: [],
@@ -104,7 +104,10 @@ async function apiFetch(method, path, body, sendToken = true) {
 
 async function persistSession(sess, interactionPids = []) {
   try {
-    await apiFetch('PUT', '/sessions/' + sess.date, {
+    const id = sess.id || sess.date;
+    const res = await apiFetch('PUT', '/sessions/' + id, {
+      id: sess.id,
+      date: sess.date,
       courts: sess.courts,
       disabledCourts: sess.disabledCourts || [],
       courtNames: sess.courtNames || [],
@@ -113,8 +116,12 @@ async function persistSession(sess, interactionPids = []) {
       note: sess.note ?? '',
       timeStart: sess.timeStart ?? null,
       timeEnd:   sess.timeEnd   ?? null,
+      location:  sess.location  ?? null,
+      price:     sess.price     ?? null,
+      name:      sess.name      ?? null,
     });
-    const idx = S.sessions.findIndex(s => s.date === sess.date);
+    if (res && res.id) sess.id = res.id;
+    const idx = S.sessions.findIndex(s => (s.id && s.id === sess.id) || (s.date === sess.date && s.id === sess.id));
     if (idx >= 0) S.sessions[idx] = sess; else S.sessions.push(sess);
   } catch(e) {
     throw e; // ← weiterwerfen damit Aufrufer (leaveSession etc.) reagieren kann
@@ -352,37 +359,147 @@ function getRecurringSessionDates() {
   return [...allDates].sort();
 }
 
-// Get the next upcoming session date (respects scheduler enable/disable)
-function getNextSessionDate() {
-  const allDates = getAllSessionDates();
+function getAllUpcomingSessions() {
   const today = toDS(new Date());
-  return allDates.find(d => d >= today) || allDates[allDates.length - 1] || toDS(new Date());
+  const sessions = [];
+  const coveredKeys = new Set();
+
+  // 1. Existing DB sessions
+  if (S.sessions && S.sessions.length) {
+    for (const s of S.sessions) {
+      if (s.date >= today && !s.cancelled) {
+        sessions.push(s);
+        coveredKeys.add(`${s.date}_${(s.timeStart || '').replace(':','')}`);
+      }
+    }
+  }
+
+  // 2. Series virtual upcoming sessions
+  if (S.cfg.sr_enabled !== '0' && S.series && S.series.length) {
+    for (const series of S.series) {
+      if (!series.enabled) continue;
+      const dates = generateSeriesDates(series);
+      for (const d of dates) {
+        if (d >= today) {
+          const sTime = (series.timeStart || '').replace(':','');
+          const isCancelled = S.sessions?.some(s => s.date === d && s.cancelled && (s.timeStart || '').replace(':','') === sTime);
+          if (isCancelled) continue;
+
+          const key = `${d}_${sTime}`;
+          if (!coveredKeys.has(key)) {
+            sessions.push({
+              id: `series_${series.id}_${d}`,
+              seriesId: series.id,
+              date: d,
+              courts: Array(series.courts || S.cfg.courts || 2).fill(null).map(() => [null,null,null,null]),
+              charged: false,
+              waitlist: [],
+              disabledCourts: [],
+              courtNames: series.courtNames ? [...series.courtNames] : [],
+              note: '',
+              timeStart: series.timeStart || null,
+              timeEnd: series.timeEnd || null,
+              cancelled: false,
+              location: series.location || S.cfg.srlocation || null,
+              price: series.price !== null && series.price !== undefined ? parseFloat(series.price) : null,
+              cancelHours: series.cancelHours !== null && series.cancelHours !== undefined ? parseFloat(series.cancelHours) : null,
+              name: series.name || null
+            });
+            coveredKeys.add(key);
+          }
+        }
+      }
+    }
+  }
+
+  return sessions.sort((a, b) => {
+    const cmp = a.date.localeCompare(b.date);
+    if (cmp !== 0) return cmp;
+    return (a.timeStart || '').localeCompare(b.timeStart || '');
+  });
+}
+
+function getAllSessionsAdmin() {
+  const sessions = [];
+  const coveredKeys = new Set();
+
+  // 1. All DB sessions
+  if (S.sessions && S.sessions.length) {
+    for (const s of S.sessions) {
+      sessions.push(s);
+      coveredKeys.add(`${s.date}_${(s.timeStart || '').replace(':','')}`);
+    }
+  }
+
+  // 2. Series virtual upcoming sessions
+  const today = toDS(new Date());
+  if (S.cfg.sr_enabled !== '0' && S.series && S.series.length) {
+    for (const series of S.series) {
+      if (!series.enabled) continue;
+      for (const d of generateSeriesDates(series)) {
+        if (d >= today) {
+          const sTime = (series.timeStart || '').replace(':','');
+          const key = `${d}_${sTime}`;
+          if (!coveredKeys.has(key)) {
+            sessions.push({
+              id: `series_${series.id}_${d}`,
+              seriesId: series.id,
+              date: d,
+              courts: Array(series.courts || S.cfg.courts || 2).fill(null).map(() => [null,null,null,null]),
+              charged: false,
+              waitlist: [],
+              disabledCourts: [],
+              courtNames: series.courtNames ? [...series.courtNames] : [],
+              note: '',
+              timeStart: series.timeStart || null,
+              timeEnd: series.timeEnd || null,
+              cancelled: false,
+              location: series.location || S.cfg.srlocation || null,
+              price: series.price !== null && series.price !== undefined ? parseFloat(series.price) : null,
+              cancelHours: series.cancelHours !== null && series.cancelHours !== undefined ? parseFloat(series.cancelHours) : null,
+              name: series.name || null
+            });
+            coveredKeys.add(key);
+          }
+        }
+      }
+    }
+  }
+
+  return sessions.sort((a, b) => {
+    const cmp = a.date.localeCompare(b.date);
+    if (cmp !== 0) return cmp;
+    return (a.timeStart || '').localeCompare(b.timeStart || '');
+  });
+}
+
+// Get the next upcoming session (respects scheduler enable/disable)
+function getNextSession() {
+  const all = getAllUpcomingSessions();
+  return all[0] || null;
+}
+
+function getNextSessionDate() {
+  const next = getNextSession();
+  return next ? next.date : toDS(new Date());
 }
 
 // Alias for clarity
 function getUpcomingSession() {
-  return getNextSessionDate();
+  const next = getNextSession();
+  return next ? (next.id || next.date) : toDS(new Date());
 }
 
-// Get all session dates: DB sessions + recurring if enabled (excludes cancelled)
+// Get all session dates: DB sessions + recurring if enabled (excludes cancelled) - kept for legacy callers
 function getAllSessionDates() {
-  if (!S.sessions || !S.sessions.length) return [];
-  const cancelledDates = new Set(
-    S.sessions.filter(s => s.cancelled).map(s => s.date)
-  );
-  const recurring = getRecurringSessionDates().filter(d => !cancelledDates.has(d));
-  const dbDates = S.sessions
-    .filter(s => !s.cancelled)
-    .map(s => s.date);
-  return [...new Set([...dbDates, ...recurring])].sort();
+  const all = getAllUpcomingSessions();
+  return [...new Set(all.map(s => s.date))].sort();
 }
 
-// Get all session dates for admin (includes cancelled)
+// Get all session dates for admin (includes cancelled) - kept for legacy callers
 function getAllSessionDatesAdmin() {
-  if (!S.sessions || !S.sessions.length) return [];
-  const dbDates = S.sessions.map(s => s.date);
-  const recurring = getRecurringSessionDates();
-  return [...new Set([...dbDates, ...recurring])].sort();
+  const all = getAllSessionsAdmin();
+  return [...new Set(all.map(s => s.date))].sort();
 }
 
 function fmtD(d) { return fmtDate(d); }
@@ -390,29 +507,64 @@ function fmtDL(d) { return fmtDateLong(d); }
 function fmtDTF(d) { return fmtDateTimeFull(d); }
 function fmtDTS(d) { return fmtDateTimeHistory(d); }
 function fmtDT(d) { return fmtDateTime(d); }
-function getOrSess(date) {
+
+function getOrSess(idOrDate) {
   if (!S.sessions) return null;
-  let s = S.sessions.find(x => x.date === date);
+  // 1. Direct match by id
+  let s = S.sessions.find(x => x.id === idOrDate);
+  // 2. Direct match by date
+  if (!s) s = S.sessions.find(x => x.date === idOrDate);
+
   if (!s) {
-    let seriesPrice = null;
-    if (S.series && S.cfg.sr_enabled !== '0') {
+    let date = idOrDate;
+    let seriesMatch = null;
+
+    if (typeof idOrDate === 'string' && idOrDate.startsWith('series_')) {
+      const parts = idOrDate.split('_');
+      const seriesId = parseInt(parts[1], 10);
+      date = parts.slice(2).join('_');
+      seriesMatch = S.series?.find(sr => sr.id === seriesId);
+    } else if (S.series && S.cfg.sr_enabled !== '0') {
       for (const series of S.series) {
         if (!series.enabled) continue;
         if (generateSeriesDates(series).includes(date)) {
-          if (series.price !== null && series.price !== undefined) {
-            seriesPrice = parseFloat(series.price);
-            break;
-          }
+          seriesMatch = series;
+          break;
         }
       }
     }
-    s = { date, courts: Array(S.cfg.courts).fill(null).map(() => [null,null,null,null]), charged: false, waitlist: [], disabledCourts: [], note: '', timeStart: null, timeEnd: null, cancelled: false, location: S.cfg.srlocation ?? null, price: seriesPrice, name: null };
+
+    const seriesPrice = (seriesMatch && seriesMatch.price !== null && seriesMatch.price !== undefined) ? parseFloat(seriesMatch.price) : null;
+    const seriesCourts = (seriesMatch && seriesMatch.courts) ? parseInt(seriesMatch.courts, 10) : S.cfg.courts;
+
+    s = {
+      id: seriesMatch ? `series_${seriesMatch.id}_${date}` : date,
+      date: date,
+      courts: Array(seriesCourts || 2).fill(null).map(() => [null,null,null,null]),
+      charged: false,
+      waitlist: [],
+      disabledCourts: [],
+      courtNames: seriesMatch?.courtNames ? [...seriesMatch.courtNames] : [],
+      note: '',
+      timeStart: seriesMatch?.timeStart || null,
+      timeEnd: seriesMatch?.timeEnd || null,
+      cancelled: false,
+      location: seriesMatch?.location || S.cfg.srlocation || null,
+      price: seriesPrice,
+      cancelHours: seriesMatch?.cancelHours !== null && seriesMatch?.cancelHours !== undefined ? parseFloat(seriesMatch.cancelHours) : null,
+      name: seriesMatch?.name || null
+    };
     S.sessions.push(s);
   }
+
   // Fehlende Courts auffüllen
-  while (s.courts && s.courts.length < S.cfg.courts) s.courts.push([null, null, null, null]);
-  // Fehlende Slots innerhalb vorhandener Courts auffüllen
-  if (s.courts) for (var ci = 0; ci < s.courts.length; ci++) while (s.courts[ci].length < 4) s.courts[ci].push(null);
+  const minCourts = s.courts?.length || S.cfg.courts || 2;
+  while (s.courts && s.courts.length < minCourts) s.courts.push([null, null, null, null]);
+  if (s.courts) {
+    for (var ci = 0; ci < s.courts.length; ci++) {
+      while (s.courts[ci].length < 4) s.courts[ci].push(null);
+    }
+  }
   if (!s.waitlist) s.waitlist = [];
   if (!s.disabledCourts) s.disabledCourts = [];
   if (!s.courtNames) s.courtNames = [];
@@ -420,14 +572,13 @@ function getOrSess(date) {
   return s;
 }
 
-function getSessionName(date) {
-  if (S.sessions) {
-    const sess = S.sessions.find(s => s.date === date);
-    if (sess && sess.name && sess.name.trim() !== '') {
-      return sess.name;
-    }
+function getSessionName(dateOrId) {
+  const sess = typeof dateOrId === 'object' ? dateOrId : (S.sessions?.find(s => s.id === dateOrId || s.date === dateOrId));
+  if (sess && sess.name && sess.name.trim() !== '') {
+    return sess.name;
   }
-  if (S.series && S.cfg.sr_enabled !== '0') {
+  const date = typeof dateOrId === 'object' ? dateOrId.date : dateOrId;
+  if (S.series && S.cfg.sr_enabled !== '0' && date) {
     for (const series of S.series) {
       if (!series.enabled) continue;
       if (generateSeriesDates(series).includes(date)) {
@@ -440,12 +591,13 @@ function getSessionName(date) {
   return (S.cfg.team_name || '').trim() || 'Courtle';
 }
 
-function getSessionTime(date) {
-  const sess = S.sessions?.find(s => s.date === date);
+function getSessionTime(dateOrId) {
+  const sess = typeof dateOrId === 'object' ? dateOrId : (S.sessions?.find(s => s.id === dateOrId || s.date === dateOrId));
   let start = sess?.timeStart;
   let end   = sess?.timeEnd;
+  const date = typeof dateOrId === 'object' ? dateOrId.date : dateOrId;
 
-  if ((!start || !end) && S.series && S.cfg.sr_enabled !== '0') {
+  if ((!start || !end) && S.series && S.cfg.sr_enabled !== '0' && date) {
     const dObj = new Date(date + 'T00:00:00');
     const dayOfWeek = dObj.getDay();
     for (const series of S.series) {
@@ -462,14 +614,14 @@ function getSessionTime(date) {
   if (!start) start = String(S.cfg.srtimestart ?? '19:00');
   if (!end)   end   = String(S.cfg.srtimeend   ?? '21:00');
 
-  const fmt = t => t.length === 4
+  const fmt = t => (t && t.length === 4)
       ? t.slice(0,2) + ':' + t.slice(2)
-      : t;
+      : (t || '');
   return { start: fmt(start), end: fmt(end) };
 }
 
 function getCourtLabel(dateOrSess, ci) {
-  let sess = typeof dateOrSess === 'string' ? S.sessions?.find(s => s.date === dateOrSess) : dateOrSess;
+  let sess = typeof dateOrSess === 'string' ? (S.sessions?.find(s => s.id === dateOrSess || s.date === dateOrSess)) : dateOrSess;
   let customName = sess?.courtNames?.[ci];
   if (!customName && S.series && S.cfg.sr_enabled !== '0') {
     const date = typeof dateOrSess === 'string' ? dateOrSess : dateOrSess?.date;
@@ -1044,40 +1196,29 @@ function renderSessions() {
   const container = document.getElementById('sessions-container');
   if (!container) return;
 
-  // Alle Termine: DB-Sessions + berechnete Serientermine zusammenführen (cancelled ausschließen)
-  const cancelledDates = new Set(
-    S.sessions.filter(s => s.cancelled).map(s => s.date)
-  );
-  const dbDates = S.sessions.filter(s => !s.cancelled).map(s => s.date);
-  const calculated = getCalculatedSessions().filter(d => !cancelledDates.has(d));
-  const allDates = [...new Set([...dbDates, ...calculated])];
+  const upcomingSessions = getAllUpcomingSessions();
 
-  if (allDates.length === 0) {
+  if (upcomingSessions.length === 0) {
     container.innerHTML = `<div class="p8 txcenter txm">${t('session.no_sessions')}</div>`;
     if (window.lucide) lucide.createIcons();
     return;
   }
 
-  // Sortieren: nur zukünftige Termine rendern (vergangene ausblenden)
-  const today = toDS(new Date());
-  const future = allDates.filter(d => d >= today).sort((a, b) => a.localeCompare(b));
-  const sorted = [...future];
+  const nextSession = getNextSession();
 
-  const nextSession = getNextSessionDate();
-
-  const html = sorted.map(date => {
+  const html = upcomingSessions.map(sess => {
     try {
-      return buildSessionCard(date, date === nextSession);
+      const isNext = nextSession && ((sess.id && sess.id === nextSession.id) || (sess.date === nextSession.date && (sess.timeStart || '') === (nextSession.timeStart || '')));
+      return buildSessionCard(sess, isNext);
     } catch (e) {
-      console.error(`Error rendering card for ${date}:`, e);
+      console.error(`Error rendering card for session:`, e);
       return '';
     }
   }).join('');
 
   const playerHash = S.players.map(p => p.emoji || '').join('');
-  const hash = JSON.stringify([guestId, playerHash, sorted.map(d => {
-    const s = getOrSess(d);
-    return [d, s.courts, s.waitlist, s.note, s.location, s.charged, s.disabledCourts, s.cancelled, s.courtNames];
+  const hash = JSON.stringify([guestId, playerHash, upcomingSessions.map(s => {
+    return [s.id || s.date, s.date, s.timeStart, s.courts, s.waitlist, s.note, s.location, s.charged, s.disabledCourts, s.cancelled, s.courtNames];
   })]);
   if (window._lastSessionHash === hash) return;
   window._lastSessionHash = hash;
@@ -1086,8 +1227,10 @@ function renderSessions() {
   syncSwipeHeight();
 }
 
-function buildSessionCard(date, isNextSession = false) {
-  const sess = getOrSess(date);
+function buildSessionCard(dateOrSess, isNextSession = false) {
+  const sess = typeof dateOrSess === 'object' ? dateOrSess : getOrSess(dateOrSess);
+  const date = sess.date;
+  const sessId = sess.id || sess.date;
   if (!sess.disabledCourts) sess.disabledCourts = [];
   const activeCourts = sess.courts.filter((_, i) => !sess.disabledCourts.includes(i));
   const allSlots = activeCourts.flat();
@@ -1126,13 +1269,13 @@ function buildSessionCard(date, isNextSession = false) {
         const filledCls = isMe ? 'me' : 'filled';
         slotChips += `<div class="admin-slot ${filledCls}">
           <div class="av" style="width:32px;height:32px;font-size:var(--text-sm)">${privacy ? '<i data-lucide="hat-glasses" style="width:16px;height:16px"></i>' : (p ? `<i data-lucide="${playerIcon(p, isGuest)}" style="width:16px;height:16px"></i>` : '?')}</div>
-          <span class="slot-name">${privacy ? t('session.booked') : (p ? (isGuest ? t('session.guest') + ` (` + esc(p.name) + `)` : esc(p.name)) : '?')}${privacy ? '' : (isGuest ? '' : (isMe ? ` <span style="opacity:.6;font-size:var(--text-xs)">${t('misc.you')}</span>` : ''))}${isMyGuest ? ` <button onclick="removeGuestSlot('${date}',${ci},${si})" style="background:none;border:none;color:var(--err);cursor:pointer;padding:0 2px;font-size:10px" title="${t('misc.guest')} entfernen">×</button>` : ''}</span>
+          <span class="slot-name">${privacy ? t('session.booked') : (p ? (isGuest ? t('session.guest') + ` (` + esc(p.name) + `)` : esc(p.name)) : '?')}${privacy ? '' : (isGuest ? '' : (isMe ? ` <span style="opacity:.6;font-size:var(--text-xs)">${t('misc.you')}</span>` : ''))}${isMyGuest ? ` <button onclick="removeGuestSlot('${sessId}',${ci},${si})" style="background:none;border:none;color:var(--err);cursor:pointer;padding:0 2px;font-size:10px" title="${t('misc.guest')} entfernen">×</button>` : ''}</span>
         </div>`;
       } else {
         const mySlotCount = sess.courts.flat().filter(v => v && baseId(v) === guestId).length;
         const canBook = guestId && !meWl && !past && mySlotCount < 3;
         if (canBook) {
-          slotChips += `<div class="admin-slot" onclick="guestAssign('${date}',${ci},${si})">
+          slotChips += `<div class="admin-slot" onclick="guestAssign('${sessId}',${ci},${si})">
             <i data-lucide="user-plus" style="width:16px;height:16px;flex-shrink:0;color:var(--txf)"></i>
             <span class="slot-ph">${mySlotCount > 0 ? t('session.book_guest') : t('session.book_slot')}</span>
           </div>`;
@@ -1166,7 +1309,7 @@ function buildSessionCard(date, isNextSession = false) {
       return `<div class="slot-chip wl${isMe ? ' me' : ''}" style="padding:var(--sp2) var(--sp3)">
         <div class="slot-av">${privacy ? '<i data-lucide="hat-glasses" style="width:14px;height:14px"></i>' : (p ? `<i data-lucide="${playerIcon(p, isGuest)}" style="width:14px;height:14px"></i>` : '?')}</div>
         <span>${privacy ? t('session.booked') : (p ? (isGuest ? t('session.guest') + ` (` + esc(p.name) + `)` : esc(p.name)) : '?')}${privacy ? '' : (isGuest ? '' : (isMe ? ` <span style="opacity:.6;font-size:var(--text-xs)">${t('misc.you')}</span>` : ''))}</span>
-        ${canRemove ? `<button class="btn-xs btn-dan" style="margin-left:auto;border-radius:var(--r-sm)" onclick="removeFromWaitlist('${date}','${pid}')"><i data-lucide="x" style="width:10px;height:10px"></i></button>` : ''}
+        ${canRemove ? `<button class="btn-xs btn-dan" style="margin-left:auto;border-radius:var(--r-sm)" onclick="removeFromWaitlist('${sessId}','${pid}')"><i data-lucide="x" style="width:10px;height:10px"></i></button>` : ''}
       </div>`;
     }).join('');
     wlHtml = `<div class="wl-section"><div class="wl-title">${t('session.waitlist')} (${sess.waitlist.length})</div><div class="wl-list">${chips}</div></div>`;
@@ -1176,27 +1319,27 @@ function buildSessionCard(date, isNextSession = false) {
   let actionBtn = '';
   if (!past && guestId) {
     if (meIn) {
-      const abmeldenBtn = sess.charged ? '' : `<button class="btn btn-dan btn-sm" onclick="openLeaveConfirm('${date}')"><i data-lucide="log-out"></i> ${t('session.leave')}</button>`;
+      const abmeldenBtn = sess.charged ? '' : `<button class="btn btn-dan btn-sm" onclick="openLeaveConfirm('${sessId}')"><i data-lucide="log-out"></i> ${t('session.leave')}</button>`;
       const myWlGuests = sess.waitlist.filter(pid => pid.includes('|') && baseId(pid) === guestId).length;
       const freeSlots = total - filled;
       const guestWlBtn = !sess.charged && myWlGuests < 2
-        ? `<button class="btn btn-sm btn-sec" onclick="guestJoinWaitlist('${date}')"><i data-lucide="user-plus"></i> ${freeSlots > 0 ? t('session.book_guest_btn') : t('session.book_guest_wl')}</button>`
+        ? `<button class="btn btn-sm btn-sec" onclick="guestJoinWaitlist('${sessId}')"><i data-lucide="user-plus"></i> ${freeSlots > 0 ? t('session.book_guest_btn') : t('session.book_guest_wl')}</button>`
         : '';
       actionBtn = `<div class="flex g2 items-c wrap">${guestWlBtn}${abmeldenBtn}</div>`;
     } else if (meWl) {
       const myWlGuests = sess.waitlist.filter(pid => pid.includes('|') && baseId(pid) === guestId).length;
-      const addGuestWlBtn = myWlGuests < 2 ? `<button class="btn btn-sm btn-sec" onclick="guestJoinWaitlist('${date}')"><i data-lucide="user-plus"></i> ${t('session.book_guest_wl')}</button>` : '';
+      const addGuestWlBtn = myWlGuests < 2 ? `<button class="btn btn-sm btn-sec" onclick="guestJoinWaitlist('${sessId}')"><i data-lucide="user-plus"></i> ${t('session.book_guest_wl')}</button>` : '';
       actionBtn = `<div class="flex g2 items-c wrap">
         ${addGuestWlBtn}
-        <button class="btn btn-dan btn-sm" onclick="removeFromWaitlist('${date}','${guestId}')"><i data-lucide="x"></i> ${t('session.leave')}</button>
+        <button class="btn btn-dan btn-sm" onclick="removeFromWaitlist('${sessId}','${guestId}')"><i data-lucide="x"></i> ${t('session.leave')}</button>
       </div>`;
     } else if (filled < total) {
       const mySlots = sess.courts.flat().filter(v => v && baseId(v) === guestId).length;
-      const addGuestBtn = mySlots > 0 && mySlots < 3 ? `<button class="btn btn-sm btn-sec" onclick="guestAssignAny('${date}')"><i data-lucide="user-plus"></i> ${t('session.book_guest_btn')}</button>` : '';
-      actionBtn = `<div class="flex g2 items-c wrap"><button class="btn btn-pri btn-sm" onclick="guestAssignAny('${date}')"><i data-lucide="user-plus"></i> ${t('session.book_slot')}</button>${addGuestBtn}</div>`;
+      const addGuestBtn = mySlots > 0 && mySlots < 3 ? `<button class="btn btn-sm btn-sec" onclick="guestAssignAny('${sessId}')"><i data-lucide="user-plus"></i> ${t('session.book_guest_btn')}</button>` : '';
+      actionBtn = `<div class="flex g2 items-c wrap"><button class="btn btn-pri btn-sm" onclick="guestAssignAny('${sessId}')"><i data-lucide="user-plus"></i> ${t('session.book_slot')}</button>${addGuestBtn}</div>`;
     } else {
       actionBtn = `<div class="flex g2 items-c wrap">
-        <button class="btn btn-gld btn-sm" onclick="joinWaitlist('${date}')"><i data-lucide="list-plus"></i> ${t('session.join_waitlist')}</button>
+        <button class="btn btn-gld btn-sm" onclick="joinWaitlist('${sessId}')"><i data-lucide="list-plus"></i> ${t('session.join_waitlist')}</button>
       </div>`;
     }
   } else if (!guestId && !past) {
@@ -1206,10 +1349,10 @@ function buildSessionCard(date, isNextSession = false) {
   const chargedBadge = sess.charged ? `<span class="badge bg-neu">${t('session.charged')}</span>` : '';
 
   const teamBtn = isNextSession && filled >= 2
-    ? `<button class="btn btn-sec" onclick="openTeamRandomizer('${date}')" data-i18n-title="teams.title"><i data-lucide="shuffle" style="width:16px;height:16px"></i> ${t('session.shuffle_teams')}</button>`
+    ? `<button class="btn btn-sec" onclick="openTeamRandomizer('${sessId}')" data-i18n-title="teams.title"><i data-lucide="shuffle" style="width:16px;height:16px"></i> ${t('session.shuffle_teams')}</button>`
     : '';
 
-  const { start, end } = getSessionTime(date);
+  const { start, end } = getSessionTime(sess);
 
   const cardCls = (isNextSession ? 'sc next-up' : 'sc') + (groupCourts ? ' courts-grouped' : '');
 
@@ -1243,7 +1386,7 @@ function buildSessionCard(date, isNextSession = false) {
       </div>
       <div class="sc-content-col">
         <div class="sc-content-top">
-          <div class="sc-date">${esc(getSessionName(date))}</div>
+          <div class="sc-date">${esc(getSessionName(sess))}</div>
           <div class="sc-time-details">${fmtTime(start)}–${fmtTime(end)}</div>
         </div>
         <div class="sc-head-actions">${chargedBadge}${actionBtn}</div>
@@ -1293,10 +1436,11 @@ function parseCancelHours(str) {
   return h + m / 60;
 }
 
-function getEffectiveCancelHours(date) {
-  const sess = S.sessions?.find(s => s.date === date);
+function getEffectiveCancelHours(dateOrSess) {
+  const sess = typeof dateOrSess === 'object' ? dateOrSess : (S.sessions?.find(s => s.id === dateOrSess || s.date === dateOrSess));
   if (sess && sess.cancelHours !== null && sess.cancelHours !== undefined) return parseFloat(sess.cancelHours);
-  if (S.series && S.cfg.sr_enabled !== '0') {
+  const date = typeof dateOrSess === 'object' ? dateOrSess.date : dateOrSess;
+  if (S.series && S.cfg.sr_enabled !== '0' && date) {
     const dObj = new Date(date + 'T00:00:00');
     const dayOfWeek = dObj.getDay();
     for (const series of S.series) {
@@ -1310,22 +1454,24 @@ function getEffectiveCancelHours(date) {
   return parseFloat(S.cfg.cancel_hours) || 7;
 }
 
-function getCancelDeadline(date) {
-  const hours = getEffectiveCancelHours(date);
-  const { start } = getSessionTime(date);
+function getCancelDeadline(dateOrSess) {
+  const sess = typeof dateOrSess === 'object' ? dateOrSess : (S.sessions?.find(s => s.id === dateOrSess || s.date === dateOrSess));
+  const date = sess ? sess.date : dateOrSess;
+  const hours = getEffectiveCancelHours(sess || date);
+  const { start } = getSessionTime(sess || date);
   const [h, m] = start.split(':').map(Number);
   const sessionDate = new Date(date + 'T00:00:00');
   sessionDate.setHours(h, m, 0, 0);
   return new Date(sessionDate.getTime() - hours * 3600000);
 }
 
-function isWithinCancelWindow(date) {
-  return new Date() < getCancelDeadline(date);
+function isWithinCancelWindow(dateOrSess) {
+  return new Date() < getCancelDeadline(dateOrSess);
 }
 
-async function guestAssign(date, ci, si) {
+async function guestAssign(idOrDate, ci, si) {
   if (!guestId) { showToast('Bitte zuerst Profil wählen.'); return; }
-  const sess = getOrSess(date);
+  const sess = getOrSess(idOrDate);
   const mySlots = sess.courts.flat().filter(v => v && baseId(v) === guestId);
   if (mySlots.length >= 3) { showToast('Max. 2 Gäste erlaubt.'); return; }
   
@@ -1337,42 +1483,49 @@ async function guestAssign(date, ci, si) {
   }
   
   try {
-    // 1. Dem Server den exakten Befehl geben
-    await apiFetch('POST', `/sessions/${date}/book`, {
+    const id = sess.id || sess.date;
+    await apiFetch('POST', `/sessions/${id}/book`, {
       court_index: ci,
       slot_index: si,
-      player_id: usePid
+      player_id: usePid,
+      date: sess.date,
+      timeStart: sess.timeStart,
+      timeEnd: sess.timeEnd,
+      location: sess.location,
+      price: sess.price,
+      cancelHours: sess.cancelHours,
+      name: sess.name,
+      courtNames: sess.courtNames
     });
     
-    // 2. Den "echten" Zustand vom Server laden (falls wir überschrieben wurden)
     await loadState();
     renderSessions();
     if (isAdmin) renderAdminPlan();
     showToast(isGuest ? t('toast.guest_booked') : t('toast.slot_booked'));
     
   } catch(e) {
-    // Falls jemand anderes Millisekunden schneller war:
     await loadState(); 
     renderSessions();
     showToast('❌ ' + (e.message || 'Buchung fehlgeschlagen.'));
   }
 }
 
-async function guestAssignAny(date) {
+async function guestAssignAny(idOrDate) {
   if (!guestId) { showToast('Bitte Namen auswählen.'); return; }
-  const sess = getOrSess(date);
+  const sess = getOrSess(idOrDate);
   for (let ci = 0; ci < sess.courts.length; ci++) {
     if (sess.disabledCourts && sess.disabledCourts.includes(ci)) continue;
     for (let si = 0; si < sess.courts[ci].length; si++) {
-      if (!sess.courts[ci][si]) { await guestAssign(date, ci, si); return; }
+      if (!sess.courts[ci][si]) { await guestAssign(sess.id || idOrDate, ci, si); return; }
     }
   }
   showToast('Kein freier Slot.');
 }
-async function removeGuestSlot(date, ci, si) {
+async function removeGuestSlot(idOrDate, ci, si) {
   try {
-    // Nur diesen einen spezifischen Slot räumen
-    await apiFetch('POST', `/sessions/${date}/leave`, {
+    const sess = getOrSess(idOrDate);
+    const id = sess.id || sess.date;
+    await apiFetch('POST', `/sessions/${id}/leave`, {
       court_index: ci,
       slot_index: si
     });
@@ -1385,10 +1538,11 @@ async function removeGuestSlot(date, ci, si) {
   }
 }
 
-async function leaveSession(date) {
+async function leaveSession(idOrDate) {
   try {
-    // Backend den kompletten Leave-Vorgang inkl. Warteliste managen lassen
-    await apiFetch('POST', `/sessions/${date}/leave`, {
+    const sess = getOrSess(idOrDate);
+    const id = sess.id || sess.date;
+    await apiFetch('POST', `/sessions/${id}/leave`, {
       player_id: guestId
     });
     
@@ -1405,13 +1559,22 @@ async function leaveSession(date) {
   }
 }
 
-async function joinWaitlist(date) {
+async function joinWaitlist(idOrDate) {
   if (!guestId) { showToast('Bitte Namen auswählen.'); return; }
-  const sess = getOrSess(date);
+  const sess = getOrSess(idOrDate);
   if (sess.waitlist.includes(guestId)) { showToast('Bereits auf Warteliste.'); return; }
   try {
-    await apiFetch('POST', `/sessions/${date}/join-waitlist`, {
-      player_id: guestId
+    const id = sess.id || sess.date;
+    await apiFetch('POST', `/sessions/${id}/join-waitlist`, {
+      player_id: guestId,
+      date: sess.date,
+      timeStart: sess.timeStart,
+      timeEnd: sess.timeEnd,
+      location: sess.location,
+      price: sess.price,
+      cancelHours: sess.cancelHours,
+      name: sess.name,
+      courtNames: sess.courtNames
     });
     await loadState();
     renderSessions();
@@ -1421,9 +1584,11 @@ async function joinWaitlist(date) {
   }
 }
 
-async function removeFromWaitlist(date, pid) {
+async function removeFromWaitlist(idOrDate, pid) {
   try {
-    await apiFetch('POST', `/sessions/${date}/leave`, {
+    const sess = getOrSess(idOrDate);
+    const id = sess.id || sess.date;
+    await apiFetch('POST', `/sessions/${id}/leave`, {
       player_id: pid
     });
     await loadState();
@@ -1434,12 +1599,12 @@ async function removeFromWaitlist(date, pid) {
   }
 }
 
-async function guestJoinWaitlist(date) {
+async function guestJoinWaitlist(idOrDate) {
   if (!guestId) { showToast('Bitte Namen auswählen.'); return; }
-  const sess = getOrSess(date);
+  const sess = getOrSess(idOrDate);
   const total = sess.courts.filter((_,i) => !sess.disabledCourts.includes(i)).flat().length;
   const filled = sess.courts.flat().filter(Boolean).length;
-  if (filled < total) { await guestAssignAny(date); return; }
+  if (filled < total) { await guestAssignAny(sess.id || idOrDate); return; }
   const myWlEntries = sess.waitlist.filter(pid => baseId(pid) === guestId);
   const guestEntries = myWlEntries.filter(pid => pid.includes('|'));
   if (guestEntries.length >= 2) { showToast('Max. 2 Gäste auf Warteliste erlaubt.'); return; }
@@ -1447,7 +1612,18 @@ async function guestJoinWaitlist(date) {
   const newId = g1Taken ? guestId + '|g2' : guestId + '|g1';
   if (sess.waitlist.includes(newId)) { showToast('Gast bereits auf Warteliste.'); return; }
   try {
-    await apiFetch('POST', `/sessions/${date}/join-waitlist`, { player_id: newId });
+    const id = sess.id || sess.date;
+    await apiFetch('POST', `/sessions/${id}/join-waitlist`, {
+      player_id: newId,
+      date: sess.date,
+      timeStart: sess.timeStart,
+      timeEnd: sess.timeEnd,
+      location: sess.location,
+      price: sess.price,
+      cancelHours: sess.cancelHours,
+      name: sess.name,
+      courtNames: sess.courtNames
+    });
     await loadState();
     renderSessions();
     lucide.createIcons();
@@ -1682,24 +1858,27 @@ function sortActivityTable(column) {
 // ════════════════════════════════════════
 function renderAdminPlan() {
   if (!S.sessions) return;
+  const allSessions = getAllSessionsAdmin();
+  if (allSessions.length === 0) return;
+
+  const today = toDS(new Date());
   if (!planDate) {
-    const dates = getAllSessionDatesAdmin();
-    const today = toDS(new Date());
-    planDate = dates.find(d => d >= today) || dates[0] || today;
-  }
-  const allDates = getAllSessionDatesAdmin();
-  if (!allDates.includes(planDate) && allDates.length > 0) {
-    planDate = allDates[0];
+    const upcoming = allSessions.find(s => s.date >= today);
+    planDate = upcoming ? (upcoming.id || upcoming.date) : (allSessions[0].id || allSessions[0].date);
   }
 
-  // Check session state from DB directly (before getOrSess modifies it)
-  const rawSess = S.sessions?.find(s => s.date === planDate);
-  const isCancelled = rawSess?.cancelled ?? false;
+  let currentSess = allSessions.find(s => (s.id && s.id === planDate) || s.date === planDate);
+  if (!currentSess && allSessions.length > 0) {
+    currentSess = allSessions[0];
+    planDate = currentSess.id || currentSess.date;
+  }
 
+  const rawSess = S.sessions?.find(s => (s.id && s.id === planDate) || s.date === planDate);
   const sess = getOrSess(planDate);
   if (!sess) return;
+  const isCancelled = rawSess?.cancelled ?? sess?.cancelled ?? false;
   if (!sess.disabledCourts) sess.disabledCourts = [];
-  const sessTime = getSessionTime(planDate);
+  const sessTime = getSessionTime(sess);
   const cancelBtn = !sess.charged
     ? (isCancelled
         ? '<button class="btn btn-ok btn-sm" onclick="toggleSessionCancel()"><i data-lucide="rotate-ccw"></i> ' + t('session.reactivate') + '</button>'
@@ -1707,26 +1886,29 @@ function renderAdminPlan() {
     : '';
 
   // Build session selector dropdown
-  const today = toDS(new Date());
-  const upcomingDates = allDates.filter(d => d >= today);
-  const pastDates = allDates.filter(d => d < today);
-  let sessionOptions = upcomingDates.map(d => {
-    const selected = d === planDate ? ' selected' : '';
-    const label = `${fmtDL(d)} (${getSessionName(d)})`;
-    const sess = S.sessions?.find(s => s.date === d);
-    const badge = sess?.charged ? ' ✓' : (sess?.cancelled ? ' ✕' : '');
-    return `<option value="${d}"${selected}>${label}${badge}</option>`;
-  }).join('');
-  if (pastDates.length > 0) {
-    if (upcomingDates.length > 0) sessionOptions += `<optgroup label="${t('session.past_sessions')}">`;
-    sessionOptions += pastDates.map(d => {
-      const selected = d === planDate ? ' selected' : '';
-      const label = `${fmtDL(d)} (${getSessionName(d)})`;
-      const sess = S.sessions?.find(s => s.date === d);
-      const badge = sess?.charged ? ' ✓' : (sess?.cancelled ? ' ✕' : '');
-      return `<option value="${d}"${selected}>${label}${badge}</option>`;
-    }).join('');
-    if (upcomingDates.length > 0) sessionOptions += '</optgroup>';
+  const upcomingSessions = allSessions.filter(s => s.date >= today);
+  const pastSessions = allSessions.filter(s => s.date < today);
+
+  const dateCounts = {};
+  allSessions.forEach(s => {
+    dateCounts[s.date] = (dateCounts[s.date] || 0) + 1;
+  });
+
+  function makeOpt(s) {
+    const sId = (dateCounts[s.date] === 1) ? s.date : (s.id || s.date);
+    const selected = (s.id === planDate || s.date === planDate) ? ' selected' : '';
+    const { start, end } = getSessionTime(s);
+    const timeStr = start && end ? ` ${fmtTime(start)}–${fmtTime(end)}` : '';
+    const label = `${fmtDL(s.date)}${timeStr} (${getSessionName(s)})`;
+    const badge = s.charged ? ' ✓' : (s.cancelled ? ' ✕' : '');
+    return `<option value="${sId}" data-id="${s.id || ''}" data-date="${s.date}"${selected}>${label}${badge}</option>`;
+  }
+
+  let sessionOptions = upcomingSessions.map(makeOpt).join('');
+  if (pastSessions.length > 0) {
+    if (upcomingSessions.length > 0) sessionOptions += `<optgroup label="${t('session.past_sessions')}">`;
+    sessionOptions += pastSessions.map(makeOpt).join('');
+    if (upcomingSessions.length > 0) sessionOptions += '</optgroup>';
   }
 
   document.getElementById('admin-plan-header-dynamic').innerHTML = '';
@@ -1756,7 +1938,6 @@ function renderAdminPlan() {
         <button class="btn btn-sec btn-sm" onclick="planGoToUpcoming()" title="${t('session.next')}"><i data-lucide="clock"></i></button>
         <button class="btn btn-sec btn-sm" onclick="planNext()"><i data-lucide="chevron-right"></i></button>
       </div>
-      
     </div>
     `;
 
@@ -1773,7 +1954,7 @@ function renderAdminPlan() {
     <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp3);flex-wrap:nowrap;">
       <span class="tx-sm tx-m">${t('session.date')}:</span>
       <input type="date" class="fi" style="font-size:var(--text-sm)"
-             value="${planDate}"
+             value="${sess.date}"
              onchange="planDetailChange('date', this.value)">
     </div>
     <p class="txxs tx-m" style="margin:2px 0 0 0">${t('session.date_hint')}</p>
@@ -1789,7 +1970,7 @@ function renderAdminPlan() {
     </div>
     <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
       <span class="tx-sm tx-m">${t('session.name')}:</span>
-      <input type="text" id="plan-name-input" class="fi" placeholder="${esc(getSessionName(planDate))}"
+      <input type="text" id="plan-name-input" class="fi" placeholder="${esc(getSessionName(sess))}"
          style="flex:1;min-width:200px;font-size:var(--text-sm)"
          value="${esc(sess.name || '')}"
          onchange="planDetailChange('name', this.value)">
@@ -1837,6 +2018,7 @@ function renderAdminPlan() {
   const filled = allPids.length;
   document.getElementById('plan-slots-meta').textContent = `${filled} / ${total} ${t('session.slots_meta')} · ${activeCourts.length} ${t('session.court_s')} ${sess.disabledCourts.length > 0 ? `(${sess.disabledCourts.length} ${t('session.disabled')})` : ''}`;
   const playerMap = new Map(S.players.map(p => [p.id, p]));
+  const sessId = sess.id || sess.date;
 
   // Unified slot editor grouped visually by court
   let html = '';
@@ -1853,14 +2035,14 @@ function renderAdminPlan() {
                style="max-width:170px;padding:2px 8px;font-size:var(--text-xs);font-weight:600;height:28px"
                placeholder="${t('session.court_number_placeholder')}"
                value="${esc(customName)}"
-               onchange="changeCourtName('${planDate}', ${ci}, this.value)"
+               onchange="changeCourtName('${sessId}', ${ci}, this.value)"
                title="${t('session.court_numbers')}"
                ${sess.charged ? 'disabled' : ''}>
         ${isDisabled ? '<span class="badge bg-err">' + t('session.cancelled') + '</span>' : ''}
       </div>
       <div class="flex items-c g2" style="flex-shrink:0">
-        ${!sess.charged ? `<button class="btn btn-xs ${isDisabled ? 'btn-ok' : 'btn-dan'}" onclick="toggleCourt('${planDate}', ${ci})">${isDisabled ? t('session.activate') : t('session.deactivate')}</button>` : ''}
-        ${isDisabled && !sess.charged ? `<button class="btn btn-xs btn-dan" onclick="deleteCourt('${planDate}', ${ci})"><i data-lucide="trash-2"></i></button>` : ''}
+        ${!sess.charged ? `<button class="btn btn-xs ${isDisabled ? 'btn-ok' : 'btn-dan'}" onclick="toggleCourt('${sessId}', ${ci})">${isDisabled ? t('session.activate') : t('session.deactivate')}</button>` : ''}
+        ${isDisabled && !sess.charged ? `<button class="btn btn-xs btn-dan" onclick="deleteCourt('${sessId}', ${ci})"><i data-lucide="trash-2"></i></button>` : ''}
       </div>
     </div>`;
 
@@ -1873,12 +2055,12 @@ function renderAdminPlan() {
       const p = rawId ? playerMap.get(rawId) : null;
       const guestLabel = pid && pid.includes('|') ? ` (${t('misc.guest')})` : '';
       if (p) {
-        html += `<div class="admin-slot filled" onclick="${sess.charged ? '' : `openSlotModal('${planDate}',${ci},${si})`}">
+        html += `<div class="admin-slot filled" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
           <div class="av" style="width:32px;height:32px;font-size:var(--text-sm)"><i data-lucide="${playerIcon(p)}" style="width:16px;height:16px"></i></div>
           <span class="slot-name">${esc(p.name)}${guestLabel}</span>
         </div>`;
       } else {
-        html += `<div class="admin-slot" onclick="${sess.charged ? '' : `openSlotModal('${planDate}',${ci},${si})`}">
+        html += `<div class="admin-slot" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
           <i data-lucide="user-plus" style="width:16px;height:16px;color:var(--txf)"></i>
           <span class="slot-ph">${t('session.choose_player')}</span>
         </div>`;
@@ -1891,7 +2073,7 @@ function renderAdminPlan() {
 
   // Waitlist admin panel
   const wlEl = document.getElementById('plan-waitlist-admin');
-  const adminWlBtn = `<button class="btn btn-sec btn-sm" style="margin-top:var(--sp3)" onclick="adminAddToWaitlist('${planDate}')"><i data-lucide="list-plus"></i> ${t('session.waitlist_add')}</button>`;
+  const adminWlBtn = `<button class="btn btn-sec btn-sm" style="margin-top:var(--sp3)" onclick="adminAddToWaitlist('${sessId}')"><i data-lucide="list-plus"></i> ${t('session.waitlist_add')}</button>`;
   if (sess.waitlist.length) {
     wlEl.innerHTML = `<h3 class="sec-title">${t('session.waitlist')}</h3>
     <div class="wl-list">${sess.waitlist.map((pid, i) => {
@@ -1902,8 +2084,8 @@ function renderAdminPlan() {
         <span style="font-size:var(--text-xs);color:var(--txm);font-weight:700;min-width:16px">${i + 1}.</span>
         <div class="slot-av"><i data-lucide="${playerIcon(wlP || displayName.replace(` (${t('misc.guest')})`, ''))}" style="width:14px;height:14px"></i></div>
         <span>${esc(displayName)}</span>
-        <button class="btn-xs btn-ok" style="margin-left:auto;border-radius:var(--r-sm)" onclick="promoteWaitlist('${planDate}',${i})"><i data-lucide="arrow-up" style="width:10px;height:10px"></i> ${t('session.waitlist_promote')}</button>
-        <button class="btn-xs btn-dan" style="border-radius:var(--r-sm)" onclick="removeWaitlist('${planDate}',${i})"><i data-lucide="x" style="width:10px;height:10px"></i></button>
+        <button class="btn-xs btn-ok" style="margin-left:auto;border-radius:var(--r-sm)" onclick="promoteWaitlist('${sessId}',${i})"><i data-lucide="arrow-up" style="width:10px;height:10px"></i> ${t('session.waitlist_promote')}</button>
+        <button class="btn-xs btn-dan" style="border-radius:var(--r-sm)" onclick="removeWaitlist('${sessId}',${i})"><i data-lucide="x" style="width:10px;height:10px"></i></button>
       </div>`;
     }).join('')}</div>${adminWlBtn}`;
   } else {
@@ -1923,7 +2105,8 @@ function renderAdminPlan() {
     ${Object.entries(chargeMap).map(([pid, n]) => {
       const name = getDisplayName(pid, playerMap);
       const b = bal(pid);
-      const amt = S.cfg.cost * n;
+      const sessCost = (sess.price !== null && sess.price !== undefined) ? sess.price : S.cfg.cost;
+      const amt = sessCost * n;
       const after = b - amt;
       const guestInfo = n > 1 ? `<span style="opacity:.6;font-size:var(--text-xs)"> +${n-1} ${t('misc.guest')}</span>` : '';
       return `<tr><td class="fw6">${esc(name)}${guestInfo}</td>
@@ -1933,17 +2116,20 @@ function renderAdminPlan() {
     </tbody></table></div>
     ${chargeBtn}`;
   }
-  renderSessionHistory(planDate);
+  renderSessionHistory(sessId);
   lucide.createIcons();
 }
 
 
-async function renderSessionHistory(date) {
+async function renderSessionHistory(dateOrId) {
   const el = document.getElementById('plan-history-content');
   if (!el) return;
   el.innerHTML = '<div class="txsm txm">' + t('session.history_loading') + '</div>';
   try {
-    const data = await apiFetch('GET', '/session-history?date=' + date);
+    const sess = getOrSess(dateOrId);
+    const id = sess?.id || dateOrId;
+    const date = sess?.date || dateOrId;
+    const data = await apiFetch('GET', `/session-history?session_id=${id}&date=${date}`);
     if (!data.length) {
       el.innerHTML = '<div class="empty"><i data-lucide="clock"></i><p>' + t('session.history_no_activity') + '</p></div>';
       lucide.createIcons();
@@ -2069,11 +2255,13 @@ async function deleteCourt(date, ci) {
 }
 
 async function toggleSessionCancel() {
-  const rawSess = S.sessions.find(s => s.date === planDate);
-  const isCancelled = rawSess?.cancelled || false;
+  const sess = getOrSess(planDate);
+  const rawSess = S.sessions.find(s => (s.id && s.id === planDate) || s.date === planDate);
+  const isCancelled = rawSess?.cancelled || sess?.cancelled || false;
   const newCancelled = !isCancelled;
+  const targetId = sess?.id || rawSess?.id || planDate;
   try {
-    await apiFetch('PUT', '/sessions/' + planDate, { cancelled: newCancelled });
+    await apiFetch('PUT', '/sessions/' + targetId, { cancelled: newCancelled });
     await loadState();
     renderAdminPlan();
     renderSessions();
@@ -2090,11 +2278,14 @@ async function deleteSession() {
     'btn-dan',
     async () => {
       try {
-        await apiFetch('DELETE', '/sessions/' + planDate);
+        const sess = getOrSess(planDate);
+        const targetId = sess?.id || planDate;
+        await apiFetch('DELETE', '/sessions/' + targetId);
         await loadState();
-        const dates = getAllSessionDatesAdmin();
+        const all = getAllSessionsAdmin();
         const today = toDS(new Date());
-        planDate = dates.find(d => d >= today) || dates[0] || today;
+        const target = all.find(s => s.date >= today) || all[0];
+        planDate = target ? (target.id || target.date) : today;
         renderAdminPlan();
         renderSessions();
         lucide.createIcons();
@@ -2134,18 +2325,19 @@ async function saveAddSession() {
 
   if (!date) { showToast(t('toast.date_required')); return; }
 
-  const exists = S.sessions.find(s => s.date === date);
+  const exists = S.sessions.find(s => s.date === date && (s.timeStart || '').replace(':','') === start);
   if (exists) {
       showToast(t('toast.session_exists'));
       closeMo('mo-add-session');
-      planDate = date;
+      planDate = exists.id || exists.date;
       showView('admin-plan');
       renderAdminPlan();
       return;
   }
 
   try {
-      await apiFetch('PUT', '/sessions/' + date, {
+      const res = await apiFetch('PUT', '/sessions/new', {
+          date:           date,
           courts:         Array(S.cfg.courts).fill([null,null,null,null]),
           disabledCourts: [],
           waitlist:       [],
@@ -2155,7 +2347,7 @@ async function saveAddSession() {
       });
       await loadState();
       closeMo('mo-add-session');
-      planDate = date;
+      planDate = res?.id || date;
       showView('admin-plan');
       renderAdminPlan();
       showToast(t('toast.session_created'));
@@ -2172,22 +2364,25 @@ function planGoToDate(date) {
 }
 
 function planPrev() {
-  const dates = getAllSessionDatesAdmin();
-  const idx = dates.indexOf(planDate);
-  planDate = idx > 0 ? dates[idx - 1] : (dates[0] || toDS(new Date()));
+  const all = getAllSessionsAdmin();
+  const idx = all.findIndex(s => (s.id && s.id === planDate) || s.date === planDate);
+  const target = idx > 0 ? all[idx - 1] : all[0];
+  if (target) planDate = target.id || target.date;
   renderAdminPlan();
 }
 function planNext() {
-  const dates = getAllSessionDatesAdmin();
-  const idx = dates.indexOf(planDate);
-  planDate = idx >= 0 && idx < dates.length - 1 ? dates[idx + 1] : (dates[dates.length - 1] || toDS(new Date()));
+  const all = getAllSessionsAdmin();
+  const idx = all.findIndex(s => (s.id && s.id === planDate) || s.date === planDate);
+  const target = idx >= 0 && idx < all.length - 1 ? all[idx + 1] : all[all.length - 1];
+  if (target) planDate = target.id || target.date;
   renderAdminPlan();
 }
 function planGoToUpcoming() {
   const today = toDS(new Date());
-  const dates = getAllSessionDatesAdmin();
-  const upcoming = dates.find(d => d >= today);
-  planDate = upcoming || dates[dates.length - 1] || toDS(new Date());
+  const all = getAllSessionsAdmin();
+  const upcoming = all.find(s => s.date >= today);
+  const target = upcoming || all[all.length - 1];
+  if (target) planDate = target.id || target.date;
   renderAdminPlan();
 }
 
@@ -2285,7 +2480,7 @@ function openChargeModal() {
   if (!baseIds.length) { showToast(t('session.billing_no_players')); return; }
   const totalSlots = Object.values(counts).reduce((a, b) => a + b, 0);
   const sessionCost = (sess.price !== null && sess.price !== undefined) ? sess.price : S.cfg.cost;
-  document.getElementById('mo-charge-desc').textContent = `${baseIds.length} ${t('players.title').toLowerCase()} (${totalSlots} ${t('session.slots').toLowerCase()}) am ${fmtDL(planDate)} · ${fmtE(sessionCost)} ${t('session.per_slot')}`;
+  document.getElementById('mo-charge-desc').textContent = `${baseIds.length} ${t('players.title').toLowerCase()} (${totalSlots} ${t('session.slots').toLowerCase()}) am ${fmtDL(sess.date)} · ${fmtE(sessionCost)} ${t('session.per_slot')}`;
 
   document.getElementById('mo-charge-list').innerHTML = `<div class="tw"><table class="dt"><thead><tr><th>${t('players.title')}</th><th>${t('session.slots')}</th><th>${t('session.amount')}</th><th style="text-align:center">${t('session.paid')}</th></tr></thead><tbody>
     ${baseIds.map(pid => {
@@ -2316,9 +2511,11 @@ async function doCharge() {
   const paidPids = Array.from(paidChecks).map(cb => cb.dataset.pid);
 
   try {
+    const sess = getOrSess(planDate);
     // Die Liste der "schon bezahlten" Spieler (paid_pids) an die API mitsenden
     await apiFetch('POST', '/charge', { 
-      date: planDate,
+      id: sess.id || planDate,
+      date: sess.date,
       paid_pids: paidPids 
     });
     
@@ -2586,32 +2783,31 @@ async function doTx(credit) {
 function renderMyHistory() {
   if (!guestId) return;
   const today = new Date().toISOString().slice(0,10);
-  const dates = getRecurringSessionDates();
-
-  // All sessions: from state + future dates
-  const allDates = [...new Set([
-    ...S.sessions.map(s => s.date),
-    ...dates
-  ])].sort();
 
   // Sessions where I (or my guests) are booked
-  function mySessionEntry(date) {
-    const sess = S.sessions.find(s => s.date === date);
+  function mySessionEntry(sess) {
     if (!sess) return null;
-    const mySlots = sess.courts.flat().filter(v => v && baseId(v) === guestId);
-    const onWl = sess.waitlist.some(pid => baseId(pid) === guestId);
+    const mySlots = (sess.courts || []).flat().filter(v => v && baseId(v) === guestId);
+    const onWl = (sess.waitlist || []).some(pid => baseId(pid) === guestId);
     if (!mySlots.length && !onWl) return null;
-    return { date, sess, mySlots, onWl };
+    return { id: sess.id || sess.date, date: sess.date, sess, mySlots, onWl };
   }
 
-  const upcoming = allDates.filter(d => d >= today).map(mySessionEntry).filter(Boolean);
-  const past     = allDates.filter(d => d < today).map(mySessionEntry).filter(Boolean).reverse();
+  const allKnownSessions = [...(S.sessions || [])].sort((a, b) => {
+    const c = a.date.localeCompare(b.date);
+    if (c !== 0) return c;
+    return (a.timeStart || '').localeCompare(b.timeStart || '');
+  });
+
+  const upcoming = allKnownSessions.filter(s => s.date >= today).map(mySessionEntry).filter(Boolean);
+  const past     = allKnownSessions.filter(s => s.date < today).map(mySessionEntry).filter(Boolean).reverse();
 
   // Transactions
   const txs = [...S.transactions].filter(t => t.playerId === guestId).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
 
 function sessionCard(entry) {
   const { date, sess, mySlots, onWl } = entry;
+  const sessId = sess.id || date;
   const isPast = date < today;
   const guestCount = mySlots.filter(v => v.includes('|')).length;
   const selfIn = mySlots.some(v => !v.includes('|'));
@@ -2621,8 +2817,8 @@ function sessionCard(entry) {
   if (onWl && !selfIn) tags.push(`<span class="badge bg-gld">${t('session.waitlist')}</span>`);
   if (sess.charged) tags.push(`<span class="badge bg-neu">${t('session.charged')}</span>`);
 
-  const { start, end } = getSessionTime(date);
-  const eventName = getSessionName(date);
+  const { start, end } = getSessionTime(sess);
+  const eventName = getSessionName(sess);
 
   const dObj = new Date(date + 'T00:00:00');
   const weekday = dObj.toLocaleDateString(getLocale(), { weekday: 'short' }).toUpperCase().replace('.', '');
@@ -2642,8 +2838,8 @@ function sessionCard(entry) {
   if (sess.note) detailsHtml.push(`<div class="bk-comment"><i data-lucide="message-square" style="width:12px;height:12px;flex-shrink:0"></i>${esc(sess.note)}</div>`);
   if (priceDiffers) detailsHtml.push(`<div class="bk-price"><i data-lucide="tag" style="width:12px;height:12px;flex-shrink:0"></i>${fmtE(sessionCost)} ${t('session.per_slot')}</div>`);
   if (!isPast && !sess.charged && !sess.cancelled) {
-    const deadline = getCancelDeadline(date);
-    const within = isWithinCancelWindow(date);
+    const deadline = getCancelDeadline(sess);
+    const within = isWithinCancelWindow(sess);
     const deadlineStr = fmtDateTime(deadline);
     detailsHtml.push(`<div class="bk-deadline${within ? '' : ' warning'}"><i data-lucide="clock" style="width:12px;height:12px;flex-shrink:0"></i>${t('session.cancel_deadline_text').replace('{deadline}', deadlineStr)}</div>`);
   }
@@ -2665,8 +2861,8 @@ function sessionCard(entry) {
           <div class="bk-time">${start}–${end}</div>
         </div>
         <div class="bk-head-actions">
-          ${!isPast ? `<button class="btn btn-sec btn-sm" onclick="downloadSessionCalendar('${date}')"><i data-lucide="calendar-plus"></i> ${t('session.add_to_calendar')}</button>` : ''}
-          ${!sess.charged && isWithinCancelWindow(date) ? `<button class="btn btn-dan btn-sm" onclick="openLeaveConfirm('${date}')"><i data-lucide="log-out"></i> ${t('session.leave')}</button>` : ''}
+          ${!isPast ? `<button class="btn btn-sec btn-sm" onclick="downloadSessionCalendar('${sessId}')"><i data-lucide="calendar-plus"></i> ${t('session.add_to_calendar')}</button>` : ''}
+          ${!sess.charged && isWithinCancelWindow(sess) ? `<button class="btn btn-dan btn-sm" onclick="openLeaveConfirm('${sessId}')"><i data-lucide="log-out"></i> ${t('session.leave')}</button>` : ''}
         </div>
       </div>
     </div>
@@ -3236,17 +3432,19 @@ function downloadMyTransactionsCSV() {
   URL.revokeObjectURL(a.href);
 }
 
-function downloadSessionCalendar(date) {
-  const title = getSessionName(date);
-  const { start: startTime, end: endTime } = getSessionTime(date);
-  const sess = getOrSess(date);
+function downloadSessionCalendar(dateOrId) {
+  const sess = getOrSess(dateOrId);
+  const date = sess ? sess.date : dateOrId;
+  const sessId = sess ? (sess.id || sess.date) : date;
+  const title = getSessionName(sess || date);
+  const { start: startTime, end: endTime } = getSessionTime(sess || date);
   const startHHMM = startTime.replace(':', '');
   const endHHMM   = endTime.replace(':', '');
   const start = date.replace(/-/g, '') + 'T' + startHHMM + '00';
   const end = date.replace(/-/g, '') + 'T' + endHHMM + '00';
   const now = new Date();
   const dtstamp = formatICSDatetime(now);
-  const uid = `${date}-${guestId || 'guest'}@courtle.local`;
+  const uid = `${sessId}-${guestId || 'guest'}@courtle.local`;
   const icsLines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -3259,7 +3457,7 @@ function downloadSessionCalendar(date) {
     `DTEND;TZID=Europe/Berlin:${end}`,
     `SUMMARY:${title}`,
   ];
-  if (sess.location) {
+  if (sess && sess.location) {
     icsLines.push(`LOCATION:${sess.location.replace(/,/g, '\\,')}`);
   }
   icsLines.push('END:VEVENT', 'END:VCALENDAR');
@@ -4288,7 +4486,7 @@ checkIOSInstallBanner();
         apiFetch('GET', '/sessions'),
         apiFetch('GET', '/players')
       ]);
-      const raw = JSON.stringify(sessions.map(s => [s.date, s.courts, s.waitlist, s.disabledCourts, s.cancelled, s.note, s.location]));
+      const raw = JSON.stringify(sessions.map(s => [s.id, s.date, s.timeStart, s.courts, s.waitlist, s.disabledCourts, s.cancelled, s.note, s.location, s.price, s.name]));
       if (raw === window._lastPollRaw && JSON.stringify(players) === window._lastPollPlayers) return;
       window._lastPollRaw = raw;
       window._lastPollPlayers = JSON.stringify(players);
@@ -4301,6 +4499,7 @@ checkIOSInstallBanner();
         lastInteraction: p.last_interaction
       }));
       S.sessions = sessions.map(s => ({
+        id: s.id,
         date: s.date,
         charged: !!s.charged,
         disabledCourts: s.disabledCourts || [],
@@ -4310,7 +4509,11 @@ checkIOSInstallBanner();
         cancelled: !!s.cancelled,
         timeStart: s.timeStart || null,
         timeEnd: s.timeEnd || null,
-        location: s.location || null
+        location: s.location || null,
+        price: s.price !== null && s.price !== undefined ? parseFloat(s.price) : null,
+        cancelHours: s.cancelHours !== null && s.cancelHours !== undefined ? parseFloat(s.cancelHours) : null,
+        name: s.name || null,
+        courtNames: s.courtNames || []
       }));
       window._dbSessionDates = new Set(S.sessions.map(s => s.date));
       renderSessions();
@@ -4354,14 +4557,7 @@ async function savePlanDetails() {
   try {
     const updates = {};
     if (_planDetailChanges.date) {
-      const newDate = _planDetailChanges.date;
-      const isInDB = window._dbSessionDates?.has(newDate) ?? false;
-      const dbSess = isInDB ? S.sessions.find(s => s.date === newDate) : null;
-      if (isInDB && !dbSess?.cancelled) {
-        showToast('Zieldatum existiert bereits.');
-        return;
-      }
-      updates.newDate = newDate;
+      updates.newDate = _planDetailChanges.date;
     }
     if (_planDetailChanges.timeStart) updates.timeStart = _planDetailChanges.timeStart;
     if (_planDetailChanges.timeEnd) updates.timeEnd = _planDetailChanges.timeEnd;
@@ -4380,14 +4576,14 @@ async function savePlanDetails() {
       updates.courtNames = _planDetailChanges.courtNames;
     }
 
-    await apiFetch('PUT', '/sessions/' + planDate, updates);
+    const sess = getOrSess(planDate);
+    const targetId = sess?.id || planDate;
+    const res = await apiFetch('PUT', '/sessions/' + targetId, updates);
     await loadState();
     _planDetailChanges = {};
 
-    const dates = getAllSessionDatesAdmin();
-    const today = toDS(new Date());
-    if (updates.newDate) {
-      planDate = updates.newDate;
+    if (res && res.id) {
+      planDate = res.id;
     }
     renderAdminPlan();
     renderSessions();
@@ -4411,7 +4607,7 @@ function openTeamRandomizer(date) {
 }
 
 function shuffleTeams() {
-  const sess = S.sessions.find(s => s.date === _teamDate);
+  const sess = S.sessions.find(s => s.id === _teamDate || s.date === _teamDate);
   if (!sess) return;
 
   // Collect all players in session (including guests)
@@ -4463,19 +4659,20 @@ function shuffleTeams() {
   lucide.createIcons();
 }
 
-let pendingLeaveDate = null;
+let pendingLeaveId = null;
 
-function openLeaveConfirm(date) {
-  if (!isWithinCancelWindow(date)) {
-    const deadline = getCancelDeadline(date);
+function openLeaveConfirm(idOrDate) {
+  const sess = getOrSess(idOrDate);
+  if (!sess) return;
+  if (!isWithinCancelWindow(sess)) {
+    const deadline = getCancelDeadline(sess);
     const deadlineStr = fmtDateTime(deadline);
     showToast(t('toast.leave_failed') + ' (' + t('session.cancel_deadline') + ' ' + t('session.until') + ': ' + deadlineStr + ')');
     return;
   }
-  pendingLeaveDate = date;
-  const sess = getOrSess(date);
+  pendingLeaveId = sess.id || sess.date;
   const hasWL = sess.waitlist && sess.waitlist.length > 0;
-  const deadline = getCancelDeadline(date);
+  const deadline = getCancelDeadline(sess);
   const deadlineStr = fmtDateTime(deadline);
   let msg;
   if (hasWL) {
@@ -4495,10 +4692,10 @@ function openLeaveConfirm(date) {
 
 function confirmLeave() {
   closeMo('mo-leave-confirm');
-  if (pendingLeaveDate) {
-    leaveSession(pendingLeaveDate);
+  if (pendingLeaveId) {
+    leaveSession(pendingLeaveId);
     renderMyHistory();
-    pendingLeaveDate = null;
+    pendingLeaveId = null;
   }
 }
 

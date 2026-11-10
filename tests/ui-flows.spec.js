@@ -19,6 +19,15 @@ async function navigateAdmin(page, viewName) {
   }
 }
 
+async function openProfileMenu(page) {
+  const trigger = page.locator('#profile-dd-trigger');
+  if (await trigger.isVisible()) {
+    await trigger.click();
+  } else {
+    await page.click('#bnav-profile');
+  }
+}
+
 test.describe('UI E2E Suite — Admin & Feature Flows', () => {
   let aToken;
 
@@ -544,6 +553,94 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(container).toContainText('Gebucht');
     await expect(container).not.toContainText('HiddenPlayer');
     await expect(container).not.toContainText('Geheimstraße 42');
+  });
+
+  test('22 — Self-Service Profile: Change own PIN and contact email via profile menu', async ({ page, request }) => {
+    // 1. Open profile menu and click PIN ändern
+    await openProfileMenu(page);
+    const changePinBtn = page.locator('button:has-text("PIN ändern")').first();
+    await expect(changePinBtn).toBeVisible({ timeout: 5000 });
+    await changePinBtn.click();
+
+    // 2. Fill PIN change modal
+    const pinModal = page.locator('#mo-user-pin');
+    await expect(pinModal).toHaveClass(/open/);
+    await page.fill('#cup-old', '1111');
+    await page.fill('#cup-new1', '4321');
+    await page.fill('#cup-new2', '4321');
+    await page.click('#mo-user-pin button:has-text("PIN speichern")');
+    await expect(pinModal).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // 3. Open profile menu and change email
+    await openProfileMenu(page);
+    const changeEmailBtn = page.locator('button:has-text("E-Mail ändern")').first();
+    await expect(changeEmailBtn).toBeVisible({ timeout: 5000 });
+    await changeEmailBtn.click();
+
+    // 4. Fill contact modal
+    const contactModal = page.locator('#mo-user-contact');
+    await expect(contactModal).toHaveClass(/open/);
+    await page.fill('#cuc-contact', 'admin@courtle.test');
+    await page.click('#mo-user-contact button:has-text("Speichern")');
+    await expect(contactModal).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // 5. Verify email updated in players list
+    const me = await (await request.get('/api.php/me', {
+      headers: { 'X-Token': aToken },
+    })).json();
+    const players = await (await request.get('/api.php/players')).json();
+    const myPlayer = players.find(p => p.id === me.player_id);
+    expect(myPlayer.contact).toBe('admin@courtle.test');
+
+    // 6. Verify new PIN works for authentication
+    const authTest = await (await request.post('/api.php/auth', {
+      data: { player_id: me.player_id, pin: '4321' },
+    })).json();
+    expect(authTest.token).toBeDefined();
+  });
+
+  test('23 — Admin Transaction History: Edit and delete transaction via history UI', async ({ page }) => {
+    await navigateAdmin(page, 'history');
+    await expect(page.locator('#view-history')).toHaveClass(/active/);
+
+    // Initial transaction from beforeEach should be present in history list
+    const histList = page.locator('#history-list');
+    await expect(histList).toBeVisible();
+    await expect(histList).toContainText('deposit');
+    await expect(histList).toContainText('100');
+
+    // Click edit pencil button
+    const editBtn = histList.locator('.history-card-actions button').first();
+    await expect(editBtn).toBeVisible();
+    await editBtn.click();
+
+    // Verify edit transaction modal opens
+    const editModal = page.locator('#mo-edit-tx');
+    await expect(editModal).toHaveClass(/open/);
+
+    // Update amount and note
+    await page.fill('#etx-amount', '150');
+    await page.fill('#etx-note', 'deposit updated');
+    await editModal.locator('button:has-text("Speichern")').click();
+    await expect(editModal).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Verify updated transaction in list
+    await expect(histList).toContainText('deposit updated');
+    await expect(histList).toContainText('150');
+
+    // Click edit pencil again to delete
+    await editBtn.click();
+    await expect(editModal).toHaveClass(/open/);
+    await editModal.locator('button:has-text("Löschen")').click();
+
+    // Delete confirmation modal opens
+    const delModal = page.locator('#mo-delete-tx-confirm');
+    await expect(delModal).toHaveClass(/open/);
+    await delModal.locator('button.btn-dan').click();
+    await expect(delModal).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Transaction should now be deleted from list
+    await expect(histList).not.toContainText('deposit updated');
   });
 });
 

@@ -1,6 +1,6 @@
 # Courtle Deployment Guide
 
-Courtle is designed to be extremely lightweight, fast, and easy to deploy. It runs inside a single Docker container utilizing a robust **PHP 8.2 + Apache + SQLite** setup. All external assets (fonts, icons) are downloaded during the Docker build process, meaning **no CDNs are contacted at runtime**, protecting your users' privacy and enabling fully offline/local deployments.
+Courtle is designed to be extremely lightweight, fast, and easy to deploy. It runs inside a single Docker container utilizing a robust **PHP 8.4 + Apache + SQLite** setup. All external assets (fonts, icons) are downloaded during the Docker build process, meaning **no CDNs are contacted at runtime**, protecting your users' privacy and enabling fully offline/local deployments.
 
 ---
 

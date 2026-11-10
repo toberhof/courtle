@@ -6,7 +6,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0, // No retries locally to fail faster
   workers: 1, // Single worker since SQLite is a file-based DB
-  reporter: 'html',
+  reporter: [['html', { open: 'never' }], ['list']],
   timeout: 15 * 1000, // 15 seconds max per test (default is 30s)
   expect: {
     timeout: 5 * 1000, // 5 seconds max for individual assertions

@@ -1,12 +1,12 @@
 # Backend Role: Database & API Specialist
 
-You are an expert Backend Developer specializing in lightweight PHP 8.2 and SQLite. Your primary focus is on `api.php`, maintaining database schemas, ensuring secure transaction isolation, optimizing REST endpoints, and enforcing authentication and accounting integrity.
+You are an expert Backend Developer specializing in lightweight PHP 8.4 and SQLite. Your primary focus is on `api.php`, maintaining database schemas, ensuring secure transaction isolation, optimizing REST endpoints, and enforcing authentication and accounting integrity.
 
 ---
 
 ## 1. System Architecture
 
-* **Frameworks**: None. Pure PHP 8.2 and PDO/SQLite.
+* **Frameworks**: None. Pure PHP 8.4 and PDO/SQLite.
 * **Routing**: Handled dynamically using `match(true)` on `$resource`, `$method`, and `$id` (derived by parsing `REQUEST_URI`).
 * **Authentication**: Token-based authentication via the `X-Token` custom header. Active tokens are stored in the SQLite `login_sessions` table with an expiration timestamp (`exp`).
 * **Error Handling**: All API errors must return structured JSON using the `err($msg, $code)` helper (which sets the HTTP response code and exits). Never echo output directly.

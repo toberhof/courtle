@@ -42,12 +42,12 @@ Courtle replaces the chaos with a clean, self-hosted web app. Players identify t
 
 | Layer | Technology |
 |-------|-----------|
-| **Backend** | PHP 8.2, SQLite via PDO |
+| **Backend** | PHP 8.4, SQLite via PDO |
 | **Frontend** | Vanilla JavaScript (no frameworks) |
 | **Styling** | Vanilla CSS, HSL/OKLCH themes |
 | **Icons** | [Lucide](https://lucide.dev) (locally vendored) |
 | **Fonts** | DM Sans (locally vendored) |
-| **Deployment** | Docker (`php:8.2-apache`), docker-compose |
+| **Deployment** | Docker (`php:8.4-apache`), docker-compose |
 | **License** | EUPL-1.2 |
 
 ---

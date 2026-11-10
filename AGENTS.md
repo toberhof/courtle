@@ -22,7 +22,7 @@ Welcome to Courtle! This is the central developer reference for the project. To 
 ├── courtle-icon-180.png    # Apple touch icon
 ├── courtle-icon-192.png    # PWA icon (192×192)
 ├── courtle-icon-512.png    # PWA icon (512×512)
-├── Dockerfile              # php:8.2-apache + SQLite + vendored assets
+├── Dockerfile              # php:8.4-apache + SQLite + vendored assets
 ├── docker-compose.yml      # Release/production only — do not modify for development
 ├── docker-compose.dev.yml  # Local development with live reload bind mounts
 ├── docker-compose.test.yml # Test environment
