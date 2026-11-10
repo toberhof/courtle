@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:434-->
+<!--built:435-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=434">
+<link rel="stylesheet" href="style.css?build=435">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=434" defer></script>
-<script src="app.js?build=434" defer></script>
+<script src="i18n.js?build=435" defer></script>
+<script src="app.js?build=435" defer></script>
 
 <div class="app-shell">
 
@@ -121,9 +121,6 @@ if ('serviceWorker' in navigator) {
         </button>
         <button class="nav-dd-item" id="nav-expenses" onclick="showView('expenses');closeNavDD()">
           <i data-lucide="credit-card" style="width:16px;height:16px"></i><span data-i18n="nav.expenses">Ausgaben</span>
-        </button>
-        <button class="nav-dd-item" id="nav-dashboard" onclick="showView('dashboard');closeNavDD()">
-          <i data-lucide="layout-dashboard" style="width:16px;height:16px"></i><span data-i18n="nav.overview">Übersicht</span>
         </button>
         <div class="nav-dd-divider"></div>
         <div class="nav-dd-group-title" data-i18n="nav.group_system">System</div>
@@ -239,15 +236,6 @@ if ('serviceWorker' in navigator) {
     </div>
   </div>
 
-  <!-- DASHBOARD (admin) -->
-  <section class="view" id="view-dashboard">
-    <div id="kpi-container" class="kpi-grid"></div>
-    <div class="flex items-c just-b mb4 mt6">
-      <h2 class="sec-title" style="margin-bottom:0" data-i18n="dashboard.player_activity">Spieler-Aktivität</h2>
-    </div>
-    <div id="balance-table"></div>
-  </section>
-
   <!-- EXPENSES (admin) -->
   <section class="view" id="view-expenses">
     <div class="flex items-c just-b mb6">
@@ -358,7 +346,7 @@ if ('serviceWorker' in navigator) {
 
   <!-- HISTORY (admin) -->
   <section class="view" id="view-history">
-    <div class="flex items-c just-b mb6 wrap g2">
+    <div class="flex items-c just-b mb4 wrap g2">
       <h1 class="page-title" style="margin-bottom:0" data-i18n="view.history">Transaktionen</h1>
       <div class="flex items-c g2 wrap">
         <button class="btn btn-ok btn-sm" onclick="openTx(document.getElementById('hist-filter')?.value || null)" type="button"><i data-lucide="plus"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
@@ -368,6 +356,7 @@ if ('serviceWorker' in navigator) {
         </select>
       </div>
     </div>
+    <div id="kpi-container" class="kpi-grid"></div>
     <div class="hl" id="history-list"></div>
   </section>
 
@@ -564,7 +553,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 434)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 435)</span>
 
 </footer>
 
@@ -629,7 +618,6 @@ if ('serviceWorker' in navigator) {
     <button class="bnav-quick-tx" onclick="closeMobileAdminMenu();openTx()"><i data-lucide="plus-circle"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
     <button onclick="showView('history');closeMobileAdminMenu()"><i data-lucide="chart-no-axes-gantt"></i> <span data-i18n="nav.history">Transaktionen</span></button>
     <button onclick="showView('expenses');closeMobileAdminMenu()"><i data-lucide="credit-card"></i> <span data-i18n="nav.expenses">Ausgaben</span></button>
-    <button onclick="showView('dashboard');closeMobileAdminMenu()"><i data-lucide="layout-dashboard"></i> <span data-i18n="nav.overview">Übersicht</span></button>
   </div>
   <div class="bnav-divider"></div>
   <div class="bnav-group-grid">

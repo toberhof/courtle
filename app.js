@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 434;
+const CLIENT_BUILD = 435;
 let S = {
   players: [],
   transactions: [],
@@ -1798,8 +1798,11 @@ function renderKPIs() {
      { l: t('dashboard.kpi_cashflow'), v: fmtE(cf), c: cf < 0 ? 'neg' : cf === 0 ? '' : 'pos', s: cf < 0 ? t('dashboard.kpi_cashflow_advance') : t('dashboard.kpi_cashflow_covered') },
      { l: t('dashboard.kpi_total_balance'), v: fmtE(totalBal), c: totalBal >= 0 ? 'pos' : 'neg', s: t('dashboard.kpi_total_balance_sub') },
    ];
-  document.getElementById('kpi-container').innerHTML = kpis.map(k =>
-    `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
+  const kpiEl = document.getElementById('kpi-container');
+  if (kpiEl) {
+    kpiEl.innerHTML = kpis.map(k =>
+      `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
+  }
 }
 function renderPlayerActivityTable() {
   const targets = [
@@ -4577,13 +4580,14 @@ async function importData(e) {
 // ════════════════════════════════════════
 // NAVIGATION
 // ════════════════════════════════════════
-const DD_VIEWS = ['dashboard','admin-plan','players','expenses','billing','history','series','settings'];
-const DD_LABELS = {'dashboard':'nav.overview','admin-plan':'nav.session_plan','players':'nav.players','expenses':'nav.expenses','billing':'nav.billing','history':'nav.history','series':'nav.series','settings':'nav.settings'};
+const DD_VIEWS = ['admin-plan','players','expenses','billing','history','series','settings'];
+const DD_LABELS = {'admin-plan':'nav.session_plan','players':'nav.players','expenses':'nav.expenses','billing':'nav.billing','history':'nav.history','series':'nav.series','settings':'nav.settings'};
 
 function showView(name) {
   closeMobileAdminMenu();
+  if (name === 'dashboard') name = 'history';
   // NEU: Sicherheits-Check
-  const adminViews = ['dashboard', 'admin-plan', 'players', 'expenses', 'billing', 'history', 'series', 'settings'];
+  const adminViews = ['admin-plan', 'players', 'expenses', 'billing', 'history', 'series', 'settings'];
   if (adminViews.includes(name) && !isAdmin) {
     name = 'sessions'; // Falls kein Admin, leite um auf Spieltage
   } // <--- DIESE KLAMMER HAT GEFEHLT!
