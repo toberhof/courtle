@@ -105,7 +105,8 @@ const I18N = {
       "billing.intro_dismiss": "Verstanden",
       "nav.series": "Session Serien",
       "nav.admin": "Admin",
-      "nav.settings": "System",
+      "nav.settings": "Einstellungen",
+      "nav.backup": "Datensicherung",
       "nav.login": "Login",
       "nav.logout": "Logout",
       "nav.pin_change": "PIN ändern",
@@ -128,7 +129,16 @@ const I18N = {
       "view.players": "Spieler",
       "view.history": "Transaktionen",
       "view.series": "Session Serien",
-      "view.settings": "System Einstellungen",
+      "view.settings": "Einstellungen",
+      "view.backup": "Datensicherung",
+
+      // ── Backup View
+      "backup.title": "Datensicherung",
+      "backup.subtitle": "System-Backups exportieren und wiederherstellen.",
+      "backup.export_card": "Backup exportieren",
+      "backup.export_desc": "Sichert alle Spieler, Sessions, Buchungen, Transaktionen und Ausgaben als JSON-Datei.",
+      "backup.import_card": "Backup wiederherstellen",
+      "backup.import_desc": "Stellt ein zuvor exportiertes Backup wieder her. <strong>Achtung:</strong> Alle aktuellen Daten werden dadurch überschrieben!",
 
       // ── Guest Balance
       "guest.your_balance": "Dein Guthaben:",
@@ -881,7 +891,8 @@ const I18N = {
       "billing.intro_dismiss": "Got it",
       "nav.series": "Session Series",
       "nav.admin": "Admin",
-      "nav.settings": "System",
+      "nav.settings": "Settings",
+      "nav.backup": "Backup",
       "nav.login": "Login",
       "nav.logout": "Logout",
       "nav.pin_change": "Change PIN",
@@ -902,7 +913,16 @@ const I18N = {
       "view.players": "Players",
       "view.history": "Transactions",
       "view.series": "Session Series",
-      "view.settings": "System Settings",
+      "view.settings": "Settings",
+      "view.backup": "Backup",
+
+      // ── Backup View
+      "backup.title": "Backup",
+      "backup.subtitle": "Export and restore system backups.",
+      "backup.export_card": "Export backup",
+      "backup.export_desc": "Saves all players, sessions, bookings, transactions, and expenses as a JSON file.",
+      "backup.import_card": "Restore backup",
+      "backup.import_desc": "Restores a previously exported backup file. <strong>Warning:</strong> All current data will be overwritten!",
       "guest.your_balance": "Your Balance:",
       "banner.ios_text": "Install app: <strong>Share</strong> → \"Add to Home Screen\"",
       "banner.android_btn": "Add to Home Screen",
@@ -1582,7 +1602,8 @@ const I18N = {
       "billing.intro_dismiss": "Entendido",
       "nav.series": "Series de Sesiones",
       "nav.admin": "Admin",
-      "nav.settings": "Sistema",
+      "nav.settings": "Ajustes",
+      "nav.backup": "Copia de seguridad",
       "nav.login": "Iniciar sesión",
       "nav.logout": "Cerrar sesión",
       "nav.pin_change": "Cambiar PIN",
@@ -1603,7 +1624,16 @@ const I18N = {
       "view.players": "Jugadores",
       "view.history": "Transacciones",
       "view.series": "Series de Sesiones",
-      "view.settings": "Configuración del Sistema",
+      "view.settings": "Ajustes",
+      "view.backup": "Copia de seguridad",
+
+      // ── Backup View
+      "backup.title": "Copia de seguridad",
+      "backup.subtitle": "Exportar y restaurar copias de seguridad del sistema.",
+      "backup.export_card": "Exportar copia",
+      "backup.export_desc": "Guarda todos los jugadores, sesiones, reservas, transacciones y gastos como archivo JSON.",
+      "backup.import_card": "Restaurar copia",
+      "backup.import_desc": "Restaura una copia previamente exportada. <strong>Atención:</strong> ¡Todos los datos actuales serán sobrescritos!",
 
       // ── Guest Balance
       "guest.your_balance": "Tu saldo:",
@@ -2290,7 +2320,8 @@ const I18N = {
       "billing.intro_dismiss": "Ho capito",
       "nav.series": "Serie di Sessioni",
       "nav.admin": "Admin",
-      "nav.settings": "Sistema",
+      "nav.settings": "Impostazioni",
+      "nav.backup": "Backup",
       "nav.login": "Accedi",
       "nav.logout": "Esci",
       "nav.pin_change": "Cambia PIN",
@@ -2311,7 +2342,16 @@ const I18N = {
       "view.players": "Giocatori",
       "view.history": "Transazioni",
       "view.series": "Serie di Sessioni",
-      "view.settings": "Impostazioni di Sistema",
+      "view.settings": "Impostazioni",
+      "view.backup": "Backup",
+
+      // ── Backup View
+      "backup.title": "Backup",
+      "backup.subtitle": "Esporta e ripristina i backup di sistema.",
+      "backup.export_card": "Esporta backup",
+      "backup.export_desc": "Salva tutti i giocatori, sessioni, prenotazioni, transazioni e spese come file JSON.",
+      "backup.import_card": "Ripristina backup",
+      "backup.import_desc": "Ripristina un file di backup precedentemente esportato. <strong>Attenzione:</strong> Tutti i dati correnti verranno sovrascritti!",
 
       // ── Guest Balance
       "guest.your_balance": "Il tuo saldo:",
@@ -2998,7 +3038,8 @@ const I18N = {
       "billing.intro_dismiss": "Compris",
       "nav.series": "Séries de Sessions",
       "nav.admin": "Admin",
-      "nav.settings": "Système",
+      "nav.settings": "Paramètres",
+      "nav.backup": "Sauvegarde",
       "nav.login": "Connexion",
       "nav.logout": "Déconnexion",
       "nav.pin_change": "Changer PIN",
@@ -3019,7 +3060,16 @@ const I18N = {
       "view.players": "Joueurs",
       "view.history": "Transactions",
       "view.series": "Séries de Sessions",
-      "view.settings": "Paramètres Système",
+      "view.settings": "Paramètres",
+      "view.backup": "Sauvegarde",
+
+      // ── Backup View
+      "backup.title": "Sauvegarde",
+      "backup.subtitle": "Exporter et restaurer les sauvegardes du système.",
+      "backup.export_card": "Exporter la sauvegarde",
+      "backup.export_desc": "Enregistre tous les joueurs, sessions, réservations, transactions et dépenses dans un fichier JSON.",
+      "backup.import_card": "Restaurer la sauvegarde",
+      "backup.import_desc": "Restaure un fichier de sauvegarde précédemment exporté. <strong>Attention :</strong> Toutes les données actuelles seront écrasées !",
 
       // ── Guest Balance
       "guest.your_balance": "Votre solde :",
@@ -3705,7 +3755,8 @@ const I18N = {
       "billing.intro_dismiss": "Entendi",
       "nav.series": "Séries de Sessões",
       "nav.admin": "Admin",
-      "nav.settings": "Sistema",
+      "nav.settings": "Configurações",
+      "nav.backup": "Backup",
       "nav.login": "Entrar",
       "nav.logout": "Sair",
       "nav.pin_change": "Alterar PIN",
@@ -3728,7 +3779,16 @@ const I18N = {
       "view.players": "Jogadores",
       "view.history": "Transações",
       "view.series": "Séries de Sessões",
-      "view.settings": "Configurações do Sistema",
+      "view.settings": "Configurações",
+      "view.backup": "Backup",
+
+      // ── Backup View
+      "backup.title": "Backup",
+      "backup.subtitle": "Exportar e restaurar backups do sistema.",
+      "backup.export_card": "Exportar backup",
+      "backup.export_desc": "Salva todos os jogadores, sessões, reservas, transações e despesas como arquivo JSON.",
+      "backup.import_card": "Restaurar backup",
+      "backup.import_desc": "Restaura um arquivo de backup exportado anteriormente. <strong>Atenção:</strong> Todos os dados atuais serão substituídos!",
 
       // ── Guest Balance
       "guest.your_balance": "Seu Saldo:",

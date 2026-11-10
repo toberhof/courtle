@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 437;
+const CLIENT_BUILD = 438;
 let S = {
   players: [],
   transactions: [],
@@ -4717,14 +4717,14 @@ async function importData(e) {
 // ════════════════════════════════════════
 // NAVIGATION
 // ════════════════════════════════════════
-const DD_VIEWS = ['admin-plan','players','expenses','billing','history','series','settings'];
-const DD_LABELS = {'admin-plan':'nav.session_plan','players':'nav.players','expenses':'nav.expenses','billing':'nav.billing','history':'nav.history','series':'nav.series','settings':'nav.settings'};
+const DD_VIEWS = ['admin-plan','players','expenses','billing','history','series','settings','backup'];
+const DD_LABELS = {'admin-plan':'nav.session_plan','players':'nav.players','expenses':'nav.expenses','billing':'nav.billing','history':'nav.history','series':'nav.series','settings':'nav.settings','backup':'nav.backup'};
 
 function showView(name) {
   closeMobileAdminMenu();
   if (name === 'dashboard') name = 'history';
   // NEU: Sicherheits-Check
-  const adminViews = ['admin-plan', 'players', 'expenses', 'billing', 'history', 'series', 'settings'];
+  const adminViews = ['admin-plan', 'players', 'expenses', 'billing', 'history', 'series', 'settings', 'backup'];
   if (adminViews.includes(name) && !isAdmin) {
     name = 'sessions'; // Falls kein Admin, leite um auf Spieltage
   } // <--- DIESE KLAMMER HAT GEFEHLT!

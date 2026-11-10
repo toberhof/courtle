@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<!--built:437-->
+<!--built:438-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyOCAyOCIgZmlsbD0ibm9uZSI+CiAgPHJlY3Qgd2lkdGg9IjI4IiBoZWlnaHQ9IjI4IiBmaWxsPSIjZmZmZmZmIi8+CiAgPGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoMTQsMTQpIHNjYWxlKDAuOCkgdHJhbnNsYXRlKC0xNCwtMTQpIj4KICAgIDxjaXJjbGUgY3g9IjE0IiBjeT0iMyIgcj0iMS41IiBmaWxsPSIjMDA3YTVhIi8+CiAgICA8bGluZSB4MT0iMTQiIHkxPSI0LjUiIHgyPSIxNCIgeTI9IjYuMiIgc3Ryb2tlPSIjMDA3YTVhIiBzdHJva2Utd2lkdGg9IjEuMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgICA8cmVjdCB4PSI3LjUiIHk9IjYiIHdpZHRoPSIxMyIgaGVpZ2h0PSIxNiIgcng9IjUiIHN0cm9rZT0iIzAwN2E1YSIgc3Ryb2tlLXdpZHRoPSIyLjUiIGZpbGw9Im5vbmUiLz4KICAgIDxnIHN0cm9rZT0iIzAwN2E1YSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBmaWxsPSJub25lIj4KICAgICAgPHBhdGggZD0iTSg4LDkgUSA1LDcuNSA0LDYiIHN0cm9rZS13aWR0aD0iMS41Ii8+CiAgICAgIDxwYXRoIGQ9Ik0gMjAsOSBRIDIzLDcuNSAyNCw2IiBzdHJva2Utd2lkdGg9IjEuNSIvPgogICAgICA8cGF0aCBkPSJNIDgsMjAgUSA1LjUsMjEuNSA1LjUsMjMiIHN0cm9rZS13aWR0aD0iMS41Ii8+CiAgICAgIDxwYXRoIGQ9Ik0gMjAsMjAgUSAyMi41LDIxLjUgMjIuNSwyMyIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KICAgIDxwYXRoIGQ9Ik0gMTQsMjEuOCBRIDE0LDIzIDE0LDIzLjUiIHN0cm9rZS13aWR0aD0iMS4yIi8+CiAgICA8L2c+CiAgICA8bGluZSB4MT0iNy41IiB5MT0iMTQiIHgyPSIyMC41IiB5Mj0iMTQiIHN0cm9rZT0iIzAwN2E1YSIgc3Ryb2tlLXdpZHRoPSIyLjUiIGZpbGw9Im5vbmUiLz4KICAgIDwvZz4KPC9zdmc+Cg==">
+  <link rel="icon" type="image/svg+xml" href="courtle-icon.svg?v=4">
   <link rel="apple-touch-icon" sizes="180x180" href="courtle-icon-180.png">
   <link rel="manifest" href="/api.php/manifest" crossorigin="use-credentials">
   <script>
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=437">
+<link rel="stylesheet" href="style.css?build=438">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=437" defer></script>
-<script src="app.js?build=437" defer></script>
+<script src="i18n.js?build=438" defer></script>
+<script src="app.js?build=438" defer></script>
 
 <div class="app-shell">
 
@@ -125,7 +125,10 @@ if ('serviceWorker' in navigator) {
         <div class="nav-dd-divider"></div>
         <div class="nav-dd-group-title" data-i18n="nav.group_system">System</div>
         <button class="nav-dd-item" id="nav-settings" onclick="showView('settings');closeNavDD()">
-          <i data-lucide="settings" style="width:16px;height:16px"></i><span data-i18n="nav.settings">System</span>
+          <i data-lucide="sliders" style="width:16px;height:16px"></i><span data-i18n="nav.settings">Einstellungen</span>
+        </button>
+        <button class="nav-dd-item" id="nav-backup" onclick="showView('backup');closeNavDD()">
+          <i data-lucide="hard-drive-download" style="width:16px;height:16px"></i><span data-i18n="nav.backup">Datensicherung</span>
         </button>
       </div>
     </div>
@@ -519,19 +522,34 @@ if ('serviceWorker' in navigator) {
         </button>
       </div>
     </div>
+  </section>
 
-    <!-- 3. Datensicherung -->
+  <!-- BACKUP (admin) -->
+  <section class="view" id="view-backup">
+    <div class="mb4">
+      <h1 class="page-title" style="margin-bottom:var(--sp1)" data-i18n="backup.title">Datensicherung</h1>
+      <p class="txsm txm" data-i18n="backup.subtitle">System-Backups exportieren und wiederherstellen.</p>
+    </div>
+
     <div class="card mb6">
-      <h2 class="sec-title" data-i18n="settings.backup">Datensicherung</h2>
-      <p class="txsm txm mb4" data-i18n-html="settings.backup_desc">
-        Export sichert alle Spieler, Buchungen und Transaktionen als JSON-Datei.
-        Import stellt ein zuvor exportiertes Backup wieder her (<strong>überschreibt</strong> alle aktuellen Daten).
+      <h2 class="sec-title" data-i18n="backup.export_card">Backup exportieren</h2>
+      <p class="txsm txm mb4" data-i18n="backup.export_desc">
+        Sichert alle Spieler, Sessions, Buchungen, Transaktionen und Ausgaben als JSON-Datei.
       </p>
-      <div class="flex g3 wrap">
-        <button class="btn btn-sec btn-sm" onclick="exportData()"><i data-lucide="download"></i> <span data-i18n="settings.export">Export</span></button>
-        <button class="btn btn-sec btn-sm" onclick="document.getElementById('imp').click()"><i data-lucide="upload"></i> <span data-i18n="settings.import">Import</span></button>
-        <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(event)">
-      </div>
+      <button class="btn btn-pri btn-sm" onclick="exportData()">
+        <i data-lucide="download"></i> <span data-i18n="settings.export">Export</span>
+      </button>
+    </div>
+
+    <div class="card mb6">
+      <h2 class="sec-title" data-i18n="backup.import_card">Backup wiederherstellen</h2>
+      <p class="txsm txm mb4" data-i18n-html="backup.import_desc">
+        Stellt ein zuvor exportiertes Backup wieder her. <strong>Achtung:</strong> Alle aktuellen Daten werden dadurch überschrieben!
+      </p>
+      <button class="btn btn-sec btn-sm" onclick="document.getElementById('imp').click()">
+        <i data-lucide="upload"></i> <span data-i18n="settings.import">Import</span>
+      </button>
+      <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(event)">
     </div>
   </section>
 
@@ -562,7 +580,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 437)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 438)</span>
 
 </footer>
 
@@ -628,9 +646,10 @@ if ('serviceWorker' in navigator) {
     <button onclick="showView('history');closeMobileAdminMenu()"><i data-lucide="chart-no-axes-gantt"></i> <span data-i18n="nav.history">Transaktionen</span></button>
     <button onclick="showView('expenses');closeMobileAdminMenu()"><i data-lucide="credit-card"></i> <span data-i18n="nav.expenses">Ausgaben</span></button>
   </div>
-  <div class="bnav-divider"></div>
+  <div class="bnav-group-title" data-i18n="nav.group_system">System</div>
   <div class="bnav-group-grid">
-    <button onclick="showView('settings');closeMobileAdminMenu()" style="grid-column:1/-1"><i data-lucide="settings"></i> <span data-i18n="nav.settings">System</span></button>
+    <button onclick="showView('settings');closeMobileAdminMenu()"><i data-lucide="sliders"></i> <span data-i18n="nav.settings">Einstellungen</span></button>
+    <button onclick="showView('backup');closeMobileAdminMenu()"><i data-lucide="hard-drive-download"></i> <span data-i18n="nav.backup">Datensicherung</span></button>
   </div>
 </div>
 

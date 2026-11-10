@@ -15,7 +15,8 @@ async function navigateAdmin(page, viewName) {
     else if (viewName === 'history') text = 'Transaktionen';
     else if (viewName === 'admin-plan') text = 'Session Planer';
     else if (viewName === 'series') text = 'Session Serien';
-    else if (viewName === 'settings') text = 'System';
+    else if (viewName === 'settings') text = 'Einstellungen';
+    else if (viewName === 'backup') text = 'Datensicherung';
     await page.click(`#bnav-admin-menu button:has-text("${text}")`);
   }
 }
