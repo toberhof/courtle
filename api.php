@@ -4,7 +4,14 @@
 //  PHP 8.4 + SQLite (PDO)
 // ═══════════════════════════════════════════════
 
-define('DB_PATH', getenv('COURTLE_DB_PATH') ?: (getenv('DB_PATH') ?: '/var/www/courtle_data/courtle.db'));
+// Optional environment bootstrap (allows custom storage routing, proxies, or subpath setups)
+if (file_exists(__DIR__ . '/core/bootstrap.php')) {
+    require_once __DIR__ . '/core/bootstrap.php';
+}
+
+if (!defined('DB_PATH')) {
+    define('DB_PATH', getenv('COURTLE_DB_PATH') ?: (getenv('DB_PATH') ?: '/var/www/courtle_data/courtle.db'));
+}
 define('SESSION_LIFETIME', 3600 * 24 * 30);
 date_default_timezone_set(getenv('COURTLE_TIMEZONE') ?: (getenv('TZ') ?: 'Europe/Berlin'));
 $allowed_origins = ['*'];

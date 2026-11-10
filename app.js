@@ -32,7 +32,8 @@ Object.defineProperty(window, 'isAdmin', {
 // ════════════════════════════════════════
 // API
 // ════════════════════════════════════════
-const API = '/api.php';
+// API endpoint (supports custom base paths, subpaths, and reverse proxies)
+const API = ((window.__COURTLE_BASE__ || window.__TENANT__?.basePath || '') + '/api.php').replace('//', '/');
 let _token = localStorage.getItem('_tok') || '';
 let _sessionExpiredHandled = false;
 let planDate; // current date in admin session planner
