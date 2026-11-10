@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 431;
+const CLIENT_BUILD = 432;
 let S = {
   players: [],
   transactions: [],
@@ -1861,6 +1861,7 @@ function sortActivityTable(column) {
 // ADMIN – SESSION PLANNER (MODERN)
 // ════════════════════════════════════════
 let planTab = 'slots';
+let planDetailsOpen = false;
 let _planSaveTimeout = null;
 
 function setPlanTab(tab) {
@@ -1903,8 +1904,11 @@ function planGoToDateClosest(dateStr) {
 }
 
 function togglePlanDetails() {
+  planDetailsOpen = !planDetailsOpen;
   const box = document.getElementById('session-details-box');
-  if (box) box.open = !box.open;
+  const btn = document.getElementById('plan-edit-toggle-btn');
+  if (box) box.hidden = !planDetailsOpen;
+  if (btn) btn.classList.toggle('active-toggle', planDetailsOpen);
 }
 
 function togglePlanMoreMenu(e) {
@@ -1948,13 +1952,14 @@ async function savePlanDetailsSilent() {
     _planDetailChanges = {};
     if (res && res.id) planDate = res.id;
 
-    if (ind) {
-      ind.classList.add('show');
-      setTimeout(() => ind.classList.remove('show'), 2000);
-    }
     renderAdminPlan(true);
     renderSessions();
     lucide.createIcons();
+    const newInd = document.getElementById('plan-save-indicator');
+    if (newInd) {
+      newInd.classList.add('show');
+      setTimeout(() => newInd.classList.remove('show'), 2000);
+    }
   } catch (e) {
     showToast('⚠️ ' + (e.message || t('misc.save_failed')));
   }
@@ -1967,7 +1972,7 @@ function renderAdminPlan(keepDetailsOpen) {
   const headBox = document.getElementById('admin-plan-header-dynamic');
 
   if (allSessions.length === 0) {
-    if (selBox) selBox.innerHTML = '<div class="session-selector-bar mt2"><select id="session-selector" class="fi" style="width:100%;font-size:var(--text-sm)"></select></div>';
+    if (selBox) selBox.innerHTML = '<div class="plan-strip" id="plan-strip" role="listbox"></div>';
     if (headBox) {
       headBox.innerHTML = `
         <div style="padding:var(--sp8) var(--sp4);text-align:center">
@@ -1984,20 +1989,16 @@ function renderAdminPlan(keepDetailsOpen) {
     const cWl = document.getElementById('plan-waitlist-admin');
     const cHist = document.getElementById('plan-history');
     const tabs = document.getElementById('plan-tabs');
-    const details = document.getElementById('session-details-box');
     if (cSlots) cSlots.style.display = 'none';
     if (cWl) cWl.style.display = 'none';
     if (cHist) cHist.style.display = 'none';
     if (tabs) tabs.style.display = 'none';
-    if (details) details.style.display = 'none';
     lucide.createIcons();
     return;
   }
 
   const tabs = document.getElementById('plan-tabs');
-  const details = document.getElementById('session-details-box');
   if (tabs) tabs.style.display = '';
-  if (details) details.style.display = '';
 
   const today = toDS(new Date());
   if (!planDate) {
@@ -2040,35 +2041,17 @@ function renderAdminPlan(keepDetailsOpen) {
     statusLabel = t('planner.status_awaiting');
   }
 
-  // 1. Date strip and options for select dropdown
+  // 1. Horizontal Date Strip (with start time on each chip for multi-session days)
   const upcomingSessions = allSessions.filter(s => s.date >= today);
   const pastSessions = allSessions.filter(s => s.date < today);
-
-  const dateCounts = {};
-  allSessions.forEach(s => { dateCounts[s.date] = (dateCounts[s.date] || 0) + 1; });
-
-  function makeOpt(s) {
-    const sId = (dateCounts[s.date] === 1) ? s.date : (s.id || s.date);
-    const selected = (s.id === planDate || s.date === planDate) ? ' selected' : '';
-    const { start, end } = getSessionTime(s);
-    const timeStr = start && end ? ` ${fmtTime(start)}–${fmtTime(end)}` : '';
-    const label = `${fmtDL(s.date)}${timeStr} (${getSessionName(s)})`;
-    const badge = s.charged ? ' ✓' : (s.cancelled ? ' ✕' : '');
-    return `<option value="${sId}" data-id="${s.id || ''}" data-date="${s.date}"${selected}>${label}${badge}</option>`;
-  }
-
-  let sessionOptions = upcomingSessions.map(makeOpt).join('');
-  if (pastSessions.length > 0) {
-    if (upcomingSessions.length > 0) sessionOptions += `<optgroup label="${t('session.past_sessions')}">`;
-    sessionOptions += pastSessions.map(makeOpt).join('');
-    if (upcomingSessions.length > 0) sessionOptions += '</optgroup>';
-  }
+  const locale = I18N.current === 'de' ? 'de-DE' : 'en-US';
 
   function makeChip(s) {
     const sId = s.id || s.date;
     const isSel = (s.id === planDate || s.date === planDate);
     const sCounts = sessionChargeMap(s);
-    const sTotalSlots = (s.courts ? s.courts.length : 2) * 4;
+    const sActiveCourts = (s.courts || []).filter((_, i) => !(s.disabledCourts || []).includes(i));
+    const sTotalSlots = (sActiveCourts.length || (s.courts ? s.courts.length : 2)) * 4;
     const sFilled = Object.values(sCounts).reduce((a, b) => a + b, 0);
     const sEnded = sessionEndDate(s) < new Date();
     const sAwaiting = !s.charged && !s.cancelled && sEnded && sFilled > 0;
@@ -2080,14 +2063,16 @@ function renderAdminPlan(keepDetailsOpen) {
     else if (sAwaiting) { chipClass = 'st-awaiting'; bText = '€'; }
 
     const dObj = new Date(s.date + 'T00:00:00');
-    const wkdy = dObj.toLocaleDateString(I18N.current === 'de' ? 'de-DE' : 'en-US', { weekday: 'short' });
+    const wkdy = dObj.toLocaleDateString(locale, { weekday: 'short' }).replace('.', '');
     const dayNum = dObj.getDate();
-    const mStr = dObj.toLocaleDateString(I18N.current === 'de' ? 'de-DE' : 'en-US', { month: 'short' }).replace('.', '');
+    const mStr = dObj.toLocaleDateString(locale, { month: 'short' }).replace('.', '');
+    const { start } = getSessionTime(s);
+    const timeLabel = start ? fmtTime(start) : '';
 
-    return `<button class="plan-chip ${chipClass} ${isSel ? 'active' : ''}" onclick="planGoToDate('${sId}')" type="button" aria-selected="${isSel ? 'true' : 'false'}">
-      <span class="pc-wkdy">${wkdy}</span>
+    return `<button class="plan-chip ${chipClass} ${isSel ? 'active' : ''}" data-date="${s.date}" data-id="${sId}" onclick="planGoToDate('${sId}')" type="button" role="option" aria-selected="${isSel ? 'true' : 'false'}">
+      <span class="pc-top">${wkdy} · ${mStr}</span>
       <span class="pc-day">${dayNum}</span>
-      <span class="pc-month">${mStr}</span>
+      ${timeLabel ? `<span class="pc-time">${timeLabel}</span>` : ''}
       <span class="pc-badge">${bText}</span>
     </button>`;
   }
@@ -2097,7 +2082,7 @@ function renderAdminPlan(keepDetailsOpen) {
     chipsHtml += pastSessions.map(makeChip).join('');
   }
   if (pastSessions.length > 0 && upcomingSessions.length > 0) {
-    chipsHtml += `<div class="plan-today-marker">HEUTE</div>`;
+    chipsHtml += `<button type="button" class="plan-today-marker" onclick="planGoToUpcoming()" title="${esc(t('session.next'))}">HEUTE</button>`;
   }
   if (upcomingSessions.length > 0) {
     chipsHtml += upcomingSessions.map(makeChip).join('');
@@ -2105,28 +2090,20 @@ function renderAdminPlan(keepDetailsOpen) {
 
   if (selBox) {
     selBox.innerHTML = `
-      <div class="flex items-c just-b gap2 wrap mb2">
-        <div class="flex items-c g2">
-          <button class="btn btn-sec btn-sm" onclick="planPrev()" title="Vorherige Session"><i data-lucide="chevron-left"></i></button>
-          <button class="btn btn-sec btn-sm" onclick="planGoToUpcoming()" title="${t('session.next')}"><i data-lucide="clock"></i></button>
-          <button class="btn btn-sec btn-sm" onclick="planNext()" title="Nächste Session"><i data-lucide="chevron-right"></i></button>
+      <div class="plan-top-bar">
+        <div class="plan-strip-wrap">
+          <button class="plan-strip-nav" onclick="scrollPlanStrip(-1)" type="button" aria-label="Links scrollen">‹</button>
+          <div class="plan-strip" id="plan-strip" role="listbox">
+            ${chipsHtml}
+          </div>
+          <button class="plan-strip-nav" onclick="scrollPlanStrip(1)" type="button" aria-label="Rechts scrollen">›</button>
         </div>
-        <div class="flex items-c g2">
-          <button class="btn btn-sec btn-sm" onclick="document.getElementById('plan-date-picker').showPicker ? document.getElementById('plan-date-picker').showPicker() : document.getElementById('plan-date-picker').click()" title="${t('planner.jump_to_date')}"><i data-lucide="calendar"></i></button>
+        <div class="plan-top-actions">
+          <button class="btn btn-sec btn-sm" onclick="document.getElementById('plan-date-picker').showPicker ? document.getElementById('plan-date-picker').showPicker() : document.getElementById('plan-date-picker').click()" title="${esc(t('planner.jump_to_date'))}"><i data-lucide="calendar"></i></button>
           <input type="date" id="plan-date-picker" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="planGoToDateClosest(this.value)">
-          <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()"><i data-lucide="plus"></i> <span data-i18n="session.new">${t('session.new')}</span></button>
+          <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()"><i data-lucide="plus"></i> <span class="hide-xs" data-i18n="session.new">${t('session.new')}</span></button>
         </div>
       </div>
-      <div class="plan-strip-wrap">
-        <button class="plan-strip-nav" onclick="scrollPlanStrip(-1)" type="button" aria-label="Links scrollen">‹</button>
-        <div class="plan-strip" id="plan-strip" role="listbox">
-          ${chipsHtml}
-        </div>
-        <button class="plan-strip-nav" onclick="scrollPlanStrip(1)" type="button" aria-label="Rechts scrollen">›</button>
-      </div>
-      <div class="session-selector-bar mt2"><select id="session-selector" class="fi" style="width:100%;font-size:var(--text-sm)" onchange="planGoToDate(this.value)">
-        ${sessionOptions}
-      </select></div>
     `;
   }
 
@@ -2142,122 +2119,124 @@ function renderAdminPlan(keepDetailsOpen) {
     primaryActionBtn = `<button class="btn btn-pri btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="credit-card"></i> ${t('session.billing_charge')}</button>`;
   }
 
-  const cancelBtn = (!sess.charged && !isCancelled)
-    ? `<button class="btn btn-dan btn-sm" onclick="toggleSessionCancel()"><i data-lucide="x-circle"></i> ${t('session.cancel')}</button>`
-    : '';
+  if (keepDetailsOpen) planDetailsOpen = true;
+  const showDetails = planDetailsOpen || isCancelled;
+  const effectiveLoc = (sess.location || S.cfg.srlocation || '').trim();
+  const cancelActionLabel = isCancelled ? t('session.reactivate') : t('session.cancel');
 
-  // Render header dynamic card
+  // 3. Unified Header + Metadata + Collapsible Edit Drawer Card
   if (headBox) {
     headBox.innerHTML = `
-      <div class="flex items-c just-b wrap g2 mb3">
+      <div class="flex items-c just-b wrap g2">
         <div class="flex items-c g2 wrap">
           <h2 class="sec-title" style="margin-bottom:0">${esc(getSessionName(sess))}</h2>
           ${sess.seriesId ? `<span class="badge bg-sec" title="${esc(t('planner.from_series'))}"><i data-lucide="repeat" style="width:12px;height:12px"></i></span>` : ''}
           <span class="status-pill ${statusClass}">${statusLabel}</span>
+          <span class="save-indicator" id="plan-save-indicator"><i data-lucide="check"></i> ${t('planner.saved')}</span>
         </div>
         <div class="flex items-c g2 wrap">
           ${primaryActionBtn}
-          ${cancelBtn}
-          <button class="btn btn-sec btn-sm" onclick="togglePlanDetails()"><i data-lucide="edit-2"></i> ${t('planner.edit_details')}</button>
+          <button class="btn btn-sec btn-sm ${showDetails ? 'active-toggle' : ''}" id="plan-edit-toggle-btn" onclick="togglePlanDetails()"><i data-lucide="sliders-horizontal"></i> <span>${t('planner.edit_details')}</span></button>
           <div class="plan-more-menu">
-            <button class="btn btn-sec btn-sm" id="plan-more-btn" onclick="togglePlanMoreMenu(event)" aria-label="${t('planner.more')}"><i data-lucide="more-horizontal"></i></button>
+            <button class="btn btn-sec btn-sm" id="plan-more-btn" onclick="togglePlanMoreMenu(event)" aria-label="${esc(t('planner.more'))}"><i data-lucide="more-horizontal"></i></button>
             <div class="plan-more-dd" id="plan-more-dd">
               <button class="plan-more-item" onclick="openAddSessionModal();closePlanMoreMenu()"><i data-lucide="calendar-plus"></i> ${t('session.new')}</button>
-              ${isCancelled && !sess.charged ? `<button class="plan-more-item dan" onclick="deleteSession();closePlanMoreMenu()"><i data-lucide="trash-2"></i> ${t('misc.delete')}</button>` : ''}
               <button class="plan-more-item" onclick="openTeamRandomizer('${sessId}');closePlanMoreMenu()"><i data-lucide="shuffle"></i> Team-Randomizer</button>
+              ${!sess.charged ? `<button class="plan-more-item ${isCancelled ? '' : 'dan'}" onclick="toggleSessionCancel();closePlanMoreMenu()"><i data-lucide="${isCancelled ? 'rotate-ccw' : 'x-circle'}"></i> ${cancelActionLabel}</button>` : ''}
+              ${isCancelled && !sess.charged ? `<button class="plan-more-item dan" onclick="deleteSession();closePlanMoreMenu()"><i data-lucide="trash-2"></i> ${t('misc.delete')}</button>` : ''}
             </div>
           </div>
         </div>
       </div>
-      <div class="flex items-c g4 wrap txsm txm">
-        <span><i data-lucide="calendar"></i> ${esc(fmtDL(sess.date))}</span>
-        <span><i data-lucide="clock"></i> ${sessTime.start}–${sessTime.end}</span>
-        <span><i data-lucide="map-pin"></i> ${esc(sess.location || S.cfg.srlocation || t('session.address_placeholder'))}</span>
-        <span><i data-lucide="tag"></i> ${fmtE(sessCost)} / Slot</span>
-        <span class="badge bg-sec">${filled} / ${total} ${t('session.slots_meta')}</span>
-      </div>
-    `;
-  }
 
-  // 3. Details box
-  const wasOpen = keepDetailsOpen || isCancelled || (details && details.open);
-  if (details) {
-    details.innerHTML = `
-      <summary class="plan-details-summary">
-        <span class="flex items-c g2"><i data-lucide="settings-2"></i> <span>${t('planner.edit_details')}</span></span>
-        <span class="save-indicator" id="plan-save-indicator"><i data-lucide="check"></i> ${t('planner.saved')}</span>
-      </summary>
-      ${sess.charged ? `<p class="txxs txm mb3" style="color:var(--txm)">${t('planner.locked_charged')}</p>` : ''}
-      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp3);flex-wrap:nowrap;">
-        <span class="tx-sm tx-m">${t('session.date')}:</span>
-        <input type="date" class="fi" style="font-size:var(--text-sm)"
-               value="${sess.date}"
-               ${sess.charged ? 'disabled' : ''}
-               onchange="planDetailAutoSave('date', this.value)">
+      <div class="plan-meta-row">
+        <span class="plan-meta-item"><i data-lucide="calendar"></i> <span>${esc(fmtDL(sess.date))}</span></span>
+        <span class="plan-meta-item"><i data-lucide="clock"></i> <span>${sessTime.start}–${sessTime.end}</span></span>
+        ${effectiveLoc ? `<span class="plan-meta-item"><i data-lucide="map-pin"></i> <span>${esc(effectiveLoc)}</span></span>` : ''}
+        <span class="plan-meta-item"><i data-lucide="tag"></i> <span>${fmtE(sessCost)} / Slot</span></span>
+        <span class="plan-meta-item"><i data-lucide="users"></i> <span>${filled} / ${total} ${t('session.slots_meta')}</span></span>
+        ${sess.note ? `<span class="plan-meta-item"><i data-lucide="message-square"></i> <span>${esc(sess.note)}</span></span>` : ''}
       </div>
-      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
-        <span class="tx-sm tx-m">${t('session.time')}:</span>
-        <input type="time" class="fi" style="max-width:110px;font-size:var(--text-sm);"
-               value="${sessTime.start}"
-               ${sess.charged ? 'disabled' : ''}
-               onchange="planDetailAutoSave('timeStart', this.value)">
-        <span class="tx-sm tx-m">–</span>
-        <input type="time" class="fi" style="max-width:110px;font-size:var(--text-sm);"
-               value="${sessTime.end}"
-               ${sess.charged ? 'disabled' : ''}
-               onchange="planDetailAutoSave('timeEnd', this.value)">
-      </div>
-      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
-        <span class="tx-sm tx-m">${t('session.name')}:</span>
-        <input type="text" id="plan-name-input" class="fi" placeholder="${esc(getSessionName(sess))}"
-           style="flex:1;min-width:200px;font-size:var(--text-sm)"
-           value="${esc(sess.name || '')}"
-           ${sess.charged ? 'disabled' : ''}
-           oninput="planDetailAutoSave('name', this.value)"
-           onchange="planDetailAutoSave('name', this.value)">
-      </div>
-      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
-        <span class="tx-sm tx-m">${t('session.address')}</span>
-        <input type="text" class="fi" placeholder="${esc(S.cfg.srlocation || t('session.address_placeholder'))}"
-           style="flex:1;min-width:200px;font-size:var(--text-sm)"
-           value="${esc(sess.location || '')}"
-           ${sess.charged ? 'disabled' : ''}
-           oninput="planDetailAutoSave('location', this.value)"
-           onchange="planDetailAutoSave('location', this.value)">
-      </div>
-      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap;">
-        <span class="tx-sm tx-m">${t('session.comment')}:</span>
-        <input type="text" id="plan-note-input" class="fi" placeholder="${t('session.comment_placeholder')}"
-           style="flex:1;min-width:200px;font-size:var(--text-sm)"
-           value="${esc(sess.note || '')}"
-           ${sess.charged ? 'disabled' : ''}
-           oninput="planDetailAutoSave('note', this.value)"
-           onchange="planDetailAutoSave('note', this.value)">
-      </div>
-      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
-        <span class="tx-sm tx-m">${t('session.price')}:</span>
-        <input type="number" id="plan-price-input" class="fi" placeholder="${S.cfg.sr_cost || S.cfg.cost || 16}"
-           style="max-width:120px;font-size:var(--text-sm)"
-           value="${sess.price !== null && sess.price !== undefined ? sess.price : ''}"
-           ${sess.charged ? 'disabled' : ''}
-           oninput="planDetailAutoSave('price', this.value)"
-           onchange="planDetailAutoSave('price', this.value)">
-        <span class="txxs tx-m">${t('session.per_slot')}</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
-        <span class="tx-sm tx-m">${t('session.cancel_deadline')}:</span>
-        <input type="text" id="plan-cancel-hours" class="fi" placeholder="7:00"
-           style="max-width:100px;font-size:var(--text-sm)"
-           value="${sess.cancelHours !== null && sess.cancelHours !== undefined ? formatCancelHours(sess.cancelHours) : ''}"
-           ${sess.charged ? 'disabled' : ''}
-           onchange="planDetailAutoSave('cancelHours', parseCancelHours(this.value))">
-      </div>
-      <div class="flex g2 wrap" style="margin-top:var(--sp3)">
-        <button class="btn btn-pri btn-sm" onclick="savePlanDetails()"><i data-lucide="save"></i> ${t('misc.save')}</button>
-        ${isCancelled && !sess.charged ? '<button class="btn btn-dan btn-sm" onclick="deleteSession()"><i data-lucide="trash-2"></i> ' + t('misc.delete') + '</button>' : ''}
+
+      <div class="plan-edit-drawer" id="session-details-box" ${showDetails ? '' : 'hidden'}>
+        ${sess.charged ? `<p class="txxs txm mb3">${t('planner.locked_charged')}</p>` : ''}
+        <div class="plan-edit-grid">
+          <div class="fg">
+            <label class="fl">${t('session.date')}</label>
+            <input type="date" class="fi" style="font-size:var(--text-sm)"
+                   value="${sess.date}"
+                   ${sess.charged ? 'disabled' : ''}
+                   onchange="planDetailAutoSave('date', this.value)">
+          </div>
+          <div class="fg">
+            <label class="fl">${t('session.time')}</label>
+            <div class="flex items-c g2">
+              <input type="time" class="fi" style="flex:1;font-size:var(--text-sm)"
+                     value="${sessTime.start}"
+                     ${sess.charged ? 'disabled' : ''}
+                     onchange="planDetailAutoSave('timeStart', this.value)">
+              <span class="tx-sm tx-m">–</span>
+              <input type="time" class="fi" style="flex:1;font-size:var(--text-sm)"
+                     value="${sessTime.end}"
+                     ${sess.charged ? 'disabled' : ''}
+                     onchange="planDetailAutoSave('timeEnd', this.value)">
+            </div>
+          </div>
+          <div class="fg">
+            <label class="fl">${t('session.name')}</label>
+            <input type="text" id="plan-name-input" class="fi" placeholder="${esc(getSessionName(sess))}"
+                   style="font-size:var(--text-sm)"
+                   value="${esc(sess.name || '')}"
+                   ${sess.charged ? 'disabled' : ''}
+                   oninput="planDetailAutoSave('name', this.value)"
+                   onchange="planDetailAutoSave('name', this.value)">
+          </div>
+          <div class="fg">
+            <label class="fl">${t('session.address')}</label>
+            <input type="text" class="fi" placeholder="${esc(S.cfg.srlocation || t('session.address_placeholder'))}"
+                   style="font-size:var(--text-sm)"
+                   value="${esc(sess.location || '')}"
+                   ${sess.charged ? 'disabled' : ''}
+                   oninput="planDetailAutoSave('location', this.value)"
+                   onchange="planDetailAutoSave('location', this.value)">
+          </div>
+          <div class="fg">
+            <label class="fl">${t('session.price')} (${t('session.per_slot')})</label>
+            <input type="number" id="plan-price-input" class="fi" placeholder="${S.cfg.sr_cost || S.cfg.cost || 16}"
+                   style="font-size:var(--text-sm)"
+                   value="${sess.price !== null && sess.price !== undefined ? sess.price : ''}"
+                   ${sess.charged ? 'disabled' : ''}
+                   oninput="planDetailAutoSave('price', this.value)"
+                   onchange="planDetailAutoSave('price', this.value)">
+          </div>
+          <div class="fg">
+            <label class="fl">${t('session.cancel_deadline')}</label>
+            <input type="text" id="plan-cancel-hours" class="fi" placeholder="7:00"
+                   style="font-size:var(--text-sm)"
+                   value="${sess.cancelHours !== null && sess.cancelHours !== undefined ? formatCancelHours(sess.cancelHours) : ''}"
+                   ${sess.charged ? 'disabled' : ''}
+                   onchange="planDetailAutoSave('cancelHours', parseCancelHours(this.value))">
+          </div>
+          <div class="fg fg-full">
+            <label class="fl">${t('session.comment')}</label>
+            <input type="text" id="plan-note-input" class="fi" placeholder="${t('session.comment_placeholder')}"
+                   style="font-size:var(--text-sm)"
+                   value="${esc(sess.note || '')}"
+                   ${sess.charged ? 'disabled' : ''}
+                   oninput="planDetailAutoSave('note', this.value)"
+                   onchange="planDetailAutoSave('note', this.value)">
+          </div>
+        </div>
+        ${!sess.charged ? `
+        <div class="flex items-c just-b wrap g2 mt4" style="padding-top:var(--sp3);border-top:1px dashed var(--bor)">
+          <div class="flex g2 wrap">
+            ${!isCancelled ? `<button class="btn btn-dan btn-sm" onclick="toggleSessionCancel()"><i data-lucide="x-circle"></i> ${t('session.cancel')}</button>` : ''}
+            ${isCancelled ? `<button class="btn btn-dan btn-sm" onclick="deleteSession()"><i data-lucide="trash-2"></i> ${t('misc.delete')}</button>` : ''}
+          </div>
+          <button class="btn btn-pri btn-sm" onclick="savePlanDetails()"><i data-lucide="save"></i> ${t('misc.save')}</button>
+        </div>` : ''}
       </div>
     `;
-    if (wasOpen) details.open = true;
   }
 
   // 4. Slot Editor
@@ -2337,15 +2316,7 @@ function renderAdminPlan(keepDetailsOpen) {
     wlEl.innerHTML = `<h3 class="sec-title" style="margin-bottom:var(--sp2)">${t('session.waitlist')}</h3><p class="txsm txm">${t('session.no_entries')}</p>${adminWlBtn}`;
   }
 
-  // 6. Summary compatibility container
-  const sumEl = document.getElementById('plan-summary');
-  if (sumEl) {
-    sumEl.style.display = '';
-    sumEl.className = 'card mb6';
-    sumEl.innerHTML = `<div class="flex items-c just-b"><h3 class="sec-title" style="margin-bottom:0">${t('session.billing_charge')}</h3><button class="btn btn-pri btn-sm" onclick="openChargeModal()"><i data-lucide="credit-card"></i> ${t('session.billing_charge')}</button></div>`;
-  }
-
-  // 7. Update active tab views
+  // 6. Update active tab views
   setPlanTab(planTab);
 
   // Auto-scroll active chip into view

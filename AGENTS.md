@@ -79,21 +79,16 @@ Before making changes to the codebase, please read the corresponding role file i
 
 ### Modern Session Planner (`view-admin-plan`)
 The session planner focuses purely on session organization (dates, times, courts, player bookings, waitlist):
-1. **Interactive Date Strip & Quick Selector** (`#session-selector-box`):
-   - Horizontal scrollable `.plan-strip` with `.plan-chip` cards displaying weekday, day number, month, and live status badge (`✓` charged, `€` awaiting billing, `filled/total`, or `✕` cancelled).
-   - "HEUTE" visual anchor marking the boundary between past and future sessions.
-   - Quick navigation controls (previous, today/next, next, date picker dialog, and "+ Neue Session").
-   - Synchronized `<select id="session-selector">` accessible dropdown for immediate jump or test automation.
-2. **Session Header & Status Card** (`#admin-plan-header-dynamic`):
-   - Session title with series indicator (`planner.from_series`), live `.status-pill` badge (Offen, Wartet auf Abrechnung, Abgerechnet, Abgesagt).
-   - Metadata chips: Date, custom time span, location address, cost per slot, and filled slots count.
-   - Context-aware primary action button (e.g. "Zur Abrechnung" / "In Abrechnung ansehen" / "Reaktivieren" / "Absagen") and "..." menu.
-3. **Collapsible Session Details** (`#session-details-box`):
-   - `<details>` card toggled via "Details bearbeiten".
-   - Debounced auto-save with inline visual feedback (`.save-indicator` checkmark).
-   - Form fields: Date, time start/end, custom name, address, notes, price override, cancel deadline.
-   - Automatic locking with explanatory message when session has already been charged.
-4. **Section Tabs** (`#plan-tabs`):
+1. **Interactive Date Strip & Top Bar** (`#session-selector-box`):
+   - Single-row `.plan-top-bar` containing the horizontal scrollable `.plan-strip` and right-aligned quick controls (date picker dialog and "+ Neue Session").
+   - `.plan-chip` cards display weekday + month, large day number, session start time (`.pc-time` to distinguish multiple sessions on the same day), and live status badge (`✓` charged, `€` awaiting billing, `filled/total`, or `✕` cancelled), with `data-date` and `data-id` attributes.
+   - Clickable "HEUTE" visual anchor marking the boundary between past and future sessions and jumping directly to the next upcoming session.
+2. **Unified Session Header & Integrated Details Drawer** (`#admin-plan-header-dynamic`):
+   - Session title with series indicator (`planner.from_series`) and live `.status-pill` badge (Offen, Wartet auf Abrechnung, Abgerechnet, Abgesagt).
+   - Properly aligned inline metadata chips (`.plan-meta-item` with `display: inline-flex`): Date, time span, slot price, occupancy, and conditional location/note chips (shown only when non-empty).
+   - Focused action bar: Context-aware primary action button ("Zur Abrechnung" / "In Abrechnung ansehen" / "Reaktivieren"), "Details bearbeiten" drawer toggle (`#plan-edit-toggle-btn`), and `⋯` menu.
+   - **Integrated Edit Drawer** (`#session-details-box.plan-edit-drawer`): Folds directly into the bottom of the header card with a responsive multi-column `.plan-edit-grid`, debounced auto-save with inline checkmark feedback (`.save-indicator`), and automatic locking when a session has already been charged.
+3. **Section Tabs** (`#plan-tabs`):
    - **Belegung** (`#plan-card-slots`): Visual court cards with slot chips, court names, and "+ Court" button.
    - **Warteliste** (`#plan-waitlist-admin`): Waitlist management with counter badge on the tab.
    - **Verlauf** (`#plan-history`): Audit activity log loaded on demand.

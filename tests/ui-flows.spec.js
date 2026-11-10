@@ -251,26 +251,30 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await navigateAdmin(page, 'admin-plan');
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
 
-    // Wait for dropdown to populate with the session created in beforeEach
+    // Wait for slider to populate with the session created in beforeEach
     await page.waitForTimeout(500);
 
-    // Select the session
-    await page.selectOption('#session-selector', TOMORROW);
+    // Select the session in the date slider
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(300);
 
-    // Verify session details box is visible
+    // Open details drawer
+    await page.locator('#plan-edit-toggle-btn').click();
     await expect(page.locator('#session-details-box')).toBeVisible();
 
     // Cancel session
-    const cancelBtn = page.locator('button:has-text("Absagen")');
+    const cancelBtn = page.locator('#session-details-box button:has-text("Absagen")');
     await expect(cancelBtn).toBeVisible();
     await cancelBtn.click();
     await page.waitForTimeout(500);
 
     // Should now show "Reaktivieren" (session is cancelled)
-    await expect(page.locator('button:has-text("Reaktivieren")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#admin-plan-header-dynamic button:has-text("Reaktivieren")').first()).toBeVisible({ timeout: 5000 });
 
-    // Delete session
+    // Re-open details drawer (if needed) and delete session
+    if (!(await page.locator('#session-details-box').isVisible())) {
+      await page.locator('#plan-edit-toggle-btn').click();
+    }
     const deleteBtn = page.locator('#session-details-box button:has-text("Löschen")');
     await expect(deleteBtn).toBeVisible();
     await deleteBtn.click();
@@ -279,9 +283,8 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await confirmBtn.click();
     await page.waitForTimeout(500);
 
-    // Verify session is gone from dropdown
-    const dd = page.locator('#session-selector');
-    await expect(dd).not.toContainText(TOMORROW);
+    // Verify session is gone from date slider
+    await expect(page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`)).toHaveCount(0);
   });
 
   test('07 — Add player via UI: Hinzufügen form', async ({ page }) => {
@@ -327,8 +330,8 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
     await page.waitForTimeout(500);
 
-    // Select tomorrow's session
-    await page.selectOption('#session-selector', TOMORROW);
+    // Select tomorrow's session in the date slider
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(500);
 
     // Click the first empty slot in the admin plan editor
@@ -387,15 +390,14 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     // Create
     await page.locator('#mo-add-session .btn-pri').click();
     await expect(page.locator('#mo-add-session')).not.toHaveClass(/open/, { timeout: 5000 });
-    // Session should now be in the dropdown (formatted as localised date)
-    const monthShort = future.toLocaleDateString('de-DE', { month: 'short' }).replace('.', '');
-    await expect(page.locator('#session-selector')).toContainText(new RegExp(`${monthShort}.*26`));
+    // Session should now be in the date slider
+    await expect(page.locator(`#plan-strip .plan-chip[data-date="${futureDate}"]`)).toBeVisible();
   });
 
   test('15 — Court Name inline editing via Court Section in Admin Plan', async ({ page, request }) => {
     await navigateAdmin(page, 'admin-plan');
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
-    await page.selectOption('#session-selector', TOMORROW);
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(500);
 
     // Find input for Court 1 (court index 0) and Court 2 (court index 1)
@@ -471,7 +473,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
   test('17 — Court Deactivation & Reactivation in Session Planner', async ({ page }) => {
     await navigateAdmin(page, 'admin-plan');
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
-    await page.selectOption('#session-selector', TOMORROW);
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(500);
 
     // Deactivate Court 2 (second .court-sep)
@@ -497,7 +499,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // Navigate back to admin plan and reactivate Court 2
     await navigateAdmin(page, 'admin-plan');
-    await page.selectOption('#session-selector', TOMORROW);
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(500);
 
     const activateBtn = page.locator('.court-sep button.btn-ok').first();
@@ -843,12 +845,12 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
     await page.waitForTimeout(500);
 
-    // Select tomorrow's session
-    await page.selectOption('#session-selector', TOMORROW);
+    // Select tomorrow's session in the date slider
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(500);
 
-    // Click "Abrechnen" in the summary card
-    const chargeBtn = page.locator('#plan-summary button:has-text("Abrechnen")').first();
+    // Click "Abrechnen" / "Zur Abrechnung" in the header card
+    const chargeBtn = page.locator('#admin-plan-header-dynamic button:has-text("Abrechnen"), #admin-plan-header-dynamic button:has-text("Zur Abrechnung")').first();
     await expect(chargeBtn).toBeVisible({ timeout: 5000 });
     await chargeBtn.click();
     await expect(page.locator('#mo-billing')).toHaveClass(/open/);
