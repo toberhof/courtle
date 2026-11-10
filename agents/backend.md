@@ -18,9 +18,9 @@ You are an expert Backend Developer specializing in lightweight PHP 8.4 and SQLi
 | Table | Structure & Constraints |
 | :--- | :--- |
 | `players` | `id` (PK, Text), `name` (Text), `contact` (Text), `pin_hash` (Text), `created_at` (Text), `last_login` (Text), `last_interaction` (Text), `admin` (Integer, default 0), `emoji` (Text), `active` (Integer, default 1) |
-| `sessions` | `date` (PK, Text), `charged` (Integer, default 0), `disabled_courts` (Text, JSON), `waitlist` (Text, JSON), `note` (Text), `time_start` (Text), `time_end` (Text), `cancelled` (Integer, default 0), `location` (Text), `price` (Real, nullable) |
-| `courts` | `session_date` (Text), `court_index` (Integer), `slot_index` (Integer), `player_id` (Text), `PRIMARY KEY(session_date, court_index, slot_index)` |
-| `transactions` | `id` (PK, Text), `player_id` (Text), `credit` (Integer), `amount` (Real), `date` (Text), `created_at` (Text), `note` (Text) |
+| `sessions` | `id` (PK, Text), `date` (Text), `charged` (Integer, default 0), `disabled_courts` (Text, JSON), `waitlist` (Text, JSON), `note` (Text), `time_start` (Text), `time_end` (Text), `cancelled` (Integer, default 0), `location` (Text), `price` (Real, nullable), `cancel_hours` (Real, nullable), `name` (Text, nullable), `court_names` (Text, nullable) |
+| `courts` | `session_id` (Text), `court_index` (Integer), `slot_index` (Integer), `player_id` (Text), `PRIMARY KEY(session_id, court_index, slot_index)` |
+| `transactions` | `id` (PK, Text), `player_id` (Text), `credit` (Integer), `amount` (Real), `date` (Text), `created_at` (Text), `note` (Text), `session_id` (Text, nullable) |
 | `expenses` | `id` (PK, Text), `amount` (Real), `date` (Text), `note` (Text), `created_at` (Text) |
 | `config` | `key` (PK, Text), `value` (Text) |
 | `login_sessions` | `token` (PK, Text), `admin` (Integer, default 0), `exp` (Integer), `player_id` (Text), `created_at` (Integer) |
@@ -37,6 +37,9 @@ You are an expert Backend Developer specializing in lightweight PHP 8.4 and SQLi
 
 ### Schema Migrations
 * Database schemas must be initialized or upgraded inside the `init_db(PDO $db)` function.
+* **Schema Versions (`schema_version` in `config`)**:
+  - `schema_version = '2'`: Migrated sessions to unique UUID `id`, `courts.session_id`.
+  - `schema_version = '3'`: Added `transactions.session_id` to link debits and direct payments to sessions for batch charging and atomic cancellation/reverts.
 * All new tables or columns must use idempotent clauses (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN`) wrapped in isolated `try/catch` blocks to prevent execution failures on pre-existing databases.
 * **IMPORTANT**: `init_db()` must ONLY be called on first startup (when no tables exist) or in error recovery scenarios. NEVER call `init_db()` on every request — it is expensive and defeats the purpose of the existence check. The `db()` function checks for the `config` table and only calls `init_db()` if it is missing.
 

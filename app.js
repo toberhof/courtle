@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 430;
+const CLIENT_BUILD = 431;
 let S = {
   players: [],
   transactions: [],
@@ -1858,12 +1858,146 @@ function sortActivityTable(column) {
 }
 
 // ════════════════════════════════════════
-// ADMIN – SESSION PLANNER
+// ADMIN – SESSION PLANNER (MODERN)
 // ════════════════════════════════════════
-function renderAdminPlan() {
+let planTab = 'slots';
+let _planSaveTimeout = null;
+
+function setPlanTab(tab) {
+  planTab = tab;
+  ['slots', 'waitlist', 'history'].forEach(tKey => {
+    const btn = document.getElementById('plan-tab-' + tKey);
+    if (btn) {
+      btn.classList.toggle('active', tKey === tab);
+      btn.setAttribute('aria-selected', tKey === tab ? 'true' : 'false');
+    }
+  });
+  const cSlots = document.getElementById('plan-card-slots');
+  const cWl = document.getElementById('plan-waitlist-admin');
+  const cHist = document.getElementById('plan-history');
+  if (cSlots) cSlots.style.display = tab === 'slots' ? '' : 'none';
+  if (cWl) cWl.style.display = tab === 'waitlist' ? '' : 'none';
+  if (cHist) {
+    cHist.style.display = tab === 'history' ? '' : 'none';
+    if (tab === 'history' && planDate) renderSessionHistory(planDate);
+  }
+}
+
+function scrollPlanStrip(delta) {
+  const el = document.getElementById('plan-strip');
+  if (el) el.scrollBy({ left: delta * 240, behavior: 'smooth' });
+}
+
+function planGoToDateClosest(dateStr) {
+  if (!dateStr) return;
+  const all = getAllSessionsAdmin();
+  if (!all.length) return;
+  let target = all.find(s => s.date === dateStr);
+  if (!target) {
+    target = all.find(s => s.date >= dateStr) || all[all.length - 1];
+  }
+  if (target) {
+    planDate = target.id || target.date;
+    renderAdminPlan();
+  }
+}
+
+function togglePlanDetails() {
+  const box = document.getElementById('session-details-box');
+  if (box) box.open = !box.open;
+}
+
+function togglePlanMoreMenu(e) {
+  if (e) e.stopPropagation();
+  const dd = document.getElementById('plan-more-dd');
+  if (dd) dd.classList.toggle('open');
+}
+
+function closePlanMoreMenu() {
+  const dd = document.getElementById('plan-more-dd');
+  if (dd) dd.classList.remove('open');
+}
+
+function planDetailAutoSave(field, value) {
+  planDetailChange(field, value);
+  if (_planSaveTimeout) clearTimeout(_planSaveTimeout);
+  _planSaveTimeout = setTimeout(() => {
+    savePlanDetailsSilent();
+  }, 400);
+}
+
+async function savePlanDetailsSilent() {
+  if (Object.keys(_planDetailChanges).length === 0) return;
+  const ind = document.getElementById('plan-save-indicator');
+  try {
+    const updates = {};
+    if (_planDetailChanges.date) updates.newDate = _planDetailChanges.date;
+    if (_planDetailChanges.timeStart) updates.timeStart = _planDetailChanges.timeStart;
+    if (_planDetailChanges.timeEnd) updates.timeEnd = _planDetailChanges.timeEnd;
+    if (_planDetailChanges.note !== undefined) updates.note = _planDetailChanges.note;
+    if (_planDetailChanges.location !== undefined) updates.location = _planDetailChanges.location;
+    if (_planDetailChanges.price !== undefined) updates.price = _planDetailChanges.price === '' ? null : parseFloat(_planDetailChanges.price);
+    if (_planDetailChanges.cancelHours !== undefined) updates.cancelHours = _planDetailChanges.cancelHours === null ? null : _planDetailChanges.cancelHours;
+    if (_planDetailChanges.name !== undefined) updates.name = _planDetailChanges.name === '' ? null : _planDetailChanges.name;
+    if (_planDetailChanges.courtNames !== undefined) updates.courtNames = _planDetailChanges.courtNames;
+
+    const sess = getOrSess(planDate);
+    const targetId = sess?.id || planDate;
+    const res = await apiFetch('PUT', '/sessions/' + targetId, updates);
+    await loadState();
+    _planDetailChanges = {};
+    if (res && res.id) planDate = res.id;
+
+    if (ind) {
+      ind.classList.add('show');
+      setTimeout(() => ind.classList.remove('show'), 2000);
+    }
+    renderAdminPlan(true);
+    renderSessions();
+    lucide.createIcons();
+  } catch (e) {
+    showToast('⚠️ ' + (e.message || t('misc.save_failed')));
+  }
+}
+
+function renderAdminPlan(keepDetailsOpen) {
   if (!S.sessions) return;
   const allSessions = getAllSessionsAdmin();
-  if (allSessions.length === 0) return;
+  const selBox = document.getElementById('session-selector-box');
+  const headBox = document.getElementById('admin-plan-header-dynamic');
+
+  if (allSessions.length === 0) {
+    if (selBox) selBox.innerHTML = '<div class="session-selector-bar mt2"><select id="session-selector" class="fi" style="width:100%;font-size:var(--text-sm)"></select></div>';
+    if (headBox) {
+      headBox.innerHTML = `
+        <div style="padding:var(--sp8) var(--sp4);text-align:center">
+          <i data-lucide="calendar" style="width:48px;height:48px;color:var(--txm);margin-bottom:var(--sp3)"></i>
+          <h2 class="sec-title">${t('planner.empty_title')}</h2>
+          <p class="txsm txm mb4">${t('planner.empty_text')}</p>
+          <div class="flex just-c g2">
+            <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()"><i data-lucide="plus"></i> ${t('session.new')}</button>
+            <button class="btn btn-sec btn-sm" onclick="showView('series')"><i data-lucide="repeat"></i> ${t('planner.setup_series')}</button>
+          </div>
+        </div>`;
+    }
+    const cSlots = document.getElementById('plan-card-slots');
+    const cWl = document.getElementById('plan-waitlist-admin');
+    const cHist = document.getElementById('plan-history');
+    const tabs = document.getElementById('plan-tabs');
+    const details = document.getElementById('session-details-box');
+    if (cSlots) cSlots.style.display = 'none';
+    if (cWl) cWl.style.display = 'none';
+    if (cHist) cHist.style.display = 'none';
+    if (tabs) tabs.style.display = 'none';
+    if (details) details.style.display = 'none';
+    lucide.createIcons();
+    return;
+  }
+
+  const tabs = document.getElementById('plan-tabs');
+  const details = document.getElementById('session-details-box');
+  if (tabs) tabs.style.display = '';
+  if (details) details.style.display = '';
 
   const today = toDS(new Date());
   if (!planDate) {
@@ -1883,20 +2017,35 @@ function renderAdminPlan() {
   const isCancelled = rawSess?.cancelled ?? sess?.cancelled ?? false;
   if (!sess.disabledCourts) sess.disabledCourts = [];
   const sessTime = getSessionTime(sess);
-  const cancelBtn = !sess.charged
-    ? (isCancelled
-        ? '<button class="btn btn-ok btn-sm" onclick="toggleSessionCancel()"><i data-lucide="rotate-ccw"></i> ' + t('session.reactivate') + '</button>'
-        : '<button class="btn btn-dan btn-sm" onclick="toggleSessionCancel()"><i data-lucide="x-circle"></i> ' + t('session.cancel') + '</button>')
-    : '';
+  const sessCost = getSessionCost(sess);
+  const sessId = sess.id || sess.date;
 
-  // Build session selector dropdown
+  const activeCourts = sess.courts.filter((_, i) => !sess.disabledCourts.includes(i));
+  const allPids = [...new Set(activeCourts.flat().filter(Boolean))];
+  const total = activeCourts.length * 4;
+  const filled = allPids.length;
+  const isEnded = sessionEndDate(sess) < new Date();
+  const isAwaiting = !sess.charged && !isCancelled && isEnded && filled > 0;
+
+  let statusClass = 'st-open';
+  let statusLabel = t('planner.status_open');
+  if (isCancelled) {
+    statusClass = 'st-cancelled';
+    statusLabel = t('planner.status_cancelled');
+  } else if (sess.charged) {
+    statusClass = 'st-charged';
+    statusLabel = t('planner.status_charged');
+  } else if (isAwaiting) {
+    statusClass = 'st-awaiting';
+    statusLabel = t('planner.status_awaiting');
+  }
+
+  // 1. Date strip and options for select dropdown
   const upcomingSessions = allSessions.filter(s => s.date >= today);
   const pastSessions = allSessions.filter(s => s.date < today);
 
   const dateCounts = {};
-  allSessions.forEach(s => {
-    dateCounts[s.date] = (dateCounts[s.date] || 0) + 1;
-  });
+  allSessions.forEach(s => { dateCounts[s.date] = (dateCounts[s.date] || 0) + 1; });
 
   function makeOpt(s) {
     const sId = (dateCounts[s.date] === 1) ? s.date : (s.id || s.date);
@@ -1915,116 +2064,206 @@ function renderAdminPlan() {
     if (upcomingSessions.length > 0) sessionOptions += '</optgroup>';
   }
 
-  document.getElementById('admin-plan-header-dynamic').innerHTML = '';
+  function makeChip(s) {
+    const sId = s.id || s.date;
+    const isSel = (s.id === planDate || s.date === planDate);
+    const sCounts = sessionChargeMap(s);
+    const sTotalSlots = (s.courts ? s.courts.length : 2) * 4;
+    const sFilled = Object.values(sCounts).reduce((a, b) => a + b, 0);
+    const sEnded = sessionEndDate(s) < new Date();
+    const sAwaiting = !s.charged && !s.cancelled && sEnded && sFilled > 0;
 
-  // Session selector card
-  let selectorBox = document.getElementById('session-selector-box');
-  if (!selectorBox) {
-    selectorBox = document.createElement('div');
-    selectorBox.id = 'session-selector-box';
-    selectorBox.className = 'card mb4';
-    document.getElementById('admin-plan-header-dynamic').parentNode.insertBefore(selectorBox, document.getElementById('admin-plan-header-dynamic').nextSibling);
+    let chipClass = 'st-open';
+    let bText = `${sFilled}/${sTotalSlots}`;
+    if (s.cancelled) { chipClass = 'st-cancelled'; bText = '✕'; }
+    else if (s.charged) { chipClass = 'st-charged'; bText = '✓'; }
+    else if (sAwaiting) { chipClass = 'st-awaiting'; bText = '€'; }
+
+    const dObj = new Date(s.date + 'T00:00:00');
+    const wkdy = dObj.toLocaleDateString(I18N.current === 'de' ? 'de-DE' : 'en-US', { weekday: 'short' });
+    const dayNum = dObj.getDate();
+    const mStr = dObj.toLocaleDateString(I18N.current === 'de' ? 'de-DE' : 'en-US', { month: 'short' }).replace('.', '');
+
+    return `<button class="plan-chip ${chipClass} ${isSel ? 'active' : ''}" onclick="planGoToDate('${sId}')" type="button" aria-selected="${isSel ? 'true' : 'false'}">
+      <span class="pc-wkdy">${wkdy}</span>
+      <span class="pc-day">${dayNum}</span>
+      <span class="pc-month">${mStr}</span>
+      <span class="pc-badge">${bText}</span>
+    </button>`;
   }
-  selectorBox.innerHTML = `
-    <div class="flex items-c just-b mb4">
-      <h3 class="sec-title" style="margin-bottom:0">${t('session.select')}</h3>
-      <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()"><i data-lucide="calendar-plus"></i> ${t('session.new')}</button>
-    </div>
-    <p class="txxs tx-m" style="margin-top:var(--sp2)">${t('session.edit_info')}</p>
-    <div class="session-selector-bar" style="margin-top:var(--sp3)">
-      <select id="session-selector" class="fi" style="flex:1;font-size:var(--text-sm)" onchange="planGoToDate(this.value)">
-        ${sessionOptions}
-      </select>
-    </div>
-    <div class="flex items-c just-b" style="margin-top:var(--sp3)">
-      <div class="flex g2">
-        <button class="btn btn-sec btn-sm" onclick="planPrev()"><i data-lucide="chevron-left"></i></button>
-        <button class="btn btn-sec btn-sm" onclick="planGoToUpcoming()" title="${t('session.next')}"><i data-lucide="clock"></i></button>
-        <button class="btn btn-sec btn-sm" onclick="planNext()"><i data-lucide="chevron-right"></i></button>
+
+  let chipsHtml = '';
+  if (pastSessions.length > 0) {
+    chipsHtml += pastSessions.map(makeChip).join('');
+  }
+  if (pastSessions.length > 0 && upcomingSessions.length > 0) {
+    chipsHtml += `<div class="plan-today-marker">HEUTE</div>`;
+  }
+  if (upcomingSessions.length > 0) {
+    chipsHtml += upcomingSessions.map(makeChip).join('');
+  }
+
+  if (selBox) {
+    selBox.innerHTML = `
+      <div class="flex items-c just-b gap2 wrap mb2">
+        <div class="flex items-c g2">
+          <button class="btn btn-sec btn-sm" onclick="planPrev()" title="Vorherige Session"><i data-lucide="chevron-left"></i></button>
+          <button class="btn btn-sec btn-sm" onclick="planGoToUpcoming()" title="${t('session.next')}"><i data-lucide="clock"></i></button>
+          <button class="btn btn-sec btn-sm" onclick="planNext()" title="Nächste Session"><i data-lucide="chevron-right"></i></button>
+        </div>
+        <div class="flex items-c g2">
+          <button class="btn btn-sec btn-sm" onclick="document.getElementById('plan-date-picker').showPicker ? document.getElementById('plan-date-picker').showPicker() : document.getElementById('plan-date-picker').click()" title="${t('planner.jump_to_date')}"><i data-lucide="calendar"></i></button>
+          <input type="date" id="plan-date-picker" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="planGoToDateClosest(this.value)">
+          <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()"><i data-lucide="plus"></i> <span data-i18n="session.new">${t('session.new')}</span></button>
+        </div>
       </div>
-    </div>
+      <div class="plan-strip-wrap">
+        <button class="plan-strip-nav" onclick="scrollPlanStrip(-1)" type="button" aria-label="Links scrollen">‹</button>
+        <div class="plan-strip" id="plan-strip" role="listbox">
+          ${chipsHtml}
+        </div>
+        <button class="plan-strip-nav" onclick="scrollPlanStrip(1)" type="button" aria-label="Rechts scrollen">›</button>
+      </div>
+      <div class="session-selector-bar mt2"><select id="session-selector" class="fi" style="width:100%;font-size:var(--text-sm)" onchange="planGoToDate(this.value)">
+        ${sessionOptions}
+      </select></div>
     `;
-
-  // Session Details card (inserted after selector box)
-  let detailsBox = document.getElementById('session-details-box');
-  if (!detailsBox) {
-    detailsBox = document.createElement('div');
-    detailsBox.id = 'session-details-box';
-    detailsBox.className = 'card mb4';
-    selectorBox.parentNode.insertBefore(detailsBox, selectorBox.nextSibling);
   }
-  detailsBox.innerHTML = `
-    <h3 class="sec-title">${t('session.edit')}</h3>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp3);flex-wrap:nowrap;">
-      <span class="tx-sm tx-m">${t('session.date')}:</span>
-      <input type="date" class="fi" style="font-size:var(--text-sm)"
-             value="${sess.date}"
-             onchange="planDetailChange('date', this.value)">
-    </div>
-    <p class="txxs tx-m" style="margin:2px 0 0 0">${t('session.date_hint')}</p>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
-      <span class="tx-sm tx-m">${t('session.time')}:</span>
-      <input type="time" class="fi" style="max-width:110px;font-size:var(--text-sm);"
-             value="${sessTime.start}"
-             onchange="planDetailChange('timeStart', this.value)">
-      <span class="tx-sm tx-m">–</span>
-      <input type="time" class="fi" style="max-width:110px;font-size:var(--text-sm);"
-             value="${sessTime.end}"
-             onchange="planDetailChange('timeEnd', this.value)">
-    </div>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
-      <span class="tx-sm tx-m">${t('session.name')}:</span>
-      <input type="text" id="plan-name-input" class="fi" placeholder="${esc(getSessionName(sess))}"
-         style="flex:1;min-width:200px;font-size:var(--text-sm)"
-         value="${esc(sess.name || '')}"
-         onchange="planDetailChange('name', this.value)">
-    </div>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
-      <span class="tx-sm tx-m">${t('session.address')}</span>
-      <input type="text" class="fi" placeholder="${esc(S.cfg.srlocation || t('session.address_placeholder'))}"
-         style="flex:1;min-width:200px;font-size:var(--text-sm)"
-         value="${esc(sess.location || '')}"
-         onchange="planDetailChange('location', this.value)">
-    </div>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap;">
-      <span class="tx-sm tx-m">${t('session.comment')}:</span>
-      <input type="text" id="plan-note-input" class="fi" placeholder="${t('session.comment_placeholder')}"
-         style="flex:1;min-width:200px;font-size:var(--text-sm)"
-         value="${esc(sess.note || '')}"
-         onchange="planDetailChange('note', this.value)">
-    </div>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
-      <span class="tx-sm tx-m">${t('session.price')}:</span>
-      <input type="number" id="plan-price-input" class="fi" placeholder="${S.cfg.sr_cost || S.cfg.cost || 16}"
-         style="max-width:120px;font-size:var(--text-sm)"
-         value="${sess.price !== null && sess.price !== undefined ? sess.price : ''}"
-         onchange="planDetailChange('price', this.value)">
-    </div>
-    <p class="txxs tx-m" style="margin:2px 0 0 var(--sp2)">${t('session.per_slot')}</p>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
-      <span class="tx-sm tx-m">${t('session.cancel_deadline')}:</span>
-      <input type="text" id="plan-cancel-hours" class="fi" placeholder="7:00"
-         style="max-width:100px;font-size:var(--text-sm)"
-         value="${sess.cancelHours !== null && sess.cancelHours !== undefined ? formatCancelHours(sess.cancelHours) : ''}"
-         onchange="planDetailChange('cancelHours', parseCancelHours(this.value))">
-    </div>
-    <p class="txxs tx-m" style="margin:2px 0 0 var(--sp2)">${t('session.cancel_deadline_hint')}</p>
-    <div class="flex g2 wrap" style="margin-top:var(--sp3)">
-      <button class="btn btn-pri btn-sm" onclick="savePlanDetails()"><i data-lucide="save"></i> ${t('misc.save')}</button>
-      ${cancelBtn}
-      ${isCancelled && !sess.charged ? '<button class="btn btn-dan btn-sm" onclick="deleteSession()"><i data-lucide="trash-2"></i> ' + t('misc.delete') + '</button>' : ''}
-    </div>
-  `;
 
-  const activeCourts = sess.courts.filter((_, i) => !sess.disabledCourts.includes(i));
-  const allPids = [...new Set(activeCourts.flat().filter(Boolean))];
-  const total = activeCourts.length * 4;
-  const filled = allPids.length;
+  // 2. Primary action button in header
+  let primaryActionBtn = '';
+  if (isCancelled) {
+    primaryActionBtn = `<button class="btn btn-ok btn-sm" onclick="toggleSessionCancel()"><i data-lucide="rotate-ccw"></i> ${t('session.reactivate')}</button>`;
+  } else if (sess.charged) {
+    primaryActionBtn = `<button class="btn btn-sec btn-sm" onclick="setBillingTab('charged');showView('billing')"><i data-lucide="receipt"></i> ${t('planner.view_in_billing')}</button>`;
+  } else if (isAwaiting) {
+    primaryActionBtn = `<button class="btn btn-gld btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="receipt"></i> ${t('planner.to_billing')}</button>`;
+  } else if (filled > 0) {
+    primaryActionBtn = `<button class="btn btn-pri btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="credit-card"></i> ${t('session.billing_charge')}</button>`;
+  }
+
+  const cancelBtn = (!sess.charged && !isCancelled)
+    ? `<button class="btn btn-dan btn-sm" onclick="toggleSessionCancel()"><i data-lucide="x-circle"></i> ${t('session.cancel')}</button>`
+    : '';
+
+  // Render header dynamic card
+  if (headBox) {
+    headBox.innerHTML = `
+      <div class="flex items-c just-b wrap g2 mb3">
+        <div class="flex items-c g2 wrap">
+          <h2 class="sec-title" style="margin-bottom:0">${esc(getSessionName(sess))}</h2>
+          ${sess.seriesId ? `<span class="badge bg-sec" title="${esc(t('planner.from_series'))}"><i data-lucide="repeat" style="width:12px;height:12px"></i></span>` : ''}
+          <span class="status-pill ${statusClass}">${statusLabel}</span>
+        </div>
+        <div class="flex items-c g2 wrap">
+          ${primaryActionBtn}
+          ${cancelBtn}
+          <button class="btn btn-sec btn-sm" onclick="togglePlanDetails()"><i data-lucide="edit-2"></i> ${t('planner.edit_details')}</button>
+          <div class="plan-more-menu">
+            <button class="btn btn-sec btn-sm" id="plan-more-btn" onclick="togglePlanMoreMenu(event)" aria-label="${t('planner.more')}"><i data-lucide="more-horizontal"></i></button>
+            <div class="plan-more-dd" id="plan-more-dd">
+              <button class="plan-more-item" onclick="openAddSessionModal();closePlanMoreMenu()"><i data-lucide="calendar-plus"></i> ${t('session.new')}</button>
+              ${isCancelled && !sess.charged ? `<button class="plan-more-item dan" onclick="deleteSession();closePlanMoreMenu()"><i data-lucide="trash-2"></i> ${t('misc.delete')}</button>` : ''}
+              <button class="plan-more-item" onclick="openTeamRandomizer('${sessId}');closePlanMoreMenu()"><i data-lucide="shuffle"></i> Team-Randomizer</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="flex items-c g4 wrap txsm txm">
+        <span><i data-lucide="calendar"></i> ${esc(fmtDL(sess.date))}</span>
+        <span><i data-lucide="clock"></i> ${sessTime.start}–${sessTime.end}</span>
+        <span><i data-lucide="map-pin"></i> ${esc(sess.location || S.cfg.srlocation || t('session.address_placeholder'))}</span>
+        <span><i data-lucide="tag"></i> ${fmtE(sessCost)} / Slot</span>
+        <span class="badge bg-sec">${filled} / ${total} ${t('session.slots_meta')}</span>
+      </div>
+    `;
+  }
+
+  // 3. Details box
+  const wasOpen = keepDetailsOpen || isCancelled || (details && details.open);
+  if (details) {
+    details.innerHTML = `
+      <summary class="plan-details-summary">
+        <span class="flex items-c g2"><i data-lucide="settings-2"></i> <span>${t('planner.edit_details')}</span></span>
+        <span class="save-indicator" id="plan-save-indicator"><i data-lucide="check"></i> ${t('planner.saved')}</span>
+      </summary>
+      ${sess.charged ? `<p class="txxs txm mb3" style="color:var(--txm)">${t('planner.locked_charged')}</p>` : ''}
+      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp3);flex-wrap:nowrap;">
+        <span class="tx-sm tx-m">${t('session.date')}:</span>
+        <input type="date" class="fi" style="font-size:var(--text-sm)"
+               value="${sess.date}"
+               ${sess.charged ? 'disabled' : ''}
+               onchange="planDetailAutoSave('date', this.value)">
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
+        <span class="tx-sm tx-m">${t('session.time')}:</span>
+        <input type="time" class="fi" style="max-width:110px;font-size:var(--text-sm);"
+               value="${sessTime.start}"
+               ${sess.charged ? 'disabled' : ''}
+               onchange="planDetailAutoSave('timeStart', this.value)">
+        <span class="tx-sm tx-m">–</span>
+        <input type="time" class="fi" style="max-width:110px;font-size:var(--text-sm);"
+               value="${sessTime.end}"
+               ${sess.charged ? 'disabled' : ''}
+               onchange="planDetailAutoSave('timeEnd', this.value)">
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
+        <span class="tx-sm tx-m">${t('session.name')}:</span>
+        <input type="text" id="plan-name-input" class="fi" placeholder="${esc(getSessionName(sess))}"
+           style="flex:1;min-width:200px;font-size:var(--text-sm)"
+           value="${esc(sess.name || '')}"
+           ${sess.charged ? 'disabled' : ''}
+           oninput="planDetailAutoSave('name', this.value)"
+           onchange="planDetailAutoSave('name', this.value)">
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
+        <span class="tx-sm tx-m">${t('session.address')}</span>
+        <input type="text" class="fi" placeholder="${esc(S.cfg.srlocation || t('session.address_placeholder'))}"
+           style="flex:1;min-width:200px;font-size:var(--text-sm)"
+           value="${esc(sess.location || '')}"
+           ${sess.charged ? 'disabled' : ''}
+           oninput="planDetailAutoSave('location', this.value)"
+           onchange="planDetailAutoSave('location', this.value)">
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap;">
+        <span class="tx-sm tx-m">${t('session.comment')}:</span>
+        <input type="text" id="plan-note-input" class="fi" placeholder="${t('session.comment_placeholder')}"
+           style="flex:1;min-width:200px;font-size:var(--text-sm)"
+           value="${esc(sess.note || '')}"
+           ${sess.charged ? 'disabled' : ''}
+           oninput="planDetailAutoSave('note', this.value)"
+           onchange="planDetailAutoSave('note', this.value)">
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
+        <span class="tx-sm tx-m">${t('session.price')}:</span>
+        <input type="number" id="plan-price-input" class="fi" placeholder="${S.cfg.sr_cost || S.cfg.cost || 16}"
+           style="max-width:120px;font-size:var(--text-sm)"
+           value="${sess.price !== null && sess.price !== undefined ? sess.price : ''}"
+           ${sess.charged ? 'disabled' : ''}
+           oninput="planDetailAutoSave('price', this.value)"
+           onchange="planDetailAutoSave('price', this.value)">
+        <span class="txxs tx-m">${t('session.per_slot')}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
+        <span class="tx-sm tx-m">${t('session.cancel_deadline')}:</span>
+        <input type="text" id="plan-cancel-hours" class="fi" placeholder="7:00"
+           style="max-width:100px;font-size:var(--text-sm)"
+           value="${sess.cancelHours !== null && sess.cancelHours !== undefined ? formatCancelHours(sess.cancelHours) : ''}"
+           ${sess.charged ? 'disabled' : ''}
+           onchange="planDetailAutoSave('cancelHours', parseCancelHours(this.value))">
+      </div>
+      <div class="flex g2 wrap" style="margin-top:var(--sp3)">
+        <button class="btn btn-pri btn-sm" onclick="savePlanDetails()"><i data-lucide="save"></i> ${t('misc.save')}</button>
+        ${isCancelled && !sess.charged ? '<button class="btn btn-dan btn-sm" onclick="deleteSession()"><i data-lucide="trash-2"></i> ' + t('misc.delete') + '</button>' : ''}
+      </div>
+    `;
+    if (wasOpen) details.open = true;
+  }
+
+  // 4. Slot Editor
   document.getElementById('plan-slots-meta').textContent = `${filled} / ${total} ${t('session.slots_meta')} · ${activeCourts.length} ${t('session.court_s')} ${sess.disabledCourts.length > 0 ? `(${sess.disabledCourts.length} ${t('session.disabled')})` : ''}`;
   const playerMap = new Map(S.players.map(p => [p.id, p]));
-  const sessId = sess.id || sess.date;
 
-  // Unified slot editor grouped visually by court
   let html = '';
   sess.courts.forEach((slots, ci) => {
     const isDisabled = sess.disabledCourts.includes(ci);
@@ -2054,29 +2293,31 @@ function renderAdminPlan() {
       html += `<div class="txsm txm mb4">${t('session.court_cancelled_info')}</div>`;
     } else {
       html += `<div class="admin-slots-grid">`;
-    slots.forEach((pid, si) => {
-      const rawId = pid ? pid.split('|')[0] : null;
-      const p = rawId ? playerMap.get(rawId) : null;
-      const guestLabel = pid && pid.includes('|') ? ` (${t('misc.guest')})` : '';
-      if (p) {
-        html += `<div class="admin-slot filled" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
-          <div class="av" style="width:32px;height:32px;font-size:var(--text-sm)"><i data-lucide="${playerIcon(p)}" style="width:16px;height:16px"></i></div>
-          <span class="slot-name">${esc(p.name)}${guestLabel}</span>
-        </div>`;
-      } else {
-        html += `<div class="admin-slot" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
-          <i data-lucide="user-plus" style="width:16px;height:16px;color:var(--txf)"></i>
-          <span class="slot-ph">${t('session.choose_player')}</span>
-        </div>`;
-      }
-    });
-    html += `</div>`;
-    } // end else
+      slots.forEach((pid, si) => {
+        const rawId = pid ? pid.split('|')[0] : null;
+        const p = rawId ? playerMap.get(rawId) : null;
+        const guestLabel = pid && pid.includes('|') ? ` (${t('misc.guest')})` : '';
+        if (p) {
+          html += `<div class="admin-slot filled" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
+            <div class="av" style="width:32px;height:32px;font-size:var(--text-sm)"><i data-lucide="${playerIcon(p)}" style="width:16px;height:16px"></i></div>
+            <span class="slot-name">${esc(p.name)}${guestLabel}</span>
+          </div>`;
+        } else {
+          html += `<div class="admin-slot" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
+            <i data-lucide="user-plus" style="width:16px;height:16px;color:var(--txf)"></i>
+            <span class="slot-ph">${t('session.choose_player')}</span>
+          </div>`;
+        }
+      });
+      html += `</div>`;
+    }
   });
   document.getElementById('plan-slots-editor').innerHTML = html;
 
-  // Waitlist admin panel
+  // 5. Waitlist panel
   const wlEl = document.getElementById('plan-waitlist-admin');
+  const wlCountEl = document.getElementById('plan-tab-wl-count');
+  if (wlCountEl) wlCountEl.textContent = sess.waitlist.length > 0 ? `(${sess.waitlist.length})` : '';
   const adminWlBtn = `<button class="btn btn-sec btn-sm" style="margin-top:var(--sp3)" onclick="adminAddToWaitlist('${sessId}')"><i data-lucide="list-plus"></i> ${t('session.waitlist_add')}</button>`;
   if (sess.waitlist.length) {
     wlEl.innerHTML = `<h3 class="sec-title">${t('session.waitlist')}</h3>
@@ -2096,34 +2337,27 @@ function renderAdminPlan() {
     wlEl.innerHTML = `<h3 class="sec-title" style="margin-bottom:var(--sp2)">${t('session.waitlist')}</h3><p class="txsm txm">${t('session.no_entries')}</p>${adminWlBtn}`;
   }
 
-  // Summary
+  // 6. Summary compatibility container
   const sumEl = document.getElementById('plan-summary');
-  const chargeBtn = !sess.charged && allPids.length > 0
-    ? '<button class="btn btn-pri btn-sm" style="margin-top:var(--sp3)" onclick="openChargeModal()"><i data-lucide="credit-card"></i> ' + t('session.billing_charge') + '</button>'
-    : '';
-   if (!allPids.length) { sumEl.innerHTML = `<h3 class="sec-title">${t('session.billing_preview')}</h3><p class="txsm txm">${t('session.billing_no_players')}</p>${chargeBtn}`; }
-   else {
-     const chargeMap = getChargeMap(sess);
-     sumEl.innerHTML = `<h3 class="sec-title">${t('session.billing_preview')}</h3>
-     <div class="tw"><table class="dt"><thead><tr><th>${t('session.billing_player')}</th><th>${t('session.billing_balance')}</th><th>${t('session.billing_after')}</th></tr></thead><tbody>
-    ${Object.entries(chargeMap).map(([pid, n]) => {
-      const name = getDisplayName(pid, playerMap);
-      const b = bal(pid);
-      const sessCost = (sess.price !== null && sess.price !== undefined) ? sess.price : S.cfg.cost;
-      const amt = sessCost * n;
-      const after = b - amt;
-      const guestInfo = n > 1 ? `<span style="opacity:.6;font-size:var(--text-xs)"> +${n-1} ${t('misc.guest')}</span>` : '';
-      return `<tr><td class="fw6">${esc(name)}${guestInfo}</td>
-        <td style="color:${b<0?'var(--err)':b===0?'var(--txm)':'var(--suc)'}">${fmtE(b)}</td>
-        <td style="color:${after<0?'var(--err)':after===0?'var(--txm)':'var(--suc)'}">${fmtE(after)}</td>
-      </tr>`;}).join('')}
-    </tbody></table></div>
-    ${chargeBtn}`;
+  if (sumEl) {
+    sumEl.style.display = '';
+    sumEl.className = 'card mb6';
+    sumEl.innerHTML = `<div class="flex items-c just-b"><h3 class="sec-title" style="margin-bottom:0">${t('session.billing_charge')}</h3><button class="btn btn-pri btn-sm" onclick="openChargeModal()"><i data-lucide="credit-card"></i> ${t('session.billing_charge')}</button></div>`;
   }
-  renderSessionHistory(sessId);
+
+  // 7. Update active tab views
+  setPlanTab(planTab);
+
+  // Auto-scroll active chip into view
+  setTimeout(() => {
+    const activeChip = document.querySelector('.plan-chip.active');
+    if (activeChip) {
+      activeChip.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    }
+  }, 50);
+
   lucide.createIcons();
 }
-
 
 async function renderSessionHistory(dateOrId) {
   const el = document.getElementById('plan-history-content');
@@ -4368,6 +4602,10 @@ document.addEventListener('click', e => {
   // Close desktop profile dropdown if clicked outside
   const pdd = document.getElementById('profile-nav-dd');
   if (pdd && pdd.querySelector('.nav-dd-menu.open') && !pdd.contains(e.target)) closeProfileDD();
+  // Close plan more menu if clicked outside
+  const pmm = document.getElementById('plan-more-dd');
+  const pmb = document.getElementById('plan-more-btn');
+  if (pmm && pmm.classList.contains('open') && !pmm.contains(e.target) && pmb && !pmb.contains(e.target)) closePlanMoreMenu();
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
