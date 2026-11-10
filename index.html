@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:441-->
+<!--built:442-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=441">
+<link rel="stylesheet" href="style.css?build=442">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=441" defer></script>
-<script src="app.js?build=441" defer></script>
+<script src="i18n.js?build=442" defer></script>
+<script src="app.js?build=442" defer></script>
 
 <div class="app-shell">
 
@@ -457,6 +457,14 @@ if ('serviceWorker' in navigator) {
 
       <div class="fg">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+          <input type="checkbox" id="disp-total-privacy-mode" style="width:20px;height:20px">
+          <span data-i18n="settings.total_privacy_mode">Total Privacy (Sessions verbergen)</span>
+        </label>
+        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.total_privacy_mode_hint">Blendet die gesamte Session-Übersicht für nicht eingeloggte Besucher aus. Termine sind erst nach dem Login sichtbar.</p>
+      </div>
+
+      <div class="fg">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="disp-show-cancel-deadline" style="width:20px;height:20px" checked>
           <span data-i18n="settings.show_cancel_deadline">Abmeldefrist in Session-Cards anzeigen</span>
         </label>
@@ -586,7 +594,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 441)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 442)</span>
 
 </footer>
 

@@ -1104,8 +1104,12 @@ function handle_tx_delete(?string $id): void {
 }
 
 function handle_sessions_list(): void {
-    // public endpoint
+    // public endpoint (unless total_privacy_mode is active)
     $db   = db();
+    $totalPrivacy = $db->query("SELECT value FROM config WHERE key='total_privacy_mode'")->fetchColumn() === '1';
+    if ($totalPrivacy && !token_valid()) {
+        json_out([]);
+    }
     $rows = $db->query("SELECT * FROM sessions ORDER BY date ASC, time_start ASC, id ASC")->fetchAll();
     $out  = [];
     foreach ($rows as $s) {
@@ -1151,8 +1155,12 @@ function handle_sessions_list(): void {
 
 // ── Series ──
 function handle_series_list(): void {
-    // public endpoint
+    // public endpoint (unless total_privacy_mode is active)
     $db   = db();
+    $totalPrivacy = $db->query("SELECT value FROM config WHERE key='total_privacy_mode'")->fetchColumn() === '1';
+    if ($totalPrivacy && !token_valid()) {
+        json_out([]);
+    }
     $rows = $db->query("SELECT * FROM series ORDER BY id ASC")->fetchAll();
     $out  = [];
     foreach ($rows as $r) {
@@ -1582,6 +1590,7 @@ function handle_config_set(): void {
         'sr_cost',
         'display_court_grouping',
         'privacy_mode',
+        'total_privacy_mode',
         'team_name',
         'cancel_hours',
         'show_cancel_deadline',
@@ -1631,7 +1640,7 @@ function handle_manifest(): void {
         'theme_color' => '#1c1b19',
         'icons' => [
             [
-                'src' => '/courtle-icon.svg?v=3',
+                'src' => '/courtle-icon.svg?v=4',
                 'sizes' => 'any',
                 'type' => 'image/svg+xml',
                 'purpose' => 'any',

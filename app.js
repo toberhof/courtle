@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 441;
+const CLIENT_BUILD = 442;
 let S = {
   players: [],
   transactions: [],
@@ -18,7 +18,8 @@ let S = {
     srdays: '2',
     sroccurrences: '6',
     srtimestart: '19:00',
-    srtimeend: '21:00'
+    srtimeend: '21:00',
+    total_privacy_mode: '0'
   }
 };
 window.S = S;
@@ -361,6 +362,9 @@ function getRecurringSessionDates() {
 }
 
 function getAllUpcomingSessions() {
+  if (S.cfg.total_privacy_mode === '1' && !guestId) {
+    return [];
+  }
   const today = toDS(new Date());
   const sessions = [];
   const coveredKeys = new Set();
@@ -1199,6 +1203,22 @@ function renderSessions() {
   const container = document.getElementById('sessions-container');
   if (!container) return;
 
+  if (S.cfg.total_privacy_mode === '1' && !guestId) {
+    const hash = `total_privacy_${guestId || 'guest'}`;
+    if (window._lastSessionHash === hash) return;
+    window._lastSessionHash = hash;
+    container.innerHTML = `
+      <div class="card p8 txcenter" style="max-width:440px;margin:var(--sp6) auto">
+        <div style="font-size:2.5rem;margin-bottom:var(--sp3)"><i data-lucide="shield-alert" style="width:48px;height:48px;color:var(--txm)"></i></div>
+        <h3 class="mb2">${t('settings.total_privacy_title', 'Datenschutz aktiv')}</h3>
+        <p class="txsm txm mb5">${t('settings.total_privacy_desc', 'Termine sind nur für angemeldete Spieler sichtbar. Bitte melde dich an, um die Sessions zu sehen.')}</p>
+        <button class="btn btn-pri btn-sm" onclick="openLoginModal()"><i data-lucide="log-in"></i> <span>${t('nav.login', 'Anmelden')}</span></button>
+      </div>`;
+    if (window.lucide) lucide.createIcons();
+    syncSwipeHeight();
+    return;
+  }
+
   const upcomingSessions = getAllUpcomingSessions();
 
   if (upcomingSessions.length === 0) {
@@ -1220,7 +1240,7 @@ function renderSessions() {
   }).join('');
 
   const playerHash = S.players.map(p => p.emoji || '').join('');
-  const hash = JSON.stringify([guestId, playerHash, upcomingSessions.map(s => {
+  const hash = JSON.stringify([guestId, S.cfg.total_privacy_mode, playerHash, upcomingSessions.map(s => {
     return [s.id || s.date, s.date, s.timeStart, s.courts, s.waitlist, s.note, s.location, s.charged, s.disabledCourts, s.cancelled, s.courtNames];
   })]);
   if (window._lastSessionHash === hash) return;
@@ -3741,6 +3761,10 @@ function navigateToSession(date) {
 }
 
 function openSessionDetailsModal(date) {
+  if (S.cfg.total_privacy_mode === '1' && !guestId) {
+    openLoginModal();
+    return;
+  }
   const sess = getOrSess(date);
   if (!sess) return;
   
@@ -4469,6 +4493,8 @@ function syncSettings() {
     if (dispCourt) dispCourt.checked = S.cfg.display_court_grouping !== '0';
     const privMode = document.getElementById('disp-privacy-mode');
     if (privMode) privMode.checked = S.cfg.privacy_mode === '1';
+    const totalPrivMode = document.getElementById('disp-total-privacy-mode');
+    if (totalPrivMode) totalPrivMode.checked = S.cfg.total_privacy_mode === '1';
     const showDeadline = document.getElementById('disp-show-cancel-deadline');
     if (showDeadline) showDeadline.checked = S.cfg.show_cancel_deadline !== '0';
     const autoCompact = document.getElementById('sys-auto-compact-slots');
@@ -5574,6 +5600,7 @@ async function saveDisplaySettings() {
     const settings = {
         display_court_grouping: document.getElementById('disp-court-grouping').checked ? '1' : '0',
         privacy_mode: document.getElementById('disp-privacy-mode').checked ? '1' : '0',
+        total_privacy_mode: document.getElementById('disp-total-privacy-mode')?.checked ? '1' : '0',
         show_cancel_deadline: document.getElementById('disp-show-cancel-deadline').checked ? '1' : '0',
         currency:      document.getElementById('sr-currency').value.trim() || '€',
         cost:          parseFloat(document.getElementById('sr-cost').value) || 16,
