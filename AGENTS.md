@@ -62,7 +62,15 @@ Before making changes to the codebase, please read the corresponding role file i
 * **Build Cache & Invalidation**:
   * Upon updating `app.js` or `style.css` locally, the query parameters `?build=...` in `index.html` must be incremented (e.g., `app.js?build=139`, `style.css?build=141`) to invalidate browser caching.
   * **Important**: During local development, a temporary deviation of these query parameters is normal and expected for cache-busting purposes.
-  * **Before any Git Push**, the values of `app.js?build=X`, `style.css?build=X`, the footer `(build X)`, and the HTML comment `<!--built:X-->` must be strictly synchronized to the exact same (incremented) value.
+  * **Before any Git Push**, the values of:
+    1. `const CLIENT_BUILD = X;` in `app.js` (at the top of the file)
+    2. `app.js?build=X` in `index.html`
+    3. `style.css?build=X` in `index.html`
+    4. `i18n.js?build=X` in `index.html`
+    5. the footer label `(build X)` in `index.html`
+    6. the HTML comment `<!--built:X-->` in `index.html` (which PHP reads for `X-Courtle-Build` and `server_build`)
+    MUST be strictly synchronized to the EXACT same (incremented) integer value across both `courtle` and `courtle-cloud`.
+  * **Edge & Proxy Caching Warning**: Never push a new `<!--built:X-->` without simultaneously updating `CLIENT_BUILD = X` in `app.js`. If `CLIENT_BUILD` lags behind, Cloudflare and browsers will cache the JS file under that build query while the API reports a higher build number, resulting in an infinite "Update available" loop.
 
 ---
 
