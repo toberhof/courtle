@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 433;
+const CLIENT_BUILD = 434;
 let S = {
   players: [],
   transactions: [],
@@ -1802,10 +1802,16 @@ function renderKPIs() {
     `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
 }
 function renderPlayerActivityTable() {
-  const el = document.getElementById('balance-table');
-  if (!el) return;
+  const targets = [
+    document.getElementById('balance-table'),
+    document.getElementById('players-activity-table')
+  ].filter(Boolean);
+  if (!targets.length) return;
   const activePlayers = S.players.filter(p => p.active !== false);
-  if (!activePlayers.length) { el.innerHTML = ''; return; }
+  if (!activePlayers.length) {
+    targets.forEach(el => { el.innerHTML = ''; });
+    return;
+  }
 
   const sorted = [...activePlayers].sort((a, b) => {
     let valA, valB;
@@ -1829,7 +1835,7 @@ function renderPlayerActivityTable() {
 
   const arrow = activitySortAsc ? '↑' : '↓';
 
-  el.innerHTML = `<div class="tw"><table class="dt"><thead><tr>
+  const html = `<div class="tw"><table class="dt"><thead><tr>
        <th onclick="sortActivityTable('name')">${t('players.name_sort')} ${activitySortColumn === 'name' ? arrow : ''}</th>
        <th onclick="sortActivityTable('lastLogin')">${t('players.login_sort')} ${activitySortColumn === 'lastLogin' ? arrow : ''}</th>
        <th onclick="sortActivityTable('lastInteraction')">${t('players.activity_sort')} ${activitySortColumn === 'lastInteraction' ? arrow : ''}</th>
@@ -1844,6 +1850,7 @@ function renderPlayerActivityTable() {
         <td class="txm txxs">${partDate ? fmtD(partDate) : '–'}</td>
       </tr>`;}).join('')}
   </tbody></table></div>`;
+  targets.forEach(el => { el.innerHTML = html; });
 }
 
 function sortActivityTable(column) {
@@ -3000,6 +3007,62 @@ function revertBilling(id) {
 // ════════════════════════════════════════
 // ADMIN – PLAYERS
 // ════════════════════════════════════════
+let playersTab = 'list';
+let playerBalanceFilter = 'all';
+let expandedPlayerId = null;
+
+function setPlayersTab(tab) {
+  playersTab = tab === 'activity' ? 'activity' : 'list';
+  const btnList = document.getElementById('players-tab-list');
+  const btnAct = document.getElementById('players-tab-activity');
+  const pList = document.getElementById('players-panel-list');
+  const pAct = document.getElementById('players-panel-activity');
+  if (btnList) {
+    btnList.classList.toggle('active', playersTab === 'list');
+    btnList.setAttribute('aria-selected', playersTab === 'list' ? 'true' : 'false');
+  }
+  if (btnAct) {
+    btnAct.classList.toggle('active', playersTab === 'activity');
+    btnAct.setAttribute('aria-selected', playersTab === 'activity' ? 'true' : 'false');
+  }
+  if (pList) pList.style.display = playersTab === 'list' ? '' : 'none';
+  if (pAct) pAct.style.display = playersTab === 'activity' ? '' : 'none';
+  if (playersTab === 'activity') renderPlayerActivityTable();
+  if (window.lucide) lucide.createIcons();
+}
+
+function openPlayersTab(tab) {
+  setPlayersTab(tab);
+  showView('players');
+  if (tab === 'activity') {
+    const navAct = document.getElementById('nav-activity');
+    const navPl = document.getElementById('nav-players');
+    if (navPl) navPl.classList.remove('active');
+    if (navAct) navAct.classList.add('active');
+  }
+}
+
+function setPlayerBalanceFilter(filter) {
+  playerBalanceFilter = filter;
+  renderPlayers();
+  if (window.lucide) lucide.createIcons();
+}
+
+function togglePlayerDrawer(pid) {
+  expandedPlayerId = expandedPlayerId === pid ? null : pid;
+  renderPlayers();
+  if (window.lucide) lucide.createIcons();
+}
+
+function openPlayerFullHistory(pid) {
+  const sel = document.getElementById('hist-filter');
+  showView('history');
+  if (sel) {
+    sel.value = pid;
+    renderHistory();
+  }
+}
+
 window.handlePlayerSearch = function(val) {
   playerSearchQuery = val;
   renderPlayers();
@@ -3021,12 +3084,30 @@ function renderPlayers() {
   const sortSelect = document.getElementById('player-sort');
   if (sortSelect) sortSelect.value = playerSortOption;
 
-  let activePlayers = S.players.filter(p => p.active !== false);
+  const allActive = S.players.filter(p => p.active !== false);
+  let activePlayers = [...allActive];
   const inactivePlayers = S.players.filter(p => p.active === false);
+
+  const pillsEl = document.getElementById('player-filter-pills');
+  if (pillsEl) {
+    const negCount = allActive.filter(p => bal(p.id) < 0).length;
+    const posCount = allActive.filter(p => bal(p.id) > 0).length;
+    pillsEl.innerHTML = `
+      <button type="button" class="pf-pill ${playerBalanceFilter === 'all' ? 'active' : ''}" onclick="setPlayerBalanceFilter('all')">${t('players.filter_all')} <span>${allActive.length}</span></button>
+      <button type="button" class="pf-pill pf-neg ${playerBalanceFilter === 'neg' ? 'active' : ''}" onclick="setPlayerBalanceFilter('neg')">${t('players.filter_neg')} <span>${negCount}</span></button>
+      <button type="button" class="pf-pill pf-pos ${playerBalanceFilter === 'pos' ? 'active' : ''}" onclick="setPlayerBalanceFilter('pos')">${t('players.filter_pos')} <span>${posCount}</span></button>
+    `;
+  }
 
   if (!activePlayers.length && !inactivePlayers.length) {
     g.innerHTML = `<div class="empty" style="grid-column:1/-1"><i data-lucide="users"></i><h3>${t('players.no_players')}</h3><p>${t('players.add_first')}</p><button class="btn btn-pri" onclick="openAddPlayer()"><i data-lucide="user-plus"></i> ${t('players.add')}</button></div>`;
     return;
+  }
+
+  if (playerBalanceFilter === 'neg') {
+    activePlayers = activePlayers.filter(p => bal(p.id) < 0);
+  } else if (playerBalanceFilter === 'pos') {
+    activePlayers = activePlayers.filter(p => bal(p.id) > 0);
   }
 
   if (playerSearchQuery) {
@@ -3056,20 +3137,70 @@ function renderPlayers() {
   let html = activePlayers.map(p => {
     const b = bal(p.id); 
     const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
-    const txn = S.transactions.filter(t => t.playerId === p.id).length;
-    const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:var(--text-xs);margin-left:6px">${t('misc.admin')}</span>` : '';
-    return `<div class="pc">
-      <div class="pc-head"><div class="av" onclick="openIconPickerModal('${p.id}')" style="cursor:pointer;transition:transform .15s" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform=''"><i data-lucide="${playerIcon(p)}" style="width:22px;height:22px"></i></div>
-        <div><div class="pc-name" style="display:flex;align-items:center">${esc(p.name)}${adminBadge}</div><div class="pc-meta">${p.contact ? esc(p.contact) : txn + ' ' + t('transactions.title').toLowerCase()}</div></div></div>
-      <div class="pc-bal-row">
-        <div><div class="label">${t('players.balance')}</div><div class="pc-bal ${cls}">${fmtE(b)}</div></div>
+    const isExpanded = expandedPlayerId === p.id;
+    const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
+    const lastPart = getLastParticipationDate(p.id);
+    const metaStr = p.contact
+      ? esc(p.contact)
+      : (lastPart ? esc(t('players.last_played').replace('{date}', fmtD(lastPart))) : '');
+
+    let drawerHtml = '';
+    if (isExpanded) {
+      const playerTxs = [...(S.transactions || [])]
+        .filter(tx => tx.playerId === p.id)
+        .sort((a, bTx) => (bTx.createdAt || bTx.date || '').localeCompare(a.createdAt || a.date || ''))
+        .slice(0, 5);
+
+      const txRows = playerTxs.length
+        ? playerTxs.map(tx => {
+            const noteText = typeof formatTxNotePlain === 'function'
+              ? formatTxNotePlain(tx)
+              : (tx.note || (tx.credit ? t('transactions.credit_type') : t('transactions.debit_type')));
+            return `<div class="pc-tx-row">
+              <span class="pc-tx-date">${fmtD(tx.date)}</span>
+              <span class="pc-tx-note">${esc(noteText || (tx.credit ? t('transactions.credit_type') : t('transactions.debit_type')))}</span>
+              <span class="pc-tx-amt ${tx.credit ? 'cr' : 'db'}">${tx.credit ? '+' : '–'} ${fmtE(tx.amount)}</span>
+              <button class="btn btn-xs btn-sec" onclick="event.stopPropagation();openEditTx('${tx.id}')" type="button" title="${esc(t('transactions.edit'))}"><i data-lucide="pencil" style="width:11px;height:11px"></i></button>
+            </div>`;
+          }).join('')
+        : `<div class="txxs txm">${t('transactions.no_transactions')}</div>`;
+
+      drawerHtml = `<div class="pc-drawer" onclick="event.stopPropagation()">
+        <div class="pc-drawer-actions">
+          <button class="btn btn-xs btn-ok" onclick="openTx('${p.id}')" type="button"><i data-lucide="wallet"></i> ${t('players.charge')}</button>
+          <button class="btn btn-xs btn-sec" onclick="openEditPlayer('${p.id}')" type="button"><i data-lucide="pencil"></i> ${t('players.edit_short')}</button>
+          <button class="btn btn-xs btn-sec" onclick="openAdminSetPin('${p.id}')" type="button"><i data-lucide="key-round"></i> ${t('players.pin_short')}</button>
+          <button class="btn btn-xs btn-sec" onclick="openIconPickerModal('${p.id}')" type="button"><i data-lucide="smile"></i> ${t('players.icon_short')}</button>
+          <button class="btn btn-xs btn-dan" onclick="deletePlayer('${p.id}')" type="button"><i data-lucide="user-x"></i> ${t('players.deactivate')}</button>
+        </div>
+        <div class="pc-drawer-history">
+          <div class="pc-drawer-hist-head">
+            <span class="label" style="font-size:10px">${t('players.recent_tx')}</span>
+            ${playerTxs.length ? `<button class="pc-hist-link" onclick="openPlayerFullHistory('${p.id}')" type="button">${t('players.view_all_tx')} →</button>` : ''}
+          </div>
+          <div class="pc-tx-list">${txRows}</div>
+        </div>
+      </div>`;
+    }
+
+    return `<div class="pc ${isExpanded ? 'expanded' : ''}">
+      <div class="pc-row" onclick="togglePlayerDrawer('${p.id}')">
+        <div class="av pc-av" onclick="event.stopPropagation();openIconPickerModal('${p.id}')" title="${esc(t('players.icon_short'))}">
+          <i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>
+        </div>
+        <div class="pc-info">
+          <div class="pc-name">${esc(p.name)}${adminBadge}</div>
+          ${metaStr ? `<div class="pc-meta">${metaStr}</div>` : ''}
+        </div>
+        <div class="pc-right">
+          <div class="pc-bal ${cls}">${fmtE(b)}</div>
+          <button class="btn btn-sm btn-ok pc-topup-btn" onclick="event.stopPropagation();openTx('${p.id}')" title="${esc(t('players.charge'))}" type="button">
+            <i data-lucide="plus" style="width:15px;height:15px"></i>
+          </button>
+          <span class="pc-chev ${isExpanded ? 'open' : ''}"><i data-lucide="chevron-down" style="width:16px;height:16px"></i></span>
+        </div>
       </div>
-      <div class="pc-acts">
-        <button class="btn btn-sm btn-ok" onclick="openTx('${p.id}')" title="${t('players.charge')}" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="dollar-sign" style="width:14px;height:14px"></i></button>
-        <button class="btn btn-sm btn-sec" onclick="openEditPlayer('${p.id}')" title="Bearbeiten" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
-        <button class="btn btn-sm btn-sec" onclick="openAdminSetPin('${p.id}')" title="PIN manuell vergeben" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="key-round" style="width:14px;height:14px"></i></button>
-        <button class="btn btn-sm btn-dan" onclick="deletePlayer('${p.id}')" title="Deaktivieren" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
-      </div>
+      ${drawerHtml}
     </div>`;
   }).join('');
 
@@ -3078,13 +3209,13 @@ function renderPlayers() {
     html += inactivePlayers.map(p => {
       const b = bal(p.id); const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
       return `<div class="pc" style="opacity:.5;grid-column:1/-1">
-        <div class="pc-head" style="justify-content:space-between">
-          <div class="flex items-c" style="gap:var(--sp3);min-width:0">
-            <div class="av" style="opacity:.5;flex-shrink:0"><i data-lucide="${playerIcon(p)}" style="width:22px;height:22px"></i></div>
-            <div><div class="pc-name">${esc(p.name)}</div><div class="pc-meta">${t('players.balance')}: <span class="${cls}">${fmtE(b)}</span></div></div>
+        <div class="pc-row">
+          <div class="av pc-av" style="opacity:.5"><i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i></div>
+          <div class="pc-info"><div class="pc-name">${esc(p.name)}</div><div class="pc-meta">${t('players.balance')}: <span class="${cls}">${fmtE(b)}</span></div></div>
+          <div class="pc-right">
+            <button class="btn btn-xs btn-pri" onclick="reactivatePlayer('${p.id}')" type="button"><i data-lucide="rotate-ccw"></i> ${t('players.reactivate')}</button>
+            <button class="btn btn-xs btn-dan" onclick="purgePlayer('${p.id}')" type="button"><i data-lucide="trash-2"></i> ${t('players.purge')}</button>
           </div>
-          <button class="btn btn-sm btn-pri" onclick="reactivatePlayer('${p.id}')" style="flex-shrink:0"><i data-lucide="rotate-ccw"></i> ${t('players.reactivate')}</button>
-          <button class="btn btn-sm btn-dan" onclick="purgePlayer('${p.id}')" style="flex-shrink:0"><i data-lucide="trash-2"></i> ${t('players.purge')}</button>
         </div>
       </div>`;
     }).join('');
@@ -3221,14 +3352,72 @@ async function purgePlayer(id) {
 // ADMIN – TRANSACTIONS
 // ════════════════════════════════════════
 function openTx(pid) {
-  txPid = pid;
-  const p = S.players.find(x => x.id === pid);
-  document.getElementById('mo-tx-title').textContent = `${p.name} – ${t('transactions.title')}`;
-  document.getElementById('mo-tx-sub').textContent = `${t('transactions.current_balance')}: ${fmtE(bal(pid))}`;
+  const activePlayers = S.players.filter(p => p.active !== false).sort((a, b) => a.name.localeCompare(b.name));
+  if (!activePlayers.length) return;
+  const targetPid = (pid && activePlayers.some(p => p.id === pid)) ? pid : activePlayers[0].id;
+  txPid = targetPid;
+
+  const sel = document.getElementById('tx-player-select');
+  if (sel) {
+    sel.innerHTML = activePlayers.map(p => `<option value="${p.id}">${esc(p.name)} (${fmtE(bal(p.id))})</option>`).join('');
+    sel.value = targetPid;
+  }
   document.getElementById('tx-amount').value = '';
   document.getElementById('tx-note').value = '';
-  openMo('mo-tx'); setTimeout(() => document.getElementById('tx-amount').focus(), 100);
+  syncTxModalForPlayer(targetPid);
+  openMo('mo-tx');
+  setTimeout(() => document.getElementById('tx-amount').focus(), 100);
 }
+
+function onTxPlayerChange(pid) {
+  txPid = pid;
+  syncTxModalForPlayer(pid);
+}
+
+function syncTxModalForPlayer(pid) {
+  const p = S.players.find(x => x.id === pid);
+  if (!p) return;
+  const b = bal(pid);
+  document.getElementById('mo-tx-title').textContent = `${p.name} – ${t('transactions.title')}`;
+  document.getElementById('mo-tx-sub').textContent = `${t('transactions.current_balance')}: ${fmtE(b)}`;
+
+  const amtBox = document.getElementById('tx-quick-amounts');
+  if (amtBox) {
+    const chips = [];
+    if (b < 0) {
+      const deficit = Math.abs(b);
+      chips.push(`<button type="button" class="tx-chip tx-chip-settle" onclick="setTxAmount(${deficit})">${t('transactions.settle_deficit').replace('{amount}', '+' + fmtE(deficit))}</button>`);
+    }
+    [20, 30, 50, 100].forEach(v => {
+      chips.push(`<button type="button" class="tx-chip" onclick="setTxAmount(${v})">+${v} ${S.cfg.currency || '€'}</button>`);
+    });
+    amtBox.innerHTML = chips.join('');
+  }
+
+  const noteBox = document.getElementById('tx-quick-notes');
+  if (noteBox) {
+    const notes = [
+      t('transactions.quick_note_paypal'),
+      t('transactions.quick_note_cash'),
+      t('transactions.quick_note_bank'),
+    ];
+    noteBox.innerHTML = notes.map(n => `<button type="button" class="tx-chip" onclick="setTxNote('${esc(n)}')">${esc(n)}</button>`).join('');
+  }
+}
+
+function setTxAmount(val) {
+  const el = document.getElementById('tx-amount');
+  if (el) {
+    el.value = Number(val.toFixed ? val.toFixed(2) : val);
+    el.focus();
+  }
+}
+
+function setTxNote(val) {
+  const el = document.getElementById('tx-note');
+  if (el) el.value = val;
+}
+
 async function doTx(credit) {
   const amt = parseFloat(document.getElementById('tx-amount').value);
   if (!amt || amt <= 0) { showToast('Gültigen Betrag eingeben.'); return; }

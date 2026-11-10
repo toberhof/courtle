@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:433-->
+<!--built:434-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=433">
+<link rel="stylesheet" href="style.css?build=434">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=433" defer></script>
-<script src="app.js?build=433" defer></script>
+<script src="i18n.js?build=434" defer></script>
+<script src="app.js?build=434" defer></script>
 
 <div class="app-shell">
 
@@ -93,21 +93,7 @@ if ('serviceWorker' in navigator) {
         <i data-lucide="chevron-down" id="nav-dd-caret" style="width:14px;height:14px;margin-left:2px;transition:transform .2s"></i>
       </button>
       <div class="nav-dd-menu" id="nav-dd-menu">
-        <button class="nav-dd-item" id="nav-dashboard" onclick="showView('dashboard');closeNavDD()">
-          <i data-lucide="layout-dashboard" style="width:16px;height:16px"></i><span data-i18n="nav.overview">Übersicht</span>
-        </button>
-        <button class="nav-dd-item" id="nav-players" onclick="showView('players');closeNavDD()">
-          <i data-lucide="users" style="width:16px;height:16px"></i><span data-i18n="nav.players">Spieler</span>
-        </button>
-        <button class="nav-dd-item" id="nav-expenses" onclick="showView('expenses');closeNavDD()">
-          <i data-lucide="credit-card" style="width:16px;height:16px"></i><span data-i18n="nav.expenses">Ausgaben</span>
-        </button>
-        <button class="nav-dd-item" id="nav-billing" onclick="showView('billing');closeNavDD()">
-          <i data-lucide="receipt" style="width:16px;height:16px"></i><span data-i18n="nav.billing">Abrechnung</span><span class="nav-badge" id="nav-billing-count" hidden></span>
-        </button>
-        <button class="nav-dd-item" id="nav-history" onclick="showView('history');closeNavDD()">
-          <i data-lucide="chart-no-axes-gantt" style="width:16px;height:16px"></i><span data-i18n="nav.history">Transaktionen</span>
-        </button>
+        <div class="nav-dd-group-title" data-i18n="nav.group_sessions">Sessions</div>
         <button class="nav-dd-item" id="nav-admin-plan" onclick="showView('admin-plan');closeNavDD()">
           <i data-lucide="clipboard-list" style="width:16px;height:16px"></i><span data-i18n="nav.session_plan">Session Planer</span>
         </button>
@@ -115,6 +101,32 @@ if ('serviceWorker' in navigator) {
           <i data-lucide="repeat" style="width:16px;height:16px"></i><span data-i18n="nav.series">Session Serien</span>
         </button>
         <div class="nav-dd-divider"></div>
+        <div class="nav-dd-group-title" data-i18n="nav.group_players">Spieler</div>
+        <button class="nav-dd-item" id="nav-players" onclick="openPlayersTab('list');closeNavDD()">
+          <i data-lucide="users" style="width:16px;height:16px"></i><span data-i18n="nav.players">Spieler</span>
+        </button>
+        <button class="nav-dd-item" id="nav-activity" onclick="openPlayersTab('activity');closeNavDD()">
+          <i data-lucide="activity" style="width:16px;height:16px"></i><span data-i18n="nav.activity">Aktivität</span>
+        </button>
+        <div class="nav-dd-divider"></div>
+        <div class="nav-dd-group-title" data-i18n="nav.group_money">Finanzen</div>
+        <button class="nav-dd-item" id="nav-billing" onclick="showView('billing');closeNavDD()">
+          <i data-lucide="receipt" style="width:16px;height:16px"></i><span data-i18n="nav.billing">Abrechnung</span><span class="nav-badge" id="nav-billing-count" hidden></span>
+        </button>
+        <button class="nav-dd-item nav-dd-quick-tx" id="nav-quick-tx" onclick="closeNavDD();openTx()">
+          <i data-lucide="plus-circle" style="width:16px;height:16px"></i><span data-i18n="nav.quick_topup">Einzahlung</span>
+        </button>
+        <button class="nav-dd-item" id="nav-history" onclick="showView('history');closeNavDD()">
+          <i data-lucide="chart-no-axes-gantt" style="width:16px;height:16px"></i><span data-i18n="nav.history">Transaktionen</span>
+        </button>
+        <button class="nav-dd-item" id="nav-expenses" onclick="showView('expenses');closeNavDD()">
+          <i data-lucide="credit-card" style="width:16px;height:16px"></i><span data-i18n="nav.expenses">Ausgaben</span>
+        </button>
+        <button class="nav-dd-item" id="nav-dashboard" onclick="showView('dashboard');closeNavDD()">
+          <i data-lucide="layout-dashboard" style="width:16px;height:16px"></i><span data-i18n="nav.overview">Übersicht</span>
+        </button>
+        <div class="nav-dd-divider"></div>
+        <div class="nav-dd-group-title" data-i18n="nav.group_system">System</div>
         <button class="nav-dd-item" id="nav-settings" onclick="showView('settings');closeNavDD()">
           <i data-lucide="settings" style="width:16px;height:16px"></i><span data-i18n="nav.settings">System</span>
         </button>
@@ -307,34 +319,50 @@ if ('serviceWorker' in navigator) {
 
   <!-- PLAYERS (admin) -->
   <section class="view" id="view-players">
-    <div class="flex items-c just-b mb4">
+    <div class="flex items-c just-b mb4 wrap g2">
       <h1 class="page-title" style="margin-bottom:0" data-i18n="view.players">Spieler</h1>
-      <button class="btn btn-pri" onclick="openAddPlayer()"><i data-lucide="user-plus"></i> <span data-i18n="players.add">Hinzufügen</span></button>
-    </div>
-    <div class="player-controls flex items-c gap3 mb6 wrap">
-      <div class="search-wrap" style="flex:1;min-width:200px;position:relative">
-        <i data-lucide="search" style="width:16px;height:16px;position:absolute;left:var(--sp3);top:50%;transform:translateY(-50%);color:var(--txm)"></i>
-        <input type="text" id="player-search" class="fi" style="padding-left:36px;font-size:var(--text-sm)" data-i18n-placeholder="players.search" placeholder="Spieler suchen..." oninput="handlePlayerSearch(this.value)">
-      </div>
-      <div class="sort-wrap flex items-c gap2">
-        <span class="txsm txm" style="white-space:nowrap" data-i18n="players.sort">Sortierung:</span>
-        <select id="player-sort" class="fi" style="width:auto;font-size:var(--text-sm)" onchange="handlePlayerSort(this.value)">
-          <option value="name_asc">Name A-Z</option>
-          <option value="name_desc">Name Z-A</option>
-          <option value="balance_desc">Guthaben (Meiste zuerst)</option>
-          <option value="balance_asc">Guthaben (Wenigste zuerst)</option>
-        </select>
+      <div class="flex items-c g2">
+        <button class="btn btn-ok btn-sm" onclick="openTx()" type="button"><i data-lucide="plus-circle"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
+        <button class="btn btn-pri btn-sm" onclick="openAddPlayer()" type="button"><i data-lucide="user-plus"></i> <span data-i18n="players.add">Hinzufügen</span></button>
       </div>
     </div>
-    <div class="pg" id="players-grid"></div>
+    <div class="seg-tabs mb4" id="players-tabs" role="tablist">
+      <button class="seg-tab active" id="players-tab-list" role="tab" aria-selected="true" onclick="setPlayersTab('list')"><span data-i18n="players.tab_list">Guthaben</span></button>
+      <button class="seg-tab" id="players-tab-activity" role="tab" aria-selected="false" onclick="setPlayersTab('activity')"><span data-i18n="players.tab_activity">Aktivität</span></button>
+    </div>
+    <div id="players-panel-list">
+      <div class="player-controls-compact mb4">
+        <div class="player-search-row">
+          <div class="search-wrap" style="flex:1;min-width:160px;position:relative">
+            <i data-lucide="search" style="width:15px;height:15px;position:absolute;left:var(--sp3);top:50%;transform:translateY(-50%);color:var(--txm)"></i>
+            <input type="text" id="player-search" class="fi" style="padding-left:34px;font-size:var(--text-sm)" data-i18n-placeholder="players.search" placeholder="Spieler suchen..." oninput="handlePlayerSearch(this.value)">
+          </div>
+          <div class="sort-wrap flex items-c g2">
+            <span class="txxs txm hide-xs" style="white-space:nowrap" data-i18n="players.sort">Sortierung:</span>
+            <select id="player-sort" class="fi" style="width:auto;font-size:var(--text-sm)" onchange="handlePlayerSort(this.value)">
+              <option value="name_asc">Name A-Z</option>
+              <option value="name_desc">Name Z-A</option>
+              <option value="balance_desc">Guthaben ↓</option>
+              <option value="balance_asc">Guthaben ↑</option>
+            </select>
+          </div>
+        </div>
+        <div class="player-filter-pills" id="player-filter-pills"></div>
+      </div>
+      <div class="pg" id="players-grid"></div>
+    </div>
+    <div id="players-panel-activity" style="display:none">
+      <div id="players-activity-table"></div>
+    </div>
   </section>
 
   <!-- HISTORY (admin) -->
   <section class="view" id="view-history">
-    <div class="flex items-c just-b mb6">
+    <div class="flex items-c just-b mb6 wrap g2">
       <h1 class="page-title" style="margin-bottom:0" data-i18n="view.history">Transaktionen</h1>
-      <div class="flex items-c g2">
-        <button class="btn btn-sec" onclick="downloadHistoryCSV()" data-i18n-title="history.csv_export" style="white-space:nowrap;padding:var(--sp2) var(--sp3);border-radius:var(--r-md);font-size:var(--text-sm);font-weight:400;line-height:normal"><i data-lucide="download"></i> <span data-i18n="history.csv">CSV</span></button>
+      <div class="flex items-c g2 wrap">
+        <button class="btn btn-ok btn-sm" onclick="openTx(document.getElementById('hist-filter')?.value || null)" type="button"><i data-lucide="plus"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
+        <button class="btn btn-sec btn-sm" onclick="downloadHistoryCSV()" data-i18n-title="history.csv_export" style="white-space:nowrap"><i data-lucide="download"></i> <span data-i18n="history.csv">CSV</span></button>
         <select class="fi" id="hist-filter" style="width:auto;font-size:var(--text-sm)" onchange="renderHistory()">
           <option value="" data-i18n="players.csv_all">Alle Spieler</option>
         </select>
@@ -536,7 +564,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 433)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 434)</span>
 
 </footer>
 
@@ -585,15 +613,28 @@ if ('serviceWorker' in navigator) {
   </button>
 </div>
 <div class="bnav-admin-menu" id="bnav-admin-menu">
-  <button onclick="showView('dashboard');closeMobileAdminMenu()"><i data-lucide="layout-dashboard"></i> <span data-i18n="nav.overview">Übersicht</span></button>
-  <button onclick="showView('players');closeMobileAdminMenu()"><i data-lucide="users"></i> <span data-i18n="nav.players">Spieler</span></button>
-  <button onclick="showView('expenses');closeMobileAdminMenu()"><i data-lucide="credit-card"></i> <span data-i18n="nav.expenses">Ausgaben</span></button>
-  <button onclick="showView('billing');closeMobileAdminMenu()"><i data-lucide="receipt"></i> <span data-i18n="nav.billing">Abrechnung</span><span class="nav-badge" id="bnav-billing-count" hidden></span></button>
-  <button onclick="showView('history');closeMobileAdminMenu()"><i data-lucide="chart-no-axes-gantt"></i> <span data-i18n="nav.history">Transaktionen</span></button>
-  <button onclick="showView('admin-plan');closeMobileAdminMenu()"><i data-lucide="clipboard-list"></i> <span data-i18n="nav.session_plan">Session Planer</span></button>
-  <button onclick="showView('series');closeMobileAdminMenu()"><i data-lucide="repeat"></i> <span data-i18n="nav.series">Session Serien</span></button>
+  <div class="bnav-group-title" data-i18n="nav.group_sessions">Sessions</div>
+  <div class="bnav-group-grid">
+    <button onclick="showView('admin-plan');closeMobileAdminMenu()"><i data-lucide="clipboard-list"></i> <span data-i18n="nav.session_plan">Session Planer</span></button>
+    <button id="bnav-series" onclick="showView('series');closeMobileAdminMenu()"><i data-lucide="repeat"></i> <span data-i18n="nav.series">Session Serien</span></button>
+  </div>
+  <div class="bnav-group-title" data-i18n="nav.group_players">Spieler</div>
+  <div class="bnav-group-grid">
+    <button onclick="openPlayersTab('list');closeMobileAdminMenu()"><i data-lucide="users"></i> <span data-i18n="nav.players">Spieler</span></button>
+    <button onclick="openPlayersTab('activity');closeMobileAdminMenu()"><i data-lucide="activity"></i> <span data-i18n="nav.activity">Aktivität</span></button>
+  </div>
+  <div class="bnav-group-title" data-i18n="nav.group_money">Finanzen</div>
+  <div class="bnav-group-grid">
+    <button onclick="showView('billing');closeMobileAdminMenu()"><i data-lucide="receipt"></i> <span data-i18n="nav.billing">Abrechnung</span><span class="nav-badge" id="bnav-billing-count" hidden></span></button>
+    <button class="bnav-quick-tx" onclick="closeMobileAdminMenu();openTx()"><i data-lucide="plus-circle"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
+    <button onclick="showView('history');closeMobileAdminMenu()"><i data-lucide="chart-no-axes-gantt"></i> <span data-i18n="nav.history">Transaktionen</span></button>
+    <button onclick="showView('expenses');closeMobileAdminMenu()"><i data-lucide="credit-card"></i> <span data-i18n="nav.expenses">Ausgaben</span></button>
+    <button onclick="showView('dashboard');closeMobileAdminMenu()"><i data-lucide="layout-dashboard"></i> <span data-i18n="nav.overview">Übersicht</span></button>
+  </div>
   <div class="bnav-divider"></div>
-  <button onclick="showView('settings');closeMobileAdminMenu()"><i data-lucide="settings"></i> <span data-i18n="nav.settings">System</span></button>
+  <div class="bnav-group-grid">
+    <button onclick="showView('settings');closeMobileAdminMenu()" style="grid-column:1/-1"><i data-lucide="settings"></i> <span data-i18n="nav.settings">System</span></button>
+  </div>
 </div>
 
 <!-- ── LANGUAGE MODAL ── -->
@@ -858,9 +899,21 @@ if ('serviceWorker' in navigator) {
 <div class="mo" id="mo-tx">
   <div class="mo-box">
     <div class="mo-head"><h2 class="mo-title" id="mo-tx-title" data-i18n="transactions.title">Zahlung</h2><button class="mo-close btn-icon" onclick="closeMo('mo-tx')"><i data-lucide="x"></i></button></div>
+    <div class="fg" id="tx-player-wrap">
+      <label class="fl" for="tx-player-select" data-i18n="transactions.player">Spieler</label>
+      <select id="tx-player-select" class="fi" onchange="onTxPlayerChange(this.value)"></select>
+    </div>
     <p class="txsm txm mb4" id="mo-tx-sub"></p>
-    <div class="fg"><label class="fl" data-i18n="transactions.amount">Betrag</label><input type="number" id="tx-amount" class="fi" placeholder="50" min="1" step="1"></div>
-    <div class="fg"><label class="fl" data-i18n="transactions.note">Notiz (optional)</label><input type="text" id="tx-note" class="fi" data-i18n-placeholder="transactions.note_placeholder" placeholder="PayPal März"></div>
+    <div class="fg">
+      <label class="fl" for="tx-amount" data-i18n="transactions.amount">Betrag</label>
+      <div class="tx-quick-chips" id="tx-quick-amounts"></div>
+      <input type="number" id="tx-amount" class="fi" placeholder="50" min="0.01" step="0.01">
+    </div>
+    <div class="fg">
+      <label class="fl" for="tx-note" data-i18n="transactions.note">Notiz (optional)</label>
+      <div class="tx-quick-chips" id="tx-quick-notes"></div>
+      <input type="text" id="tx-note" class="fi" data-i18n-placeholder="transactions.note_placeholder" placeholder="PayPal März">
+    </div>
     <div class="mo-foot" style="flex-direction:column;gap:var(--sp2)">
       <div style="display:flex;gap:var(--sp2);width:100%">
         <button class="btn btn-ok" onclick="doTx(true)" style="flex:1"><i data-lucide="plus"></i> <span data-i18n="transactions.credit">Aufladen</span></button>
