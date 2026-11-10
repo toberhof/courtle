@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 442;
+const CLIENT_BUILD = 443;
 let S = {
   players: [],
   transactions: [],
@@ -968,6 +968,11 @@ function selectGuest(pid) {
   openUserPinModal(p);
 }
 
+function openLoginModal() {
+  openWelcomeModal();
+}
+window.openLoginModal = openLoginModal;
+
 // ── First-Setup (0 Spieler in DB) ──
 function checkFirstSetup() {
   try {
@@ -1212,7 +1217,7 @@ function renderSessions() {
         <div style="font-size:2.5rem;margin-bottom:var(--sp3)"><i data-lucide="shield-alert" style="width:48px;height:48px;color:var(--txm)"></i></div>
         <h3 class="mb2">${t('settings.total_privacy_title', 'Datenschutz aktiv')}</h3>
         <p class="txsm txm mb5">${t('settings.total_privacy_desc', 'Termine sind nur für angemeldete Spieler sichtbar. Bitte melde dich an, um die Sessions zu sehen.')}</p>
-        <button class="btn btn-pri btn-sm" onclick="openLoginModal()"><i data-lucide="log-in"></i> <span>${t('nav.login', 'Anmelden')}</span></button>
+        <button class="btn btn-pri btn-sm" onclick="openWelcomeModal()"><i data-lucide="log-in"></i> <span>${t('nav.login', 'Anmelden')}</span></button>
       </div>`;
     if (window.lucide) lucide.createIcons();
     syncSwipeHeight();
@@ -3762,7 +3767,7 @@ function navigateToSession(date) {
 
 function openSessionDetailsModal(date) {
   if (S.cfg.total_privacy_mode === '1' && !guestId) {
-    openLoginModal();
+    openWelcomeModal();
     return;
   }
   const sess = getOrSess(date);
