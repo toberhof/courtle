@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 432;
+const CLIENT_BUILD = 433;
 let S = {
   players: [],
   transactions: [],
@@ -2088,20 +2088,30 @@ function renderAdminPlan(keepDetailsOpen) {
     chipsHtml += upcomingSessions.map(makeChip).join('');
   }
 
+  const nextUpcoming = upcomingSessions[0] || allSessions[allSessions.length - 1];
+  const nextUpcomingId = nextUpcoming ? (nextUpcoming.id || nextUpcoming.date) : null;
+  const isAtUpcoming = nextUpcomingId && (planDate === nextUpcomingId || planDate === nextUpcoming.date);
+
   if (selBox) {
     selBox.innerHTML = `
-      <div class="plan-top-bar">
+      <div class="plan-nav-box">
+        <div class="plan-top-bar">
+          <span class="plan-top-label"><i data-lucide="calendar-days"></i> ${t('planner.select_session_label')}</span>
+          <div class="plan-top-actions">
+            <button class="btn ${isAtUpcoming ? 'btn-sec active-toggle' : 'btn-sec'} btn-sm" id="plan-jump-upcoming-btn" onclick="planGoToUpcoming()" title="${esc(t('planner.jump_upcoming_title'))}" type="button">
+              <i data-lucide="calendar-arrow-up"></i> <span>${t('planner.jump_upcoming')}</span>
+            </button>
+            <button class="btn btn-sec btn-sm" onclick="document.getElementById('plan-date-picker').showPicker ? document.getElementById('plan-date-picker').showPicker() : document.getElementById('plan-date-picker').click()" title="${esc(t('planner.jump_to_date'))}" type="button"><i data-lucide="calendar-search"></i></button>
+            <input type="date" id="plan-date-picker" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="planGoToDateClosest(this.value)">
+            <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()" type="button"><i data-lucide="plus"></i> <span data-i18n="session.new">${t('session.new')}</span></button>
+          </div>
+        </div>
         <div class="plan-strip-wrap">
           <button class="plan-strip-nav" onclick="scrollPlanStrip(-1)" type="button" aria-label="Links scrollen">‹</button>
           <div class="plan-strip" id="plan-strip" role="listbox">
             ${chipsHtml}
           </div>
           <button class="plan-strip-nav" onclick="scrollPlanStrip(1)" type="button" aria-label="Rechts scrollen">›</button>
-        </div>
-        <div class="plan-top-actions">
-          <button class="btn btn-sec btn-sm" onclick="document.getElementById('plan-date-picker').showPicker ? document.getElementById('plan-date-picker').showPicker() : document.getElementById('plan-date-picker').click()" title="${esc(t('planner.jump_to_date'))}"><i data-lucide="calendar"></i></button>
-          <input type="date" id="plan-date-picker" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="planGoToDateClosest(this.value)">
-          <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()"><i data-lucide="plus"></i> <span class="hide-xs" data-i18n="session.new">${t('session.new')}</span></button>
         </div>
       </div>
     `;

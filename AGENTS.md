@@ -80,9 +80,11 @@ Before making changes to the codebase, please read the corresponding role file i
 ### Modern Session Planner (`view-admin-plan`)
 The session planner focuses purely on session organization (dates, times, courts, player bookings, waitlist):
 1. **Interactive Date Strip & Top Bar** (`#session-selector-box`):
-   - Single-row `.plan-top-bar` containing the horizontal scrollable `.plan-strip` and right-aligned quick controls (date picker dialog and "+ Neue Session").
+   - Two-row `.plan-nav-box`:
+     - Top bar (`.plan-top-bar`) with section label (`planner.select_session_label`) and right-aligned quick controls: "Nächste" button (`#plan-jump-upcoming-btn` jumping directly to the next upcoming session), date picker dialog (`#plan-date-picker`), and "+ Neue Session".
+     - Full-width horizontal scrollable `.plan-strip` below so mobile and desktop both get 100% viewport width for scrolling through `.plan-chip` cards.
    - `.plan-chip` cards display weekday + month, large day number, session start time (`.pc-time` to distinguish multiple sessions on the same day), and live status badge (`✓` charged, `€` awaiting billing, `filled/total`, or `✕` cancelled), with `data-date` and `data-id` attributes.
-   - Clickable "HEUTE" visual anchor marking the boundary between past and future sessions and jumping directly to the next upcoming session.
+   - Clickable "HEUTE" visual anchor marking the boundary between past and future sessions.
 2. **Unified Session Header & Integrated Details Drawer** (`#admin-plan-header-dynamic`):
    - Session title with series indicator (`planner.from_series`) and live `.status-pill` badge (Offen, Wartet auf Abrechnung, Abgerechnet, Abgesagt).
    - Properly aligned inline metadata chips (`.plan-meta-item` with `display: inline-flex`): Date, time span, slot price, occupancy, and conditional location/note chips (shown only when non-empty).
