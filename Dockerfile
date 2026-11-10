@@ -53,5 +53,10 @@ RUN mkdir -p /var/www/courtle_data && chown -R www-data:www-data /var/www/html /
 # 10. Install entrypoint
 COPY docker-entrypoint.sh /usr/local/bin/courtle-entrypoint
 RUN chmod +x /usr/local/bin/courtle-entrypoint
-# 11. Entrypoint: fix permissions then start Apache
+
+# 11. Healthcheck for Docker container monitoring & zero-downtime rolling updates
+HEALTHCHECK --interval=20s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://127.0.0.1/api.php/health || exit 1
+
+# 12. Entrypoint: fix permissions then start Apache
 ENTRYPOINT ["courtle-entrypoint"]

@@ -54,6 +54,9 @@ Before making changes to the codebase, please read the corresponding role file i
 
 * **No Build Step**: Direct, fully editable vanilla files. Changes take effect in the browser immediately upon saving.
 * **Docker Dev Environment**: Use `docker compose -f docker-compose.dev.yml up --build` for local testing. The dev compose file bind-mounts the entire project directory into the container for live reload (no rebuild needed). A named volume preserves the `vendor/` directory (lucide.js, fonts) from the Dockerfile build step.
+* **Upstream Synchronization (Core Code)**:
+  - This repository (`courtle`) is the single source of truth for the core application (`api.php`, `app.js`, `style.css`, `index.html`, `courtle.conf`, `Dockerfile`).
+  - Downstream variants (such as `courtle-cloud`) pull core updates directly from this repository. All core fixes, performance tweaks, security updates, and UI enhancements must be committed here first.
 * **Production Docker**: `docker-compose.yml` is for releases only — do not modify it for development purposes.
 * **Git Push**: Git pushes must **only** be performed upon explicit user request (never automatically).
 * **Build Cache & Invalidation**:

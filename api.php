@@ -42,6 +42,54 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
     http_response_code(204); 
     exit; 
 }
+
+function courtle_client_ip(): string {
+    // 1. Cloudflare sends the verified visitor IP in CF-Connecting-IP
+    if (!empty($_SERVER['HTTP_CF_CONNECTING_IP'])) {
+        $ip = trim($_SERVER['HTTP_CF_CONNECTING_IP']);
+        if (filter_var($ip, FILTER_VALIDATE_IP)) {
+            return $ip;
+        }
+    }
+
+    // 2. Traefik / Nginx / Reverse Proxies often pass X-Real-IP
+    if (!empty($_SERVER['HTTP_X_REAL_IP'])) {
+        $ip = trim($_SERVER['HTTP_X_REAL_IP']);
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return $ip;
+        }
+    }
+
+    // 3. X-Forwarded-For (client, proxy1, proxy2...)
+    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
+        $parts = explode(',', $_SERVER['HTTP_X_FORWARDED_FOR']);
+        // Scan left-to-right for the first public/non-private IP
+        foreach ($parts as $p) {
+            $p = trim($p);
+            if (filter_var($p, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+                return $p;
+            }
+        }
+        // If all in chain are private, take the first valid IP
+        foreach ($parts as $p) {
+            $p = trim($p);
+            if (filter_var($p, FILTER_VALIDATE_IP)) {
+                return $p;
+            }
+        }
+    }
+
+    // 4. Fallback to REMOTE_ADDR
+    $remote = trim($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1');
+    return filter_var($remote, FILTER_VALIDATE_IP) ? $remote : '127.0.0.1';
+}
+
+function is_internal_ip(string $ip): bool {
+    if ($ip === '127.0.0.1' || $ip === '::1') return false; // Allow localhost for local dev/testing
+    // Check if IP is in private or reserved network ranges (e.g. 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+    return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
+}
+
 // ── DB Connection ──
 function db(): PDO {
     static $pdo = null;
@@ -636,6 +684,9 @@ for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
             $resource === 'series' && $method === 'PUT'  && $id => handle_series_update($id),
             $resource === 'series' && $method === 'DELETE' && $id => handle_series_delete($id),
 
+            // ── Healthcheck (public) ──
+            $resource === 'health' && $method === 'GET'          => json_out(['status' => 'ok', 'app' => 'courtle', 'timestamp' => time()]),
+
             // ── PWA Manifest (public) ──
             $resource === 'manifest' && $method === 'GET'        => handle_manifest(),
 
@@ -684,7 +735,8 @@ function handle_auth(): void {
     if (!$pid) err('player_id is required.');
 
     // Rate limiting: check login attempts
-    $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+    $ip = courtle_client_ip();
+    $canLock = !is_internal_ip($ip);
     $key = $ip . ':' . $pid;
 
     // Get current attempts record
@@ -696,8 +748,8 @@ function handle_auth(): void {
         $attempts = (int)$attempt['attempts'];
         $lockedSince = $attempt['locked_since'] ?? null;
 
-        // Check if currently locked
-        if ($attempts >= 3 && $lockedSince !== null) {
+        // Check if currently locked (skip if internal proxy IP)
+        if ($canLock && $attempts >= 3 && $lockedSince !== null) {
             $lockoutSeconds = 5 * pow(2, floor($attempts / 3) - 1) * 60; // in seconds
             $elapsed = time() - $lockedSince;
 
@@ -722,8 +774,8 @@ function handle_auth(): void {
         $newAttempts = $currentAttempts + 1;
 
         $lockedSince = null;
-        // Set lock when attempts reach 3, 6, 9, ... (every 3rd attempt)
-        if ($newAttempts % 3 === 0) {
+        // Set lock when attempts reach 3, 6, 9, ... (every 3rd attempt, but never on internal proxies)
+        if ($canLock && $newAttempts % 3 === 0) {
             $lockedSince = time();
         }
 
