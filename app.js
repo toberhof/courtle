@@ -1644,6 +1644,7 @@ function renderAll() {
   renderExpenses();
   renderPlayerActivityTable();
   renderAdminPlan();
+  renderBilling();
   renderPlayers();
   renderHistory();
   renderMyHistory();
@@ -2146,6 +2147,8 @@ async function renderSessionHistory(dateOrId) {
       waitlist_leave:  { label: t('history.waitlist_leave'),   cls: 'bg-err' },
       promoted:        { label: t('history.promoted'),  cls: 'bg-ok'  },
       court_cancelled:{ label: t('session.court_cancelled'),cls: 'bg-neu' },
+      charged:         { label: t('billing.history_charged'),  cls: 'bg-neu' },
+      charge_reverted: { label: t('billing.history_reverted'), cls: 'bg-gld' },
     };
 
     el.innerHTML = data.map(h => {
@@ -2475,62 +2478,308 @@ function getChargeMap(sess) {
   });
   return counts;
 }
+// ════════════════════════════════════════
+// BILLING (ABRECHNUNG)
+// ════════════════════════════════════════
+let billingTab = 'open';
+let billingDeselected = new Set();
+let billingChargedLimit = 20;
+let isCharging = false;
+let billingModal = { ids: [], paid: {}, step: 1 };
+
+function getSessionCost(sess) {
+  const v = (sess.price !== null && sess.price !== undefined) ? parseFloat(sess.price) : parseFloat(S.cfg.cost);
+  return isNaN(v) ? 0 : v;
+}
+
+function sessionChargeMap(sess) {
+  return getChargeMap({ courts: sess.courts || [], disabledCourts: sess.disabledCourts || [] });
+}
+
+function sessionEndDate(s) {
+  const { start, end } = getSessionTime(s);
+  const toMin = x => { const [h, m] = (x || '').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+  const d = new Date(s.date + 'T00:00:00');
+  let endMin = end ? toMin(end) : 23 * 60 + 59;
+  if (start && end && endMin <= toMin(start)) endMin += 24 * 60; // overnight session
+  d.setMinutes(endMin);
+  return d;
+}
+
+function getOpenBillingSessions() {
+  const now = new Date();
+  return (S.sessions || [])
+    .filter(s => !s.charged && !s.cancelled && sessionEndDate(s) < now && Object.keys(sessionChargeMap(s)).length > 0)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.timeStart || '').localeCompare(b.timeStart || ''));
+}
+
+function getChargedSessions() {
+  return (S.sessions || [])
+    .filter(s => s.charged)
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.timeStart || '').localeCompare(a.timeStart || ''));
+}
+
+function billingSessionTotals(sess) {
+  const counts = sessionChargeMap(sess);
+  const slots = Object.values(counts).reduce((a, b) => a + b, 0);
+  return { counts, slots, players: Object.keys(counts).length, sum: slots * getSessionCost(sess) };
+}
+
+function updateBillingBadge() {
+  const n = isAdmin ? getOpenBillingSessions().length : 0;
+  ['nav-billing-count', 'bnav-billing-count'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = n;
+    el.hidden = n === 0;
+  });
+  return n;
+}
+
+function setBillingTab(tab) {
+  billingTab = tab;
+  renderBilling();
+}
+
+function billingSessionHeader(s) {
+  const { start, end } = getSessionTime(s);
+  const time = start && end ? ` · ${fmtTime(start)}–${fmtTime(end)}` : '';
+  return `${esc(fmtDL(s.date))}${time}`;
+}
+
+function renderBilling() {
+  const open = updateBillingBadge();
+  const root = document.getElementById('billing-content');
+  if (!root) return;
+  const openList = getOpenBillingSessions();
+  const chargedList = getChargedSessions();
+  const tabOpen = document.getElementById('billing-tab-open');
+  const tabCh = document.getElementById('billing-tab-charged');
+  tabOpen.textContent = `${t('billing.tab_open')} (${openList.length})`;
+  tabCh.textContent = t('billing.tab_charged');
+  tabOpen.classList.toggle('active', billingTab === 'open');
+  tabCh.classList.toggle('active', billingTab === 'charged');
+  tabOpen.setAttribute('aria-selected', billingTab === 'open');
+  tabCh.setAttribute('aria-selected', billingTab === 'charged');
+
+  const intro = document.getElementById('billing-intro');
+  if (intro) {
+    intro.innerHTML = localStorage.getItem('courtle_billing_intro_seen') ? '' : `
+      <div class="card mb4">
+        <h3 class="sec-title" style="margin-bottom:var(--sp2)">${t('billing.intro_title')}</h3>
+        <p class="txsm txm mb4">${t('billing.intro_text')}</p>
+        <button class="btn btn-sec btn-sm" onclick="dismissBillingIntro()">${t('billing.intro_dismiss')}</button>
+      </div>`;
+  }
+
+  const footer = document.getElementById('billing-footer');
+  if (billingTab === 'open') {
+    if (!openList.length) {
+      root.innerHTML = `<div class="empty"><i data-lucide="party-popper"></i><h3>${t('billing.empty_title')}</h3><p class="txsm">${t('billing.empty_text')}</p></div>`;
+      footer.hidden = true;
+    } else {
+      const selected = openList.filter(s => !billingDeselected.has(s.id));
+      const allSel = selected.length === openList.length;
+      root.innerHTML = `<div class="billing-list">
+        <label class="flex items-c g2 txsm fw6" style="cursor:pointer"><input type="checkbox" style="width:20px;height:20px" ${allSel ? 'checked' : ''} onchange="toggleBillingAll(this.checked)"> ${t('billing.select_all')}</label>
+        ${openList.map(s => {
+          const tot = billingSessionTotals(s);
+          const sel = !billingDeselected.has(s.id);
+          return `<div class="billing-item ${sel ? 'sel' : ''}">
+            <input type="checkbox" ${sel ? 'checked' : ''} onchange="toggleBillingItem('${s.id}', this.checked)" aria-label="${esc(getSessionName(s))}">
+            <div class="bi-main">
+              <div class="bi-title">${esc(getSessionName(s))}</div>
+              <div class="bi-meta">${billingSessionHeader(s)}</div>
+              <div class="bi-meta">${t('billing.session_meta').replace('{slots}', tot.slots).replace('{players}', tot.players)}</div>
+              <div class="bi-actions">
+                <button class="btn btn-sec btn-sm" onclick="openBillingModal(['${s.id}'])">${t('billing.review')}</button>
+                <button class="btn btn-sec btn-sm" onclick="openBillingInPlanner('${s.id}')">${t('billing.open_in_planner')}</button>
+              </div>
+            </div>
+            <div class="bi-sum">${fmtE(tot.sum)}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+      const sum = selected.reduce((a, s) => a + billingSessionTotals(s).sum, 0);
+      document.getElementById('billing-footer-sum').textContent = t('billing.selected_summary').replace('{n}', selected.length).replace('{sum}', fmtE(sum));
+      document.getElementById('billing-footer-btn').disabled = selected.length === 0;
+      footer.hidden = false;
+    }
+  } else {
+    footer.hidden = true;
+    if (!chargedList.length) {
+      root.innerHTML = `<div class="empty"><i data-lucide="receipt"></i><p class="txsm">${t('billing.charged_empty')}</p></div>`;
+    } else {
+      const shown = chargedList.slice(0, billingChargedLimit);
+      root.innerHTML = `<div class="billing-list">${shown.map(s => {
+        const txs = (S.transactions || []).filter(x => x.sessionId === s.id);
+        const legacy = txs.length === 0;
+        const sum = legacy ? billingSessionTotals(s).sum : txs.filter(x => !x.credit).reduce((a, x) => a + x.amount, 0);
+        return `<div class="billing-item">
+          <div class="bi-main">
+            <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('session.charged')}</span></div>
+            <div class="bi-meta">${billingSessionHeader(s)}</div>
+            <div class="bi-actions">
+              <button class="btn btn-dan btn-sm" ${legacy ? `disabled title="${esc(t('billing.legacy_no_revert'))}"` : ''} onclick="revertBilling('${s.id}')"><i data-lucide="undo-2"></i> ${t('billing.revert')}</button>
+            </div>
+            ${legacy ? `<div class="bi-meta" style="margin-top:var(--sp1)">${t('billing.legacy_no_revert')}</div>` : ''}
+          </div>
+          <div class="bi-sum">${fmtE(sum)}</div>
+        </div>`;
+      }).join('')}
+      ${chargedList.length > shown.length ? `<button class="btn btn-sec btn-sm" onclick="billingChargedLimit+=20;renderBilling()">…</button>` : ''}
+      </div>`;
+    }
+  }
+  lucide.createIcons();
+}
+
+function dismissBillingIntro() {
+  localStorage.setItem('courtle_billing_intro_seen', '1');
+  renderBilling();
+}
+
+function toggleBillingItem(id, checked) {
+  if (checked) billingDeselected.delete(id); else billingDeselected.add(id);
+  renderBilling();
+}
+function toggleBillingAll(checked) {
+  const ids = getOpenBillingSessions().map(s => s.id);
+  billingDeselected = checked ? new Set() : new Set(ids);
+  renderBilling();
+}
+function openBillingInPlanner(id) {
+  planDate = id;
+  showView('admin-plan');
+  renderAdminPlan();
+}
+function openBillingModalForSelection() {
+  const ids = getOpenBillingSessions().filter(s => !billingDeselected.has(s.id)).map(s => s.id);
+  if (ids.length) openBillingModal(ids);
+}
+
+// Legacy entry point (planner): charge the currently selected session
 function openChargeModal() {
   const sess = getOrSess(planDate);
-  if (sess.charged) { showToast('Bereits abgerechnet.'); return; }
-  const counts = getChargeMap(sess);
-  const baseIds = Object.keys(counts);
-  if (!baseIds.length) { showToast(t('session.billing_no_players')); return; }
-  const totalSlots = Object.values(counts).reduce((a, b) => a + b, 0);
-  const sessionCost = (sess.price !== null && sess.price !== undefined) ? sess.price : S.cfg.cost;
-  document.getElementById('mo-charge-desc').textContent = `${baseIds.length} ${t('players.title').toLowerCase()} (${totalSlots} ${t('session.slots').toLowerCase()}) am ${fmtDL(sess.date)} · ${fmtE(sessionCost)} ${t('session.per_slot')}`;
-
-  document.getElementById('mo-charge-list').innerHTML = `<div class="tw"><table class="dt"><thead><tr><th>${t('players.title')}</th><th>${t('session.slots')}</th><th>${t('session.amount')}</th><th style="text-align:center">${t('session.paid')}</th></tr></thead><tbody>
-    ${baseIds.map(pid => {
-      const p = S.players.find(x => x.id === pid);
-      const n = counts[pid];
-      const amt = sessionCost * n;
-      const guestInfo = n > 1 ? ` <span style="opacity:.6;font-size:var(--text-xs)">(+${n-1} ${t('misc.guest')})</span>` : '';
-      return `<tr>
-                <td>${esc(p ? p.name : '?')}${guestInfo}</td>
-                <td style="text-align:center">${n}</td>
-                <td>– ${fmtE(amt)}</td>
-                <td style="text-align:center">
-                  <input type="checkbox" class="paid-check" data-pid="${pid}" style="width:18px;height:18px;cursor:pointer;">
-                </td>
-              </tr>`;
-    }).join('')}
-  </tbody></table></div>`;
-  openMo('mo-charge');
+  if (sess.charged) { showToast(t('misc.already_charged')); return; }
+  openBillingModal([sess.id || planDate]);
 }
-let isCharging = false; // Unsere unsichtbare Schranke für die Abrechnung
+
+function openBillingModal(ids) {
+  const sessions = ids.map(id => (S.sessions || []).find(s => s.id === id)).filter(Boolean);
+  if (!sessions.length) return;
+  if (!sessions.some(s => Object.keys(sessionChargeMap(s)).length)) { showToast(t('session.billing_no_players')); return; }
+  billingModal = { ids: sessions.map(s => s.id), paid: {}, step: 1 };
+  renderBillingModal();
+  openMo('mo-billing');
+}
+
+function billingPlayerName(pid, n) {
+  const p = S.players.find(x => x.id === pid);
+  const guests = n > 1 ? ` <span style="opacity:.6;font-size:var(--text-xs)">(+${n - 1} ${t('misc.guest')})</span>` : '';
+  return esc(p ? p.name : '?') + guests;
+}
+
+function renderBillingModal() {
+  const sessions = billingModal.ids.map(id => S.sessions.find(s => s.id === id)).filter(Boolean);
+  const body = document.getElementById('mo-billing-body');
+  const foot = document.getElementById('mo-billing-foot');
+  document.getElementById('mo-billing-title').textContent = `${t('billing.title')} · ${billingModal.step}/2 ${billingModal.step === 1 ? t('billing.step_review') : t('billing.step_confirm')}`;
+
+  if (billingModal.step === 1) {
+    body.innerHTML = sessions.map(s => {
+      const tot = billingSessionTotals(s);
+      const cost = getSessionCost(s);
+      const rows = Object.entries(tot.counts).map(([pid, n]) => `<tr>
+        <td>${billingPlayerName(pid, n)}</td>
+        <td style="text-align:center">${n}</td>
+        <td>${fmtE(cost * n)}</td>
+        <td style="text-align:center"><input type="checkbox" style="width:18px;height:18px;cursor:pointer" ${billingModal.paid[s.id + ':' + pid] ? 'checked' : ''} onchange="billingModal.paid['${s.id}:${pid}']=this.checked" aria-label="${esc(t('billing.direct_paid'))}"></td>
+      </tr>`).join('');
+      return `<details class="billing-block" ${sessions.length === 1 ? 'open' : ''}>
+        <summary><span>${esc(getSessionName(s))} · ${billingSessionHeader(s)}</span><span>${fmtE(tot.sum)}</span></summary>
+        <div class="tw"><table class="dt"><thead><tr><th>${t('billing.player')}</th><th style="text-align:center">${t('billing.slots')}</th><th>${t('billing.amount')}</th>
+          <th style="text-align:center" title="${esc(t('billing.direct_paid_hint'))}">${t('billing.direct_paid')} ⓘ</th></tr></thead><tbody>${rows}</tbody></table>
+        <button class="btn btn-sec btn-xs" style="margin:var(--sp2)" onclick="billingMarkAllPaid('${s.id}')">${t('billing.all_direct_paid')}</button></div>
+      </details>`;
+    }).join('') + `<p class="txxs txm">ⓘ ${t('billing.direct_paid_hint')}</p>`;
+    foot.innerHTML = `<button class="btn btn-sec" onclick="closeMo('mo-billing')">${t('modal.cancel')}</button>
+      <button class="btn btn-pri" onclick="billingModal.step=2;renderBillingModal()">${t('billing.next')}</button>`;
+  } else {
+    const per = {};
+    let totalSlots = 0, totalDebit = 0, totalDirect = 0;
+    sessions.forEach(s => {
+      const cost = getSessionCost(s);
+      Object.entries(sessionChargeMap(s)).forEach(([pid, n]) => {
+        per[pid] = per[pid] || { debit: 0, direct: 0 };
+        per[pid].debit += cost * n;
+        totalSlots += n; totalDebit += cost * n;
+        if (billingModal.paid[s.id + ':' + pid]) { per[pid].direct += cost * n; totalDirect += cost * n; }
+      });
+    });
+    const rows = Object.entries(per).map(([pid, v]) => {
+      const now = bal(pid);
+      const after = now - v.debit + v.direct;
+      return `<tr><td>${billingPlayerName(pid, 1)}</td>
+        <td>${fmtE(now)}</td>
+        <td>– ${fmtE(v.debit)}</td>
+        <td>${v.direct ? '+ ' + fmtE(v.direct) : '–'}</td>
+        <td class="${after < 0 ? 'billing-neg' : ''}" style="font-weight:700">${fmtE(after)}${after < 0 ? ` <span title="${esc(t('billing.negative_warning'))}">⚠</span>` : ''}</td></tr>`;
+    }).join('');
+    body.innerHTML = `<p class="txsm txm mb4">${t('billing.summary_text').replace('{n}', sessions.length).replace('{slots}', totalSlots).replace('{sum}', fmtE(totalDebit)).replace('{direct}', fmtE(totalDirect))}</p>
+      <div class="tw"><table class="dt"><thead><tr><th>${t('billing.player')}</th><th>${t('billing.balance_now')}</th><th>${t('billing.debit')}</th><th>${t('billing.direct')}</th><th>${t('billing.balance_after')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    foot.innerHTML = `<button class="btn btn-sec" onclick="billingModal.step=1;renderBillingModal()">${t('billing.back')}</button>
+      <button class="btn btn-pri" onclick="doCharge()"><i data-lucide="credit-card"></i> ${t('billing.finish')}</button>`;
+  }
+  lucide.createIcons();
+}
+
+function billingMarkAllPaid(sid) {
+  const s = S.sessions.find(x => x.id === sid);
+  if (!s) return;
+  const pids = Object.keys(sessionChargeMap(s));
+  const all = pids.every(pid => billingModal.paid[sid + ':' + pid]);
+  pids.forEach(pid => { billingModal.paid[sid + ':' + pid] = !all; });
+  renderBillingModal();
+  document.querySelectorAll('#mo-billing-body details').forEach(d => d.open = true);
+}
 
 async function doCharge() {
-  if (isCharging) return; // Wenn er schon arbeitet, Klick ignorieren
-  isCharging = true;      // Schranke zu!
-
-  // NEU: Alle angehakten Checkboxen finden und die IDs (PIDs) sammeln
-  const paidChecks = document.querySelectorAll('.paid-check:checked');
-  const paidPids = Array.from(paidChecks).map(cb => cb.dataset.pid);
-
+  if (isCharging) return;
+  isCharging = true;
   try {
-    const sess = getOrSess(planDate);
-    // Die Liste der "schon bezahlten" Spieler (paid_pids) an die API mitsenden
-    await apiFetch('POST', '/charge', { 
-      id: sess.id || planDate,
-      date: sess.date,
-      paid_pids: paidPids 
+    const items = billingModal.ids.map(id => {
+      const s = S.sessions.find(x => x.id === id);
+      const pids = Object.keys(sessionChargeMap(s)).filter(pid => billingModal.paid[id + ':' + pid]);
+      return { id, paid_pids: pids };
     });
-    
+    await apiFetch('POST', '/charge', { items });
     await loadState();
-    closeMo('mo-charge');
+    closeMo('mo-billing');
+    items.forEach(i => billingDeselected.delete(i.id));
     renderAll();
-    showToast(t('toast.charged'));
-  } catch(e) {
-    showToast('Fehler beim Abrechnen: ' + (e.message || ''));
+    showToast(t('billing.toast_done').replace('{n}', items.length));
+  } catch (e) {
+    showToast('⚠️ ' + (e.message || t('billing.error')));
   }
-  
-  isCharging = false; // Ganz am Ende: Schranke wieder auf!
+  isCharging = false;
+}
+
+function revertBilling(id) {
+  const s = (S.sessions || []).find(x => x.id === id);
+  if (!s) return;
+  const sum = (S.transactions || []).filter(x => x.sessionId === id && !x.credit).reduce((a, x) => a + x.amount, 0);
+  const desc = t('billing.revert_confirm').replace('{session}', `${getSessionName(s)} ${fmtDL(s.date)}`).replace('{sum}', fmtE(sum));
+  showConfirmModal(t('billing.revert_title'), desc, '<i data-lucide="undo-2"></i> ' + t('billing.revert'), 'btn-dan', async () => {
+    try {
+      await apiFetch('DELETE', '/charge/' + id);
+      await loadState();
+      renderAll();
+      showToast(t('billing.toast_reverted'));
+    } catch (e) {
+      showToast('⚠️ ' + (e.message || t('billing.error')));
+    }
+  });
 }
 
 // ════════════════════════════════════════
@@ -3924,13 +4173,13 @@ async function importData(e) {
 // ════════════════════════════════════════
 // NAVIGATION
 // ════════════════════════════════════════
-const DD_VIEWS = ['dashboard','admin-plan','players','expenses','history','series','settings'];
-const DD_LABELS = {'dashboard':'nav.overview','admin-plan':'nav.session_plan','players':'nav.players','expenses':'nav.expenses','history':'nav.history','series':'nav.series','settings':'nav.settings'};
+const DD_VIEWS = ['dashboard','admin-plan','players','expenses','billing','history','series','settings'];
+const DD_LABELS = {'dashboard':'nav.overview','admin-plan':'nav.session_plan','players':'nav.players','expenses':'nav.expenses','billing':'nav.billing','history':'nav.history','series':'nav.series','settings':'nav.settings'};
 
 function showView(name) {
   closeMobileAdminMenu();
   // NEU: Sicherheits-Check
-  const adminViews = ['dashboard', 'admin-plan', 'players', 'expenses', 'history', 'series', 'settings'];
+  const adminViews = ['dashboard', 'admin-plan', 'players', 'expenses', 'billing', 'history', 'series', 'settings'];
   if (adminViews.includes(name) && !isAdmin) {
     name = 'sessions'; // Falls kein Admin, leite um auf Spieltage
   } // <--- DIESE KLAMMER HAT GEFEHLT!
@@ -3994,6 +4243,7 @@ function showView(name) {
   // Render view-specific content
   if (name === 'my-history')      renderMyHistory();
   if (name === 'my-transactions') renderMyTransactions();
+  if (name === 'billing')         renderBilling();
   
   lucide.createIcons();
 } // <--- Und hier muss die Funktion natürlich auch enden
@@ -4187,7 +4437,8 @@ async function loadState() {
         amount: parseFloat(t.amount),
         date: t.date,
         createdAt: t.created_at,
-        note: t.note || ''
+        note: t.note || '',
+        sessionId: t.session_id || null
       }));
     }
 

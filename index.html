@@ -102,6 +102,9 @@ if ('serviceWorker' in navigator) {
         <button class="nav-dd-item" id="nav-expenses" onclick="showView('expenses');closeNavDD()">
           <i data-lucide="credit-card" style="width:16px;height:16px"></i><span data-i18n="nav.expenses">Ausgaben</span>
         </button>
+        <button class="nav-dd-item" id="nav-billing" onclick="showView('billing');closeNavDD()">
+          <i data-lucide="receipt" style="width:16px;height:16px"></i><span data-i18n="nav.billing">Abrechnung</span><span class="nav-badge" id="nav-billing-count" hidden></span>
+        </button>
         <button class="nav-dd-item" id="nav-history" onclick="showView('history');closeNavDD()">
           <i data-lucide="chart-no-axes-gantt" style="width:16px;height:16px"></i><span data-i18n="nav.history">Transaktionen</span>
         </button>
@@ -243,6 +246,24 @@ if ('serviceWorker' in navigator) {
       <button class="btn btn-pri" onclick="openExpenseModal()"><i data-lucide="plus"></i> <span data-i18n="dashboard.expenses_record">Erfassen</span></button>
     </div>
     <div id="expenses-container" class="expense-list"></div>
+  </section>
+
+  <!-- BILLING (admin) -->
+  <section class="view" id="view-billing">
+    <div class="mb4">
+      <h1 class="page-title" style="margin-bottom:var(--sp1)" data-i18n="billing.title">Abrechnung</h1>
+      <p class="txsm txm" data-i18n="billing.subtitle">Gespielte Sessions abrechnen.</p>
+    </div>
+    <div id="billing-intro"></div>
+    <div class="seg-tabs mb4" role="tablist">
+      <button class="seg-tab active" id="billing-tab-open" role="tab" aria-selected="true" onclick="setBillingTab('open')"></button>
+      <button class="seg-tab" id="billing-tab-charged" role="tab" aria-selected="false" onclick="setBillingTab('charged')"></button>
+    </div>
+    <div id="billing-content"></div>
+    <div class="billing-footer" id="billing-footer" hidden>
+      <span class="billing-footer-sum" id="billing-footer-sum"></span>
+      <button class="btn btn-pri" id="billing-footer-btn" onclick="openBillingModalForSelection()"><i data-lucide="credit-card"></i> <span data-i18n="billing.charge_selected">Auswahl abrechnen</span></button>
+    </div>
   </section>
 
   <!-- ADMIN SESSION PLANNER -->
@@ -552,6 +573,7 @@ if ('serviceWorker' in navigator) {
   <button onclick="showView('dashboard');closeMobileAdminMenu()"><i data-lucide="layout-dashboard"></i> <span data-i18n="nav.overview">Übersicht</span></button>
   <button onclick="showView('players');closeMobileAdminMenu()"><i data-lucide="users"></i> <span data-i18n="nav.players">Spieler</span></button>
   <button onclick="showView('expenses');closeMobileAdminMenu()"><i data-lucide="credit-card"></i> <span data-i18n="nav.expenses">Ausgaben</span></button>
+  <button onclick="showView('billing');closeMobileAdminMenu()"><i data-lucide="receipt"></i> <span data-i18n="nav.billing">Abrechnung</span><span class="nav-badge" id="bnav-billing-count" hidden></span></button>
   <button onclick="showView('history');closeMobileAdminMenu()"><i data-lucide="chart-no-axes-gantt"></i> <span data-i18n="nav.history">Transaktionen</span></button>
   <button onclick="showView('admin-plan');closeMobileAdminMenu()"><i data-lucide="clipboard-list"></i> <span data-i18n="nav.session_plan">Session Planer</span></button>
   <button onclick="showView('series');closeMobileAdminMenu()"><i data-lucide="repeat"></i> <span data-i18n="nav.series">Session Serien</span></button>
@@ -834,16 +856,12 @@ if ('serviceWorker' in navigator) {
   </div>
 </div>
 
-<!-- Charge confirm -->
-<div class="mo" id="mo-charge">
-  <div class="mo-box">
-    <div class="mo-head"><h2 class="mo-title" data-i18n="charge.title">Session abrechnen</h2><button class="mo-close btn-icon" onclick="closeMo('mo-charge')"><i data-lucide="x"></i></button></div>
-    <p class="txsm txm mb4" id="mo-charge-desc"></p>
-    <div id="mo-charge-list" class="mb4"></div>
-    <div class="mo-foot">
-      <button class="btn btn-sec" onclick="closeMo('mo-charge')" data-i18n="modal.cancel">Abbrechen</button>
-      <button class="btn btn-pri" onclick="doCharge()"><i data-lucide="credit-card"></i> <span data-i18n="charge.confirm">Abrechnen</span></button>
-    </div>
+<!-- Billing (charge) dialog -->
+<div class="mo" id="mo-billing">
+  <div class="mo-box" style="max-width:640px">
+    <div class="mo-head"><h2 class="mo-title" id="mo-billing-title" data-i18n="billing.title">Abrechnung</h2><button class="mo-close btn-icon" onclick="closeMo('mo-billing')"><i data-lucide="x"></i></button></div>
+    <div id="mo-billing-body" class="mb4"></div>
+    <div class="mo-foot" id="mo-billing-foot"></div>
   </div>
 </div>
 

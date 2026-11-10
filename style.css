@@ -2453,3 +2453,27 @@ body:has(.pin-modal-overlay.open) {
   from { opacity: 0; transform: translate(-50%, -20px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* ── Billing ── */
+.nav-badge{margin-left:auto;min-width:18px;height:18px;padding:0 6px;border-radius:9px;background:var(--err);color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.nav-badge[hidden]{display:none}
+.seg-tabs{display:inline-flex;gap:2px;padding:3px;border-radius:var(--r-md);background:oklch(from var(--tx) l c h / .06)}
+.seg-tab{padding:var(--sp2) var(--sp4);border:none;border-radius:calc(var(--r-md) - 2px);background:none;color:var(--txm);font-size:var(--text-sm);font-weight:600;cursor:pointer;transition:background var(--tr),color var(--tr);min-height:36px}
+.seg-tab.active{background:var(--pri);color:#fff}
+.billing-list{display:flex;flex-direction:column;gap:var(--sp3);padding-bottom:96px}
+.billing-item{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp3) var(--sp4);border-radius:var(--r-lg);background:var(--sur);border:1px solid var(--bor);transition:border-color var(--tr),transform var(--tr)}
+.billing-item.sel{border-color:var(--pri)}
+.billing-item input[type=checkbox]{width:20px;height:20px;flex-shrink:0;cursor:pointer}
+.billing-item .bi-main{flex:1;min-width:0}
+.billing-item .bi-title{font-weight:700}
+.billing-item .bi-meta{font-size:var(--text-xs);color:var(--txm)}
+.billing-item .bi-sum{font-weight:700;white-space:nowrap}
+.billing-item .bi-actions{display:flex;gap:var(--sp2);flex-wrap:wrap;margin-top:var(--sp2)}
+.billing-footer{position:fixed;left:0;right:0;bottom:calc(56px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;align-items:center;justify-content:space-between;gap:var(--sp3);padding:var(--sp3) var(--sp4);background:oklch(from var(--bg) l c h / .85);backdrop-filter:blur(14px);border-top:1px solid var(--bor)}
+.billing-footer[hidden]{display:none}
+@media(min-width:900px){.billing-footer{bottom:0}}
+.billing-footer-sum{font-weight:700;font-size:var(--text-sm)}
+.billing-block{border:1px solid var(--bor);border-radius:var(--r-md);margin-bottom:var(--sp3);overflow:hidden}
+.billing-block>summary{display:flex;justify-content:space-between;gap:var(--sp3);padding:var(--sp3);cursor:pointer;font-weight:700;background:oklch(from var(--tx) l c h / .03)}
+.billing-block .tw{padding:0 var(--sp2) var(--sp2)}
+.billing-neg{color:var(--err)}

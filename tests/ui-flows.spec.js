@@ -11,6 +11,7 @@ async function navigateAdmin(page, viewName) {
     if (viewName === 'players') text = 'Spieler';
     else if (viewName === 'dashboard') text = 'Übersicht';
     else if (viewName === 'expenses') text = 'Ausgaben';
+    else if (viewName === 'billing') text = 'Abrechnung';
     else if (viewName === 'history') text = 'Transaktionen';
     else if (viewName === 'admin-plan') text = 'Session Planer';
     else if (viewName === 'series') text = 'Session Serien';
@@ -642,9 +643,59 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     // Transaction should now be deleted from list
     await expect(histList).not.toContainText('deposit updated');
   });
+
+  test('24 — Billing view: open list, batch charge with direct payment, revert', async ({ page, request }) => {
+    const H = { 'Content-Type': 'application/json', 'X-Token': aToken };
+    const players = await (await request.get('/api.php/players')).json();
+    const alice = players.find(p => p.name === 'Alice');
+    const mk = async (date) => {
+      const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date, courts: [[null,null,null,null]], timeStart: '1900', timeEnd: '2100' } })).json();
+      const id = r.id || date;
+      const b = await request.post(`/api.php/sessions/${id}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: alice.id } });
+      expect(b.status()).toBe(200);
+      return id;
+    };
+    const s1 = await mk('2020-03-03');
+    await mk('2020-03-05');
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
+
+    // Badge shows 2 open sessions
+    await expect(page.locator('#nav-billing-count')).toHaveText('2');
+    await navigateAdmin(page, 'billing');
+    await expect(page.locator('#view-billing')).toHaveClass(/active/);
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
+
+    // Batch charge both, Alice paid directly for the first session
+    await page.locator('#billing-footer-btn').click();
+    await expect(page.locator('#mo-billing')).toHaveClass(/open/);
+    await page.locator('#mo-billing-body details').first().locator('summary').click();
+    await page.locator('#mo-billing-body details').first().locator('input[type=checkbox]').first().check();
+    await page.locator('#mo-billing-foot .btn-pri').click();
+    await page.locator('#mo-billing-foot .btn-pri').click();
+    await expect(page.locator('#mo-billing')).not.toHaveClass(/open/, { timeout: 5000 });
+    await expect(page.locator('#billing-content .empty')).toBeVisible();
+
+    // Balance: 100 - 2*10 + 10 (direct payment)
+    const after = await (await request.get('/api.php/players', { headers: H })).json();
+    expect(after.find(p => p.id === alice.id).balance).toBe(90);
+
+    // Revert from "Abgerechnet" tab
+    await page.click('#billing-tab-charged');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
+    await page.locator('#billing-content .billing-item .btn-dan').first().click();
+    await page.locator('#mo-confirm-btn').click();
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+    await page.click('#billing-tab-open');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+  });
 });
 
 // ── Public booking flow: fresh login via welcome + PIN overlay ──
+
+
 test.describe('UI E2E Suite — Public Booking Flow', () => {
 
   const TOMORROW = (() => {
@@ -797,17 +848,18 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     await page.waitForTimeout(500);
 
     // Click "Abrechnen" in the summary card
-    const chargeBtn = page.locator('button:has-text("Abrechnen")').first();
+    const chargeBtn = page.locator('#plan-summary button:has-text("Abrechnen")').first();
     await expect(chargeBtn).toBeVisible({ timeout: 5000 });
     await chargeBtn.click();
-    await expect(page.locator('#mo-charge')).toHaveClass(/open/);
+    await expect(page.locator('#mo-billing')).toHaveClass(/open/);
 
-    // Verify Alice appears in charge list
-    await expect(page.locator('#mo-charge-list')).toContainText('Alice');
-
-    // Confirm charge
-    await page.locator('#mo-charge .btn-pri').click();
-    await expect(page.locator('#mo-charge')).not.toHaveClass(/open/, { timeout: 5000 });
+    // Step 1: Alice appears in the review list
+    await expect(page.locator('#mo-billing-body')).toContainText('Alice');
+    await page.locator('#mo-billing-foot .btn-pri').click(); // Weiter
+    // Step 2: summary, then confirm
+    await expect(page.locator('#mo-billing-body')).toContainText('Alice');
+    await page.locator('#mo-billing-foot .btn-pri').click(); // Abrechnung abschließen
+    await expect(page.locator('#mo-billing')).not.toHaveClass(/open/, { timeout: 5000 });
     await page.waitForTimeout(500);
 
     // Badge removed from session selector (status tags removed from plan view)
@@ -890,4 +942,5 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     await banner.locator('.courtle-update-banner-close').click();
     await expect(banner).not.toBeVisible({ timeout: 3000 });
   });
+
 });
