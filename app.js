@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 443;
+const CLIENT_BUILD = 444;
 let S = {
   players: [],
   transactions: [],
@@ -2011,6 +2011,8 @@ async function savePlanDetailsSilent() {
   }
 }
 
+let _planStripAnimateNext = true;
+
 function renderAdminPlan(keepDetailsOpen) {
   if (!S.sessions) return;
   const allSessions = getAllSessionsAdmin();
@@ -2367,12 +2369,23 @@ function renderAdminPlan(keepDetailsOpen) {
   setPlanTab(planTab);
 
   // Auto-scroll active chip into view
+  const animateScroll = _planStripAnimateNext;
+  _planStripAnimateNext = false;
+
   setTimeout(() => {
     const activeChip = document.querySelector('.plan-chip.active');
     if (activeChip) {
-      activeChip.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+      if (animateScroll) {
+        const strip = document.getElementById('plan-strip');
+        if (strip && strip.scrollLeft !== 0) {
+          strip.scrollLeft = 0;
+        }
+        activeChip.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+      } else {
+        activeChip.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+      }
     }
-  }, 50);
+  }, animateScroll ? 100 : 20);
 
   lucide.createIcons();
 }
@@ -2641,6 +2654,7 @@ function planGoToUpcoming() {
   const upcoming = all.find(s => s.date >= today);
   const target = upcoming || all[all.length - 1];
   if (target) planDate = target.id || target.date;
+  _planStripAnimateNext = true;
   renderAdminPlan();
 }
 
@@ -4807,6 +4821,10 @@ function showView(name) {
   if (name === 'my-history')      renderMyHistory();
   if (name === 'my-transactions') renderMyTransactions();
   if (name === 'billing')         renderBilling();
+  if (name === 'admin-plan') {
+    _planStripAnimateNext = true;
+    renderAdminPlan();
+  }
   
   lucide.createIcons();
 } // <--- Und hier muss die Funktion natürlich auch enden
