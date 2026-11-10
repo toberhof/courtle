@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 435;
+const CLIENT_BUILD = 436;
 let S = {
   players: [],
   transactions: [],
@@ -1787,20 +1787,42 @@ function bal(pid) {
   return p && p.balance !== undefined ? parseFloat(p.balance) : 0;
 }
 function renderKPIs() {
-  const paid = S.transactions.filter(t => t.credit).reduce((s, t) => s + t.amount, 0);
-  const exp = (S.expenses || []).reduce((s, x) => s + x.amount, 0);
-  const cf = paid - exp;
-  const totalBal = S.transactions.reduce((s, t) => s + (t.credit ? t.amount : -t.amount), 0);
-
-   const kpis = [
-     { l: t('dashboard.kpi_expenses'), v: fmtE(exp), c: 'neg', s: t('dashboard.kpi_expenses_sub') },
-     { l: t('dashboard.kpi_payments'), v: fmtE(paid), c: 'pos', s: t('dashboard.kpi_payments_sub') },
-     { l: t('dashboard.kpi_cashflow'), v: fmtE(cf), c: cf < 0 ? 'neg' : cf === 0 ? '' : 'pos', s: cf < 0 ? t('dashboard.kpi_cashflow_advance') : t('dashboard.kpi_cashflow_covered') },
-     { l: t('dashboard.kpi_total_balance'), v: fmtE(totalBal), c: totalBal >= 0 ? 'pos' : 'neg', s: t('dashboard.kpi_total_balance_sub') },
-   ];
+  // 1. Transaktionen (interner Spieler-Geldkreislauf)
   const kpiEl = document.getElementById('kpi-container');
   if (kpiEl) {
-    kpiEl.innerHTML = kpis.map(k =>
+    const sel = document.getElementById('hist-filter');
+    const filterPid = sel ? sel.value : '';
+    const filteredPlayer = filterPid ? S.players.find(p => p.id === filterPid) : null;
+    const txSource = filterPid ? (S.transactions || []).filter(t => t.playerId === filterPid) : (S.transactions || []);
+
+    const paid = txSource.filter(t => t.credit).reduce((s, t) => s + t.amount, 0);
+    const debits = txSource.filter(t => !t.credit).reduce((s, t) => s + t.amount, 0);
+    const netBal = paid - debits;
+
+    const historyKpis = [
+      { l: t('dashboard.kpi_payments'), v: '+' + fmtE(paid), c: 'pos', s: filteredPlayer ? esc(filteredPlayer.name) : t('dashboard.kpi_payments_sub') },
+      { l: t('history.kpi_debits'), v: '–' + fmtE(debits), c: 'neg', s: t('history.kpi_debits_sub') },
+      { l: t('dashboard.kpi_total_balance'), v: fmtE(netBal), c: netBal >= 0 ? 'pos' : 'neg', s: filteredPlayer ? t('transactions.current_balance') : t('dashboard.kpi_total_balance_sub') },
+    ];
+
+    kpiEl.innerHTML = historyKpis.map(k =>
+      `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
+  }
+
+  // 2. Ausgaben (externer Team-Kassen-Geldkreislauf)
+  const expKpiEl = document.getElementById('expenses-kpi-container');
+  if (expKpiEl) {
+    const totalPaid = (S.transactions || []).filter(t => t.credit).reduce((s, t) => s + t.amount, 0);
+    const exp = (S.expenses || []).reduce((s, x) => s + x.amount, 0);
+    const cf = totalPaid - exp;
+
+    const expensesKpis = [
+      { l: t('dashboard.kpi_expenses'), v: fmtE(exp), c: 'neg', s: t('expenses.kpi_sub') },
+      { l: t('dashboard.kpi_payments'), v: fmtE(totalPaid), c: 'pos', s: t('dashboard.kpi_payments_sub') },
+      { l: t('dashboard.kpi_cashflow'), v: fmtE(cf), c: cf < 0 ? 'neg' : cf === 0 ? '' : 'pos', s: cf < 0 ? t('dashboard.kpi_cashflow_advance') : t('dashboard.kpi_cashflow_covered') },
+    ];
+
+    expKpiEl.innerHTML = expensesKpis.map(k =>
       `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
   }
 }
@@ -4186,6 +4208,21 @@ window.toggleSessionGroup = function(date) {
   }
 };
 
+let historyTypeFilter = 'all';
+
+function setHistoryTypeFilter(type) {
+  historyTypeFilter = type;
+  ['all', 'credits', 'debits'].forEach(k => {
+    const btn = document.getElementById('hist-tab-' + k);
+    if (btn) {
+      const active = k === type;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    }
+  });
+  renderHistory();
+}
+
 function renderHistory() {
   const sel = document.getElementById('hist-filter');
   if (!sel) return; // Falls das Dropdown im HTML fehlt, brich hier sicher ab
@@ -4194,8 +4231,16 @@ function renderHistory() {
   sel.innerHTML = '<option value="">Alle Spieler</option>' + S.players.filter(p => p.active !== false).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
   sel.value = cur;
 
+  // KPIs passend zum aktuellen Filter aktualisieren
+  renderKPIs();
+
   let txs = [...S.transactions].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   if (sel.value) txs = txs.filter(t => t.playerId === sel.value);
+  if (historyTypeFilter === 'credits') {
+    txs = txs.filter(t => t.credit);
+  } else if (historyTypeFilter === 'debits') {
+    txs = txs.filter(t => !t.credit);
+  }
   
   const el = document.getElementById('history-list');
   if (!el) return;
@@ -4251,6 +4296,19 @@ function renderHistory() {
     if (item.isGroup) {
       const group = item.data;
       const isExpanded = !!expandedSessionGroups[group.date];
+      const hasDebits = group.totalAmount > 0;
+      const hasCredits = group.totalCredits > 0;
+      let groupAmtHtml = '';
+      if (hasDebits && hasCredits) {
+        groupAmtHtml = `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+          <div class="expense-card-amount db" style="color:var(--err)">– ${fmtE(group.totalAmount)}</div>
+          <div class="expense-card-amount cr" style="color:var(--suc);font-size:10px">+ ${fmtE(group.totalCredits)}</div>
+        </div>`;
+      } else if (hasDebits) {
+        groupAmtHtml = `<div class="expense-card-amount db" style="color:var(--err)">– ${fmtE(group.totalAmount)}</div>`;
+      } else {
+        groupAmtHtml = `<div class="expense-card-amount cr" style="color:var(--suc)">+ ${fmtE(group.totalCredits)}</div>`;
+      }
       
       return `<div class="grouped-session-card ${isExpanded ? 'expanded' : ''}" id="group-card-${group.date}">
         <div class="grouped-session-header" onclick="toggleSessionGroup('${group.date}')" style="padding: var(--sp4) var(--sp5); display: flex; align-items: center; gap: var(--sp4);">
@@ -4264,13 +4322,13 @@ function renderHistory() {
               <span>Abrechnung Session ${fmtD(group.date)}</span>
             </div>
             <div class="expense-card-meta">
-              <span>${group.transactions.filter(t => !t.credit).length} Spieler</span>
-              <span>·</span>
-              <span>${group.transactions.filter(t => t.credit).length} Barzahler</span>
+              ${group.transactions.filter(t => !t.credit).length ? `<span>${group.transactions.filter(t => !t.credit).length} Spieler</span>` : ''}
+              ${group.transactions.filter(t => !t.credit).length && group.transactions.filter(t => t.credit).length ? `<span>·</span>` : ''}
+              ${group.transactions.filter(t => t.credit).length ? `<span>${group.transactions.filter(t => t.credit).length} Barzahler</span>` : ''}
             </div>
           </div>
           <div class="expense-card-right" style="flex-direction: row; align-items: center; gap: var(--sp3);">
-            <div class="expense-card-amount db" style="color: var(--err)">– ${fmtE(group.totalAmount)}</div>
+            ${groupAmtHtml}
             <div class="grouped-session-toggle" style="color: var(--txm);"><i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i></div>
           </div>
         </div>

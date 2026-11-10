@@ -238,7 +238,11 @@ a,button,[role="button"],input,select{transition:color var(--tr),background var(
 
 /* ── KPI ── */
 .kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--sp3);margin-bottom:var(--sp5)}
-@media(min-width:680px){.kpi-grid{grid-template-columns:repeat(4,1fr)}}
+.kpi-grid > :last-child:nth-child(odd){grid-column:1/-1}
+@media(min-width:680px){
+  .kpi-grid{grid-template-columns:repeat(3,1fr)}
+  .kpi-grid > :last-child:nth-child(odd){grid-column:auto}
+}
 .kpi{background:var(--sur);border:1px solid oklch(from var(--tx) l c h/.08);border-radius:var(--r-lg);padding:var(--sp3) var(--sp4);box-shadow:var(--sh-sm)}
 .kpi-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--txm);margin-bottom:4px}
 .kpi-val{font-size:var(--text-lg);font-weight:800;font-variant-numeric:tabular-nums lining-nums;line-height:1.15;white-space:nowrap}

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:435-->
+<!--built:436-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=435">
+<link rel="stylesheet" href="style.css?build=436">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=435" defer></script>
-<script src="app.js?build=435" defer></script>
+<script src="i18n.js?build=436" defer></script>
+<script src="app.js?build=436" defer></script>
 
 <div class="app-shell">
 
@@ -238,13 +238,14 @@ if ('serviceWorker' in navigator) {
 
   <!-- EXPENSES (admin) -->
   <section class="view" id="view-expenses">
-    <div class="flex items-c just-b mb6">
+    <div class="flex items-c just-b mb4 wrap g2">
       <div style="display:flex;flex-direction:column;gap:var(--sp1);align-items:flex-start">
         <h1 class="page-title" style="margin-bottom:0" data-i18n="nav.expenses">Ausgaben</h1>
         <p class="txsm txm" data-i18n="expenses.operator_desc">Trage hier Rechnungen ein, die an den Court-Betreiber bezahlt wurden.</p>
       </div>
       <button class="btn btn-pri" onclick="openExpenseModal()"><i data-lucide="plus"></i> <span data-i18n="dashboard.expenses_record">Erfassen</span></button>
     </div>
+    <div id="expenses-kpi-container" class="kpi-grid mb6"></div>
     <div id="expenses-container" class="expense-list"></div>
   </section>
 
@@ -347,7 +348,10 @@ if ('serviceWorker' in navigator) {
   <!-- HISTORY (admin) -->
   <section class="view" id="view-history">
     <div class="flex items-c just-b mb4 wrap g2">
-      <h1 class="page-title" style="margin-bottom:0" data-i18n="view.history">Transaktionen</h1>
+      <div>
+        <h1 class="page-title" style="margin-bottom:2px" data-i18n="view.history">Transaktionen</h1>
+        <p class="txsm txm" data-i18n="history.subtitle">Interne Guthaben-Buchungen: Spieler-Einzahlungen, Korrekturen und abgerechnete Sessions.</p>
+      </div>
       <div class="flex items-c g2 wrap">
         <button class="btn btn-ok btn-sm" onclick="openTx(document.getElementById('hist-filter')?.value || null)" type="button"><i data-lucide="plus"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
         <button class="btn btn-sec btn-sm" onclick="downloadHistoryCSV()" data-i18n-title="history.csv_export" style="white-space:nowrap"><i data-lucide="download"></i> <span data-i18n="history.csv">CSV</span></button>
@@ -356,7 +360,12 @@ if ('serviceWorker' in navigator) {
         </select>
       </div>
     </div>
-    <div id="kpi-container" class="kpi-grid"></div>
+    <div id="kpi-container" class="kpi-grid mb4"></div>
+    <div class="seg-tabs mb4" id="history-type-tabs" role="tablist">
+      <button class="seg-tab active" id="hist-tab-all" role="tab" aria-selected="true" onclick="setHistoryTypeFilter('all')"><span data-i18n="history.filter_all">Alle</span></button>
+      <button class="seg-tab" id="hist-tab-credits" role="tab" aria-selected="false" onclick="setHistoryTypeFilter('credits')"><span data-i18n="history.filter_credits">Einzahlungen (+)</span></button>
+      <button class="seg-tab" id="hist-tab-debits" role="tab" aria-selected="false" onclick="setHistoryTypeFilter('debits')"><span data-i18n="history.filter_debits">Abbuchungen (–)</span></button>
+    </div>
     <div class="hl" id="history-list"></div>
   </section>
 
@@ -553,7 +562,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 435)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 436)</span>
 
 </footer>
 
