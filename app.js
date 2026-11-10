@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 439;
+const CLIENT_BUILD = 440;
 let S = {
   players: [],
   transactions: [],
@@ -1943,17 +1943,6 @@ function togglePlanDetails() {
   if (btn) btn.classList.toggle('active-toggle', planDetailsOpen);
 }
 
-function togglePlanMoreMenu(e) {
-  if (e) e.stopPropagation();
-  const dd = document.getElementById('plan-more-dd');
-  if (dd) dd.classList.toggle('open');
-}
-
-function closePlanMoreMenu() {
-  const dd = document.getElementById('plan-more-dd');
-  if (dd) dd.classList.remove('open');
-}
-
 function planDetailAutoSave(field, value) {
   planDetailChange(field, value);
   if (_planSaveTimeout) clearTimeout(_planSaveTimeout);
@@ -2179,14 +2168,6 @@ function renderAdminPlan(keepDetailsOpen) {
         <div class="flex items-c g2 wrap">
           ${primaryActionBtn}
           <button class="btn btn-sec btn-sm ${showDetails ? 'active-toggle' : ''}" id="plan-edit-toggle-btn" onclick="togglePlanDetails()"><i data-lucide="sliders-horizontal"></i> <span>${t('planner.edit_details')}</span></button>
-          <div class="plan-more-menu">
-            <button class="btn btn-sec btn-sm" id="plan-more-btn" onclick="togglePlanMoreMenu(event)" aria-label="${esc(t('planner.more'))}"><i data-lucide="more-horizontal"></i></button>
-            <div class="plan-more-dd" id="plan-more-dd">
-              <button class="plan-more-item" onclick="openAddSessionModal();closePlanMoreMenu()"><i data-lucide="calendar-plus"></i> ${t('session.new')}</button>
-              ${!sess.charged ? `<button class="plan-more-item ${isCancelled ? '' : 'dan'}" onclick="toggleSessionCancel();closePlanMoreMenu()"><i data-lucide="${isCancelled ? 'rotate-ccw' : 'x-circle'}"></i> ${cancelActionLabel}</button>` : ''}
-              ${isCancelled && !sess.charged ? `<button class="plan-more-item dan" onclick="deleteSession();closePlanMoreMenu()"><i data-lucide="trash-2"></i> ${t('misc.delete')}</button>` : ''}
-            </div>
-          </div>
         </div>
       </div>
 
@@ -4912,10 +4893,6 @@ document.addEventListener('click', e => {
   // Close desktop profile dropdown if clicked outside
   const pdd = document.getElementById('profile-nav-dd');
   if (pdd && pdd.querySelector('.nav-dd-menu.open') && !pdd.contains(e.target)) closeProfileDD();
-  // Close plan more menu if clicked outside
-  const pmm = document.getElementById('plan-more-dd');
-  const pmb = document.getElementById('plan-more-btn');
-  if (pmm && pmm.classList.contains('open') && !pmm.contains(e.target) && pmb && !pmb.contains(e.target)) closePlanMoreMenu();
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {

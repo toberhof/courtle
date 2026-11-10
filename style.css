@@ -2569,14 +2569,6 @@ body:has(.pin-modal-overlay.open) {
 .plan-edit-grid .fg{margin-bottom:0}
 .plan-edit-grid .fg-full{grid-column:1 / -1}
 .btn.active-toggle{border-color:var(--pri);color:var(--pri);background:var(--prhl)}
-.plan-more-menu{position:relative}
-.plan-more-dd{display:none;position:absolute;top:calc(100% + 4px);right:0;min-width:190px;background:var(--sur);border:1px solid var(--bor);border-radius:var(--r-lg);box-shadow:var(--sh-lg);padding:var(--sp1);z-index:100}
-.plan-more-dd.open{display:flex;flex-direction:column;gap:2px}
-.plan-more-item{display:flex;align-items:center;gap:var(--sp2);padding:var(--sp2) var(--sp3);border-radius:var(--r-md);font-size:var(--text-sm);font-weight:500;color:var(--tx);background:none;border:none;cursor:pointer;width:100%;text-align:left}
-.plan-more-item i,.plan-more-item svg{width:15px;height:15px;flex-shrink:0}
-.plan-more-item:hover{background:var(--prhl);color:var(--pri)}
-.plan-more-item.dan{color:var(--err)}
-.plan-more-item.dan:hover{background:oklch(from var(--err) l c h / .1);color:var(--err)}
 
 /* ── Grouped Admin Menu & Quick Top-Up Chips ── */
 .nav-dd-group-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--txm);padding:4px var(--sp3) 2px;user-select:none}

@@ -88,7 +88,7 @@ The session planner focuses purely on session organization (dates, times, courts
 2. **Unified Session Header & Integrated Details Drawer** (`#admin-plan-header-dynamic`):
    - Session title with series indicator (`planner.from_series`) and live `.status-pill` badge (Offen, Wartet auf Abrechnung, Abgerechnet, Abgesagt).
    - Properly aligned inline metadata chips (`.plan-meta-item` with `display: inline-flex`): Date, time span, slot price, occupancy, and conditional location/note chips (shown only when non-empty).
-   - Focused action bar: Context-aware primary action button ("Zur Abrechnung" / "In Abrechnung ansehen" / "Reaktivieren"), "Details bearbeiten" drawer toggle (`#plan-edit-toggle-btn`), and `⋯` menu.
+   - Focused action bar: Context-aware primary action button ("Zur Abrechnung" / "In Abrechnung ansehen" / "Reaktivieren") and "Details bearbeiten" drawer toggle (`#plan-edit-toggle-btn`).
    - **Integrated Edit Drawer** (`#session-details-box.plan-edit-drawer`): Folds directly into the bottom of the header card with a responsive multi-column `.plan-edit-grid`, debounced auto-save with inline checkmark feedback (`.save-indicator`), and automatic locking when a session has already been charged.
 3. **Section Tabs** (`#plan-tabs`):
    - **Belegung** (`#plan-card-slots`): Visual court cards with slot chips, court names, and "+ Court" button.
