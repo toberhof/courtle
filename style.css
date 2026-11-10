@@ -1295,6 +1295,13 @@ body:has(.pin-modal-overlay.open) {
 .player-pick-btn:active{transform:scale(0.97);opacity:.94}
 .welcome-skip{opacity:1;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;border-top:1px solid oklch(from var(--pri) l c h/.15);padding-top:20px;margin-top:10px;width:100%;color:var(--pri);cursor:pointer;background:none;border-left:none;border-right:none;border-bottom:none;font-family:inherit}
 
+/* Transaction player picker & selected card */
+.tx-selected-player-card{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp3) var(--sp4);background:var(--suroff);border:1px solid oklch(from var(--tx) l c h/.10);border-radius:var(--r-xl);cursor:pointer;margin-bottom:var(--sp4);transition:background var(--tr),border-color var(--tr),transform var(--tr)}
+.tx-selected-player-card:hover{background:var(--prhl);border-color:oklch(from var(--pri) l c h/.4)}
+.tx-selected-player-card:active{transform:scale(.98)}
+#tx-picker-grid{grid-template-columns:1fr}
+@media(min-width:400px){#tx-picker-grid{grid-template-columns:1fr 1fr}}
+
 /* Icon picker */
 .emoji-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:var(--sp1);padding:var(--sp2) 0}
 .emoji-grid button{width:48px;height:48px;display:flex;align-items:center;justify-content:center;border-radius:var(--r-lg);border:2px solid transparent;background:var(--sur2);cursor:pointer;transition:all .15s;margin:0 auto;color:var(--tx)}

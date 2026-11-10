@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 436;
+const CLIENT_BUILD = 437;
 let S = {
   players: [],
   transactions: [],
@@ -3374,12 +3374,75 @@ async function purgePlayer(id) {
 }
 
 // ════════════════════════════════════════
-// ADMIN – TRANSACTIONS
+// ADMIN – TRANSACTIONS & PLAYER PICKER
 // ════════════════════════════════════════
+let isSwitchingTxPlayer = false;
+
+function openPlayerPickerForTx(isSwitch = false) {
+  isSwitchingTxPlayer = isSwitch;
+  if (isSwitch) {
+    closeMo('mo-tx');
+  }
+  const searchInput = document.getElementById('tx-picker-search');
+  if (searchInput) searchInput.value = '';
+  renderTxPlayerPicker();
+  openMo('mo-pick-player');
+  setTimeout(() => searchInput && searchInput.focus(), 100);
+}
+
+function renderTxPlayerPicker(filterText = '') {
+  const grid = document.getElementById('tx-picker-grid');
+  if (!grid) return;
+  const q = (filterText || '').toLowerCase().trim();
+  const activePlayers = (S.players || [])
+    .filter(p => p.active !== false)
+    .filter(p => !q || (p.name || '').toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!activePlayers.length) {
+    grid.innerHTML = `<div class="txsm txm" style="grid-column:1/-1;text-align:center;padding:var(--sp4)">${t('history.no_transactions')}</div>`;
+    return;
+  }
+
+  grid.innerHTML = activePlayers.map(p => {
+    const b = bal(p.id);
+    const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
+    const isCurrent = p.id === txPid;
+    return `<button type="button" class="player-pick-btn ${isCurrent ? 'active' : ''}" onclick="selectTxPlayer('${p.id}')">
+      <div class="av" style="width:34px;height:34px;font-size:var(--text-sm);flex-shrink:0">
+        <i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>
+      </div>
+      <div style="min-width:0;flex:1">
+        <div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</div>
+        <div style="font-size:11px;color:var(--txm);margin-top:1px">
+          ${t('players.balance')}: <span class="${cls}" style="font-weight:700">${fmtE(b)}</span>
+        </div>
+      </div>
+    </button>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+function filterTxPlayerPicker(val) {
+  renderTxPlayerPicker(val);
+}
+
+function selectTxPlayer(pid) {
+  closeMo('mo-pick-player');
+  openTx(pid);
+}
+
 function openTx(pid) {
-  const activePlayers = S.players.filter(p => p.active !== false).sort((a, b) => a.name.localeCompare(b.name));
+  const activePlayers = (S.players || []).filter(p => p.active !== false).sort((a, b) => a.name.localeCompare(b.name));
   if (!activePlayers.length) return;
-  const targetPid = (pid && activePlayers.some(p => p.id === pid)) ? pid : activePlayers[0].id;
+
+  // Wenn keine pid angegeben: erst den modernen Name-Picker öffnen!
+  if (!pid) {
+    openPlayerPickerForTx(false);
+    return;
+  }
+
+  const targetPid = activePlayers.some(p => p.id === pid) ? pid : activePlayers[0].id;
   txPid = targetPid;
 
   const sel = document.getElementById('tx-player-select');
@@ -3403,8 +3466,23 @@ function syncTxModalForPlayer(pid) {
   const p = S.players.find(x => x.id === pid);
   if (!p) return;
   const b = bal(pid);
+  const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
+
   document.getElementById('mo-tx-title').textContent = `${p.name} – ${t('transactions.title')}`;
-  document.getElementById('mo-tx-sub').textContent = `${t('transactions.current_balance')}: ${fmtE(b)}`;
+  const subEl = document.getElementById('mo-tx-sub');
+  if (subEl) subEl.textContent = `${t('transactions.current_balance')}: ${fmtE(b)}`;
+
+  // Modern Selected Player Card aktualisieren
+  const avEl = document.getElementById('tx-sel-player-av');
+  if (avEl) avEl.innerHTML = `<i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>`;
+  const nameEl = document.getElementById('tx-sel-player-name');
+  if (nameEl) nameEl.textContent = p.name;
+  const balEl = document.getElementById('tx-sel-player-bal');
+  if (balEl) {
+    balEl.innerHTML = `${t('transactions.current_balance')}: <span class="${cls}" style="font-weight:700">${fmtE(b)}</span>`;
+  }
+  const sel = document.getElementById('tx-player-select');
+  if (sel) sel.value = pid;
 
   const amtBox = document.getElementById('tx-quick-amounts');
   if (amtBox) {
@@ -3428,6 +3506,7 @@ function syncTxModalForPlayer(pid) {
     ];
     noteBox.innerHTML = notes.map(n => `<button type="button" class="tx-chip" onclick="setTxNote('${esc(n)}')">${esc(n)}</button>`).join('');
   }
+  if (window.lucide) lucide.createIcons();
 }
 
 function setTxAmount(val) {
