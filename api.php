@@ -116,6 +116,10 @@ function db(): PDO {
             migrate_v2_sessions($pdo);
         }
     }
+    $ver = (int)$pdo->query("SELECT value FROM config WHERE key='schema_version'")->fetchColumn();
+    if ($ver < 3) {
+        migrate_v3_tx_session_link($pdo);
+    }
     return $pdo;
 }
 
@@ -125,6 +129,7 @@ function handle_system_init(): void {
     $db = db();
     init_db($db);
     migrate_v2_sessions($db);
+    migrate_v3_tx_session_link($db);
     json_out(['ok' => true, 'message' => 'Datenbank-Struktur erfolgreich geprüft und aktualisiert.']);
 }
 
@@ -171,7 +176,8 @@ function init_db(PDO $db): void {
         amount REAL NOT NULL, 
         date TEXT NOT NULL, 
         created_at TEXT NOT NULL, 
-        note TEXT
+        note TEXT,
+        session_id TEXT DEFAULT NULL
     )");
     
     $db->exec("CREATE TABLE IF NOT EXISTS sessions (
@@ -276,7 +282,8 @@ function init_db(PDO $db): void {
         "ALTER TABLE players ADD COLUMN language TEXT DEFAULT NULL",
         "ALTER TABLE players ADD COLUMN theme TEXT DEFAULT 'auto'",
         "ALTER TABLE sessions ADD COLUMN court_names TEXT",
-        "ALTER TABLE series ADD COLUMN court_names TEXT"
+        "ALTER TABLE series ADD COLUMN court_names TEXT",
+        "ALTER TABLE transactions ADD COLUMN session_id TEXT DEFAULT NULL"
     ];
 
     foreach ($migrations as $sql) {
@@ -328,6 +335,7 @@ function init_db(PDO $db): void {
     }
     
     $db->exec("CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date)");
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_transactions_session ON transactions(session_id)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_courts_session ON courts(session_id)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_session_history_session ON session_history(session_id)");
     // Ensure existing sessions without explicit time_start get populated from config/series
@@ -350,6 +358,47 @@ function uuid_v4(): string {
 
 function is_uuid(string $str): bool {
     return (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $str);
+}
+
+function migrate_v3_tx_session_link(PDO $db): void {
+    try { $db->exec("ALTER TABLE transactions ADD COLUMN session_id TEXT DEFAULT NULL"); } catch (Throwable $e) { /* exists */ }
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_transactions_session ON transactions(session_id)");
+
+    $db->exec('BEGIN IMMEDIATE');
+    try {
+        $sessions = $db->query("SELECT id, date, time_start FROM sessions WHERE charged=1")->fetchAll();
+        $byDate = [];
+        foreach ($sessions as $s) { $byDate[$s['date']][] = $s; }
+
+        $sel = $db->prepare("SELECT id, note FROM transactions WHERE session_id IS NULL AND date = ? AND (note LIKE ? OR note LIKE ?)");
+        $upd = $db->prepare("UPDATE transactions SET session_id = ? WHERE id = ?");
+        foreach ($byDate as $date => $list) {
+            $sel->execute([$date, "Session $date%", "Direct payment $date%"]);
+            $cands = $sel->fetchAll();
+            if (count($list) === 1) {
+                foreach ($cands as $c) { $upd->execute([$list[0]['id'], $c['id']]); }
+                continue;
+            }
+            // Several charged sessions on the same date: match by "(HH:MM)" / "(HHMM)" label, only if unambiguous
+            foreach ($cands as $c) {
+                $matches = [];
+                foreach ($list as $s) {
+                    $ts = (string)($s['time_start'] ?? '');
+                    if ($ts === '') continue;
+                    $alt = strpos($ts, ':') !== false ? str_replace(':', '', $ts) : substr($ts, 0, 2) . ':' . substr($ts, 2);
+                    if (strpos((string)$c['note'], "($ts)") !== false || strpos((string)$c['note'], "($alt)") !== false) {
+                        $matches[] = $s['id'];
+                    }
+                }
+                if (count($matches) === 1) { $upd->execute([$matches[0], $c['id']]); }
+            }
+        }
+        $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', '3')")->execute();
+        $db->exec('COMMIT');
+    } catch (Throwable $e) {
+        $db->exec('ROLLBACK');
+        throw $e;
+    }
 }
 
 function migrate_v2_sessions(PDO $db): void {
@@ -691,6 +740,7 @@ for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
             $resource === 'sessions' && $method === 'PUT'  && $id => handle_session_update($id),
             $resource === 'sessions' && $method === 'DELETE' && $id => handle_session_delete($id),
             $resource === 'charge'   && $method === 'POST'       => handle_charge(),
+            $resource === 'charge'   && $method === 'DELETE' && $id => handle_charge_revert($id),
             $resource === 'sessions' && $method === 'POST' && ($parts[2] ?? '') === 'book' => handle_session_book($id),
             $resource === 'sessions' && $method === 'POST' && ($parts[2] ?? '') === 'leave' => handle_session_leave($id),
             $resource === 'sessions' && $method === 'POST' && ($parts[2] ?? '') === 'join-waitlist' => handle_session_join_waitlist($id),
@@ -1390,19 +1440,9 @@ function handle_expense_delete(string $id): void {
 }
 
 // ── Charge ──
-function handle_charge(): void {
-    require_auth(true);
-    $b    = body();
-    $idOrDate = $b['id'] ?? $b['date'] ?? '';
-    // NEU: Wir holen uns die Liste der Barzahler aus dem Request
-    $paidPids = $b['paid_pids'] ?? []; 
-    
-    if (!$idOrDate) err('Session ID or Date is required.');
-    $db   = db();
-
-    $sess = get_session_row($db, $idOrDate);
-    if (!$sess) err('Session not found.', 404);
-    if ($sess['charged']) err('Already charged.');
+function charge_session(PDO $db, array $sess, array $paidPids, string $now, string $performedBy): array {
+    if ($sess['charged']) throw new RuntimeException('Already charged.');
+    if (!empty($sess['cancelled'])) throw new RuntimeException('Cancelled sessions cannot be charged.');
 
     $sessId = $sess['id'];
     $date = $sess['date'];
@@ -1414,41 +1454,104 @@ function handle_charge(): void {
     // Group by baseId
     $counts = [];
     foreach ($slots as $sl) {
-        $parts = explode('|', $sl['player_id']);
-        $base  = $parts[0];
+        $base = explode('|', $sl['player_id'])[0];
         $counts[$base] = ($counts[$base] ?? 0) + 1;
     }
 
     $cost = (float)($db->query("SELECT value FROM config WHERE key='cost'")->fetchColumn() ?? 10);
-    $now  = date('c');
-    
-    // Session-specific price override
-    if ($sess['price'] !== null) {
-        $cost = (float)$sess['price'];
-    }
-    
-    // Vorbereitetes Statement für Transaktionen
-    $tx = $db->prepare("INSERT INTO transactions (id,player_id,credit,amount,date,created_at,note) VALUES (?,?,?,?,?,?,?)");
-    
+    if ($sess['price'] !== null) $cost = (float)$sess['price'];
+
+    $tx = $db->prepare("INSERT INTO transactions (id,player_id,credit,amount,date,created_at,note,session_id) VALUES (?,?,?,?,?,?,?,?)");
     $timeLabel = $sess['time_start'] ? " ({$sess['time_start']})" : "";
+    $total = 0.0;
+    $direct = 0.0;
     foreach ($counts as $pid => $n) {
         $amt  = $cost * $n;
         $note = $n > 1 ? "Session $date$timeLabel (+" . ($n-1) . " Guest)" : "Session $date$timeLabel";
-        
-        // 1. Abrechnung (Abbuchung)
-        $tx->execute([gid(), $pid, 0, $amt, $date, $now, $note]);
-        
-        // 2. Falls Spieler in der 'paid_pids' Liste: Barzahlung/Gegenbuchung
-        if (in_array($pid, $paidPids)) {
-            $tx->execute([gid(), $pid, 1, $amt, $date, $now, "Direct payment $date$timeLabel"]);
+        // 1. Charge (debit)
+        $tx->execute([gid(), $pid, 0, $amt, $date, $now, $note, $sessId]);
+        $total += $amt;
+        // 2. Direct payment (counter-booking) for players who paid on site
+        if (in_array($pid, $paidPids, true)) {
+            $tx->execute([gid(), $pid, 1, $amt, $date, $now, "Direct payment $date$timeLabel", $sessId]);
+            $direct += $amt;
         }
     }
-    
+
     $db->prepare("UPDATE sessions SET charged=1 WHERE id=?")->execute([$sessId]);
-    json_out(['ok' => true, 'charged' => count($counts), 'slots' => array_sum($counts)]);
+    log_session_history($db, $sessId, null, 'charged', null, null, $performedBy,
+        json_encode(['players' => count($counts), 'slots' => array_sum($counts), 'amount' => $total, 'direct' => $direct, 'paid_pids' => array_values($paidPids)]), $date);
+
+    return ['session_id' => $sessId, 'players' => count($counts), 'slots' => array_sum($counts), 'amount' => $total];
 }
 
-// ── Config ──
+function handle_charge(): void {
+    require_auth(true);
+    $b = body();
+
+    // New format: {items:[{id, paid_pids:[]}]}  |  Legacy: {id|date, paid_pids:[]}
+    $items = $b['items'] ?? null;
+    if (!is_array($items)) {
+        $idOrDate = $b['id'] ?? $b['date'] ?? '';
+        if (!$idOrDate) err('Session ID or Date is required.');
+        $items = [['id' => $idOrDate, 'paid_pids' => $b['paid_pids'] ?? []]];
+    }
+    if (!$items) err('No sessions given.');
+
+    $db = db();
+    $now = date('c');
+    $by = get_performer_id();
+    $results = [];
+    $db->exec('BEGIN IMMEDIATE');
+    try {
+        foreach ($items as $it) {
+            $id = (string)($it['id'] ?? '');
+            if ($id === '') throw new RuntimeException('Session ID is required.');
+            $sess = get_session_row($db, $id);
+            if (!$sess) throw new RuntimeException("Session not found: $id");
+            $paid = array_map('strval', is_array($it['paid_pids'] ?? null) ? $it['paid_pids'] : []);
+            $results[] = charge_session($db, $sess, $paid, $now, $by);
+        }
+        $db->exec('COMMIT');
+    } catch (Throwable $e) {
+        $db->exec('ROLLBACK');
+        err($e->getMessage(), 400);
+    }
+    $payload = ['ok' => true, 'results' => $results,
+        'charged' => array_sum(array_column($results, 'players')), 'slots' => array_sum(array_column($results, 'slots'))];
+    json_out($payload);
+}
+
+function handle_charge_revert(string $idOrDate): void {
+    require_auth(true);
+    $db = db();
+    $db->exec('BEGIN IMMEDIATE');
+    try {
+        $sess = get_session_row($db, $idOrDate);
+        if (!$sess) { $db->exec('ROLLBACK'); err('Session not found.', 404); }
+        if (!$sess['charged']) { $db->exec('ROLLBACK'); err('Session is not charged.', 400); }
+        $sessId = $sess['id'];
+
+        $q = $db->prepare("SELECT credit, amount FROM transactions WHERE session_id=?");
+        $q->execute([$sessId]);
+        $rows = $q->fetchAll();
+        if (!$rows) { $db->exec('ROLLBACK'); err('Legacy charge cannot be reverted automatically.', 409); }
+
+        $debit = 0.0; $direct = 0.0;
+        foreach ($rows as $r) { if ($r['credit']) $direct += (float)$r['amount']; else $debit += (float)$r['amount']; }
+
+        $db->prepare("DELETE FROM transactions WHERE session_id=?")->execute([$sessId]);
+        $db->prepare("UPDATE sessions SET charged=0 WHERE id=?")->execute([$sessId]);
+        log_session_history($db, $sessId, null, 'charge_reverted', null, null, get_performer_id(),
+            json_encode(['amount' => $debit, 'direct' => $direct, 'deleted' => count($rows)]), $sess['date']);
+        $db->exec('COMMIT');
+    } catch (Throwable $e) {
+        try { $db->exec('ROLLBACK'); } catch (Throwable $e2) {}
+        throw $e;
+    }
+    json_out(['ok' => true, 'deleted' => count($rows)]);
+}
+
 function handle_config_get(): void {
     // public endpoint
     $rows = db()->query("SELECT key, value FROM config WHERE key != 'admin_pin_hash'")->fetchAll();
@@ -1596,8 +1699,8 @@ function handle_import(): void {
             ]);
     }
     foreach (($b['transactions'] ?? []) as $t) {
-        $db->prepare("INSERT OR IGNORE INTO transactions (id,player_id,credit,amount,date,created_at,note) VALUES (?,?,?,?,?,?,?)")
-           ->execute([$t['id'], $t['player_id'], (int)$t['credit'], (float)$t['amount'], $t['date'], $t['created_at'] ?? date('c'), $t['note'] ?? null]);
+        $db->prepare("INSERT OR IGNORE INTO transactions (id,player_id,credit,amount,date,created_at,note,session_id) VALUES (?,?,?,?,?,?,?,?)")
+           ->execute([$t['id'], $t['player_id'], (int)$t['credit'], (float)$t['amount'], $t['date'], $t['created_at'] ?? date('c'), $t['note'] ?? null, $t['session_id'] ?? null]);
     }
     foreach (($b['sessions'] ?? []) as $s) {
         $sessId = $s['id'] ?? uuid_v4();

@@ -938,4 +938,46 @@ test.describe('API Handler Integration Suite', () => {
     expect(playersAfter.some(p => p.name === 'TempPlayerToDelete')).toBe(false);
     expect(playersAfter.map(p => p.name)).toEqual(expect.arrayContaining(originalNames));
   });
+
+  test('Billing — batch charge, atomicity, direct payment and revert', async ({ request }) => {
+    const admin = await (await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } })).json();
+    const auth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const H = { 'X-Token': auth.token, 'Content-Type': 'application/json' };
+    await request.put('/api.php/config', { headers: H, data: { cost: '10', courts: '1' } });
+    const alice = await (await request.post('/api.php/players', { headers: H, data: { name: 'Alice', pin: '2222', admin: false } })).json();
+    const bob = await (await request.post('/api.php/players', { headers: H, data: { name: 'Bob', pin: '3333', admin: false } })).json();
+
+    const mk = async (date) => {
+      const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date, courts: [[null,null,null,null]], timeStart: '1900', timeEnd: '2100' } })).json();
+      const id = r.id || date;
+      await request.post(`/api.php/sessions/${id}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: alice.id } });
+      await request.post(`/api.php/sessions/${id}/book`, { headers: H, data: { court_index: 0, slot_index: 1, player_id: bob.id } });
+      return id;
+    };
+    const s1 = await mk('2099-01-05');
+    const s2 = await mk('2099-01-07');
+    const bal = async (pid) => (await (await request.get('/api.php/players', { headers: H })).json()).find(p => p.id === pid).balance;
+
+    // Atomic: charge s1 alone, then batch [s2, s1] must fail and leave s2 uncharged
+    expect((await request.post('/api.php/charge', { headers: H, data: { items: [{ id: s1, paid_pids: [] }] } })).status()).toBe(200);
+    const bad = await request.post('/api.php/charge', { headers: H, data: { items: [{ id: s2, paid_pids: [] }, { id: s1, paid_pids: [] }] } });
+    expect(bad.status()).toBe(400);
+    const sess = await (await request.get('/api.php/sessions', { headers: H })).json();
+    expect(sess.find(s => s.id === s2).charged).toBe(false);
+
+    // Revert s1, then batch charge both; Bob pays directly for s2 only
+    expect((await request.delete(`/api.php/charge/${s1}`, { headers: H })).status()).toBe(200);
+    const ok = await request.post('/api.php/charge', { headers: H, data: { items: [{ id: s1, paid_pids: [] }, { id: s2, paid_pids: [bob.id] }] } });
+    expect(ok.status()).toBe(200);
+    expect(await bal(alice.id)).toBe(-20);
+    expect(await bal(bob.id)).toBe(-10); // 2x10 debit, 1x10 direct payment
+
+    // Revert s2: Bob back to -10 + 0 (only s1 debit remains), history logged
+    expect((await request.delete(`/api.php/charge/${s2}`, { headers: H })).status()).toBe(200);
+    expect(await bal(bob.id)).toBe(-10);
+    expect(await bal(alice.id)).toBe(-10);
+    expect((await request.delete(`/api.php/charge/${s2}`, { headers: H })).status()).toBe(400); // not charged anymore
+    const hist = await (await request.get(`/api.php/session-history?session_id=${s2}`, { headers: H })).json();
+    expect(hist.map(h => h.action)).toEqual(expect.arrayContaining(['charged', 'charge_reverted']));
+  });
 });
