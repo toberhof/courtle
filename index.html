@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:440-->
+<!--built:441-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=440">
+<link rel="stylesheet" href="style.css?build=441">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=440" defer></script>
-<script src="app.js?build=440" defer></script>
+<script src="i18n.js?build=441" defer></script>
+<script src="app.js?build=441" defer></script>
 
 <div class="app-shell">
 
@@ -413,6 +413,12 @@ if ('serviceWorker' in navigator) {
         <p class="txsm txm" style="margin-top:4px" data-i18n="settings.cost_hint">Gilt für alle Sessions, sofern nicht pro Session überschrieben.</p>
       </div>
 
+      <div class="fg">
+        <label class="fl" for="sr-courts" data-i18n="settings.courts">Standard-Anzahl Courts</label>
+        <input type="number" id="sr-courts" class="fi" min="1" max="10" step="1" value="2" style="max-width:150px">
+        <p class="txsm txm" style="margin-top:4px" data-i18n="settings.courts_hint">Gilt für alle Sessions, sofern nicht durch eine Serie oder die Session selbst überschrieben.</p>
+      </div>
+
       <div class="fg" style="margin-top:10px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
           <input type="checkbox" id="sys-auto-compact-slots" style="width:20px;height:20px">
@@ -580,7 +586,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 440)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 441)</span>
 
 </footer>
 

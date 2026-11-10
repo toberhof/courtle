@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 440;
+const CLIENT_BUILD = 441;
 let S = {
   players: [],
   transactions: [],
@@ -2571,7 +2571,7 @@ async function saveAddSession() {
   try {
       const res = await apiFetch('PUT', '/sessions/new', {
           date:           date,
-          courts:         Array(S.cfg.courts).fill([null,null,null,null]),
+          courts:         Array(parseInt(S.cfg.courts, 10) || 2).fill(null).map(() => [null, null, null, null]),
           disabledCourts: [],
           waitlist:       [],
           note:           '',
@@ -4514,17 +4514,24 @@ async function saveSystemSettings() {
     const h = parseInt(hoursRaw, 10) || 0;
     const m = parseInt(minutesRaw, 10) || 0;
     const cancelHours = Math.max(0, Math.min(240, h + m / 60));
+    const costVal = parseFloat(document.getElementById('sr-cost')?.value);
+    const courtsVal = parseInt(document.getElementById('sr-courts')?.value, 10);
     const settings = {
         sr_enabled: document.getElementById('sys-series-enabled').checked ? '1' : '0',
         cancel_hours: String(cancelHours),
         team_name: document.getElementById('disp-team-name').value.trim(),
         auto_compact_slots: document.getElementById('sys-auto-compact-slots')?.checked ? '1' : '0',
+        cost: !isNaN(costVal) && costVal >= 0 ? costVal : 16,
+        courts: !isNaN(courtsVal) && courtsVal >= 1 ? courtsVal : 2,
     };
     try {
         await apiFetch('PUT', '/config', settings);
         await loadState();
         applyTeamName();
         applyRole();
+        window._lastSessionHash = null;
+        if (typeof renderSessions === 'function') renderSessions();
+        if (isAdmin && typeof renderAll === 'function') renderAll();
         showToast('Einstellungen gespeichert.');
     } catch(e) {
         showToast(t('toast.series_save_error').replace('{msg}', e.message));
@@ -4575,7 +4582,7 @@ async function openAddSeries() {
   document.getElementById('series-edit-occurrences').value = 6;
   document.getElementById('series-edit-time-start').value = '19:00';
   document.getElementById('series-edit-time-end').value = '21:00';
-  document.getElementById('series-edit-courts').value = 2;
+  document.getElementById('series-edit-courts').value = parseInt(S.cfg.courts, 10) || 2;
   document.getElementById('series-edit-price').value = '';
   document.getElementById('series-edit-cancel-hours').value = '';
   document.getElementById('series-edit-court-names').value = '';
@@ -4594,7 +4601,7 @@ function openSeriesEdit(id) {
   document.getElementById('series-edit-occurrences').value = s.occurrences || 6;
   document.getElementById('series-edit-time-start').value = s.timeStart || '19:00';
   document.getElementById('series-edit-time-end').value = s.timeEnd || '21:00';
-  document.getElementById('series-edit-courts').value = s.courts || 2;
+  document.getElementById('series-edit-courts').value = s.courts || parseInt(S.cfg.courts, 10) || 2;
   document.getElementById('series-edit-price').value = s.price !== null && s.price !== undefined ? s.price : '';
   document.getElementById('series-edit-cancel-hours').value = s.cancelHours !== null && s.cancelHours !== undefined ? formatCancelHours(s.cancelHours) : '';
   document.getElementById('series-edit-court-names').value = (s.courtNames || []).join(', ');
@@ -5570,6 +5577,7 @@ async function saveDisplaySettings() {
         show_cancel_deadline: document.getElementById('disp-show-cancel-deadline').checked ? '1' : '0',
         currency:      document.getElementById('sr-currency').value.trim() || '€',
         cost:          parseFloat(document.getElementById('sr-cost').value) || 16,
+        courts:        parseInt(document.getElementById('sr-courts')?.value, 10) || 2,
         system_language: document.getElementById('sys-language').value || null,
         time_format:   document.getElementById('disp-time-format').value || '24h',
         date_format:   document.getElementById('disp-date-format').value || 'dmy',
