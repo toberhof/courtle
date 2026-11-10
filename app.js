@@ -370,7 +370,8 @@ function getAllUpcomingSessions() {
     for (const s of S.sessions) {
       if (s.date >= today && !s.cancelled) {
         sessions.push(s);
-        coveredKeys.add(`${s.date}_${(s.timeStart || '').replace(':','')}`);
+        const effectiveTime = (s.timeStart || getSessionTime(s).start || '').replace(':','');
+        coveredKeys.add(`${s.date}_${effectiveTime}`);
       }
     }
   }
@@ -382,8 +383,8 @@ function getAllUpcomingSessions() {
       const dates = generateSeriesDates(series);
       for (const d of dates) {
         if (d >= today) {
-          const sTime = (series.timeStart || '').replace(':','');
-          const isCancelled = S.sessions?.some(s => s.date === d && s.cancelled && (s.timeStart || '').replace(':','') === sTime);
+          const sTime = (series.timeStart || S.cfg.srtimestart || '19:00').replace(':','');
+          const isCancelled = S.sessions?.some(s => s.date === d && s.cancelled && (s.timeStart || getSessionTime(s).start || '').replace(':','') === sTime);
           if (isCancelled) continue;
 
           const key = `${d}_${sTime}`;
@@ -428,7 +429,8 @@ function getAllSessionsAdmin() {
   if (S.sessions && S.sessions.length) {
     for (const s of S.sessions) {
       sessions.push(s);
-      coveredKeys.add(`${s.date}_${(s.timeStart || '').replace(':','')}`);
+      const effectiveTime = (s.timeStart || getSessionTime(s).start || '').replace(':','');
+      coveredKeys.add(`${s.date}_${effectiveTime}`);
     }
   }
 
@@ -439,7 +441,7 @@ function getAllSessionsAdmin() {
       if (!series.enabled) continue;
       for (const d of generateSeriesDates(series)) {
         if (d >= today) {
-          const sTime = (series.timeStart || '').replace(':','');
+          const sTime = (series.timeStart || S.cfg.srtimestart || '19:00').replace(':','');
           const key = `${d}_${sTime}`;
           if (!coveredKeys.has(key)) {
             sessions.push({

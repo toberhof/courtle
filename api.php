@@ -330,6 +330,14 @@ function init_db(PDO $db): void {
     $db->exec("CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_courts_session ON courts(session_id)");
     $db->exec("CREATE INDEX IF NOT EXISTS idx_session_history_session ON session_history(session_id)");
+    // Ensure existing sessions without explicit time_start get populated from config/series
+    try {
+        $defaultStart = $db->query("SELECT value FROM config WHERE key='srtimestart'")->fetchColumn() ?: '19:00';
+        $defaultEnd   = $db->query("SELECT value FROM config WHERE key='srtimeend'")->fetchColumn() ?: '21:00';
+        $db->prepare("UPDATE sessions SET time_start = ? WHERE time_start IS NULL OR time_start = ''")->execute([$defaultStart]);
+        $db->prepare("UPDATE sessions SET time_end = ? WHERE time_end IS NULL OR time_end = ''")->execute([$defaultEnd]);
+    } catch (Throwable $e) {}
+
     $db->prepare("INSERT OR IGNORE INTO config (key, value) VALUES ('schema_version', '2')")->execute();
 }
 
@@ -355,6 +363,13 @@ function migrate_v2_sessions(PDO $db): void {
         }
     }
     if ($hasId) {
+        // Backfill time_start / time_end if any sessions exist without time
+        try {
+            $defaultStart = $db->query("SELECT value FROM config WHERE key='srtimestart'")->fetchColumn() ?: '19:00';
+            $defaultEnd   = $db->query("SELECT value FROM config WHERE key='srtimeend'")->fetchColumn() ?: '21:00';
+            $db->prepare("UPDATE sessions SET time_start = ? WHERE time_start IS NULL OR time_start = ''")->execute([$defaultStart]);
+            $db->prepare("UPDATE sessions SET time_end = ? WHERE time_end IS NULL OR time_end = ''")->execute([$defaultEnd]);
+        } catch (Throwable $e) {}
         $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', '2')")->execute();
         return;
     }
@@ -409,9 +424,14 @@ function migrate_v2_sessions(PDO $db): void {
         $insCourts = $db->prepare("INSERT OR IGNORE INTO courts_new (session_id, court_index, slot_index, player_id) VALUES (?,?,?,?)");
         $updHist = $db->prepare("UPDATE session_history SET session_id = ? WHERE session_date = ?");
 
+        $defaultStart = $db->query("SELECT value FROM config WHERE key='srtimestart'")->fetchColumn() ?: '19:00';
+        $defaultEnd   = $db->query("SELECT value FROM config WHERE key='srtimeend'")->fetchColumn() ?: '21:00';
+
         foreach ($oldSessions as $s) {
             $uuid = uuid_v4();
             $date = $s['date'];
+            $timeStart = !empty($s['time_start']) ? $s['time_start'] : $defaultStart;
+            $timeEnd   = !empty($s['time_end'])   ? $s['time_end']   : $defaultEnd;
             $insSess->execute([
                 $uuid,
                 $date,
@@ -419,8 +439,8 @@ function migrate_v2_sessions(PDO $db): void {
                 $s['disabled_courts'] ?? '[]',
                 $s['waitlist'] ?? '[]',
                 $s['note'] ?? '',
-                $s['time_start'] ?? null,
-                $s['time_end'] ?? null,
+                $timeStart,
+                $timeEnd,
                 (int)($s['cancelled'] ?? 0),
                 $s['location'] ?? null,
                 isset($s['price']) && $s['price'] !== null ? (float)$s['price'] : null,
@@ -1635,6 +1655,12 @@ function handle_import(): void {
     foreach (($b['config'] ?? []) as $c) {
         $db->prepare("INSERT OR REPLACE INTO config VALUES (?,?)")->execute([$c['key'], (string)$c['value']]);
     }
+    // Backfill time_start / time_end for imported sessions if empty
+    $defaultStart = $db->query("SELECT value FROM config WHERE key='srtimestart'")->fetchColumn() ?: '19:00';
+    $defaultEnd   = $db->query("SELECT value FROM config WHERE key='srtimeend'")->fetchColumn() ?: '21:00';
+    $db->prepare("UPDATE sessions SET time_start = ? WHERE time_start IS NULL OR time_start = ''")->execute([$defaultStart]);
+    $db->prepare("UPDATE sessions SET time_end = ? WHERE time_end IS NULL OR time_end = ''")->execute([$defaultEnd]);
+
     $db->commit();
     json_out(['ok' => true]);
 }
