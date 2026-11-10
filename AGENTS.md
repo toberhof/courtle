@@ -71,6 +71,7 @@ Before making changes to the codebase, please read the corresponding role file i
     6. the HTML comment `<!--built:X-->` in `index.html` (which PHP reads for `X-Courtle-Build` and `server_build`)
     MUST be strictly synchronized to the EXACT same (incremented) integer value across both `courtle` and `courtle-cloud`.
   * **Edge & Proxy Caching Warning**: Never push a new `<!--built:X-->` without simultaneously updating `CLIENT_BUILD = X` in `app.js`. If `CLIENT_BUILD` lags behind, Cloudflare and browsers will cache the JS file under that build query while the API reports a higher build number, resulting in an infinite "Update available" loop.
+  * **Cache Busting Recovery**: If a build was deployed with a mismatch and Cloudflare/browsers cached `app.js?build=X` with the old `CLIENT_BUILD`, do NOT redeploy with the same `X`. Instead, jump to an unused build number (e.g. `X + 5` or `X + 10`) across all 6 locations so that edge proxies request a completely fresh, un-cached URL.
 
 ---
 
