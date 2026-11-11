@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:470
-const CLIENT_BUILD = 470;
+// built:471
+const CLIENT_BUILD = 471;
 let S = {
   players: [],
   transactions: [],
@@ -1961,6 +1961,73 @@ function renderKPIs() {
       `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
   }
 }
+let activityViewMode = (typeof localStorage !== 'undefined' && localStorage.getItem('courtle_act_mode')) || 'table';
+
+window.setActivityViewMode = function(mode) {
+  activityViewMode = mode;
+  try { localStorage.setItem('courtle_act_mode', mode); } catch (_) {}
+  renderPlayerActivityTable();
+  if (window.lucide) lucide.createIcons();
+};
+
+function getActivityStatus(p) {
+  const latestStr = p.lastInteraction || p.lastLogin;
+  if (!latestStr) return 'inactive';
+  const normalized = latestStr.includes('T') ? latestStr : latestStr.replace(' ', 'T');
+  const dt = new Date(normalized);
+  if (Number.isNaN(dt.getTime())) return 'inactive';
+  const diffDays = (Date.now() - dt.getTime()) / (1000 * 60 * 60 * 24);
+  if (diffDays <= 2) return 'online';
+  if (diffDays <= 14) return 'recent';
+  return 'inactive';
+}
+
+function formatActivityCell(d, isDateOnly = false) {
+  if (!d) return '<span class="txm" style="opacity:.45">–</span>';
+  let dt;
+  if (d instanceof Date) {
+    dt = d;
+  } else {
+    const normalized = d.includes('T') ? d : d.replace(' ', 'T');
+    dt = new Date(normalized);
+  }
+  if (Number.isNaN(dt.getTime())) return `<span class="act-tbl-val">${esc(String(d))}</span>`;
+
+  const now = new Date();
+  const diffMs = now.getTime() - dt.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  let relText = '';
+  let relClass = '';
+
+  if (diffHours < 1) {
+    relText = t('misc.just_now', 'Gerade');
+    relClass = 'act-pill-fresh';
+  } else if (diffHours < 24 && dt.getDate() === now.getDate()) {
+    relText = t('misc.today', 'Heute');
+    relClass = 'act-pill-fresh';
+  } else if (diffDays === 1 || (diffHours < 48 && (now.getDate() - dt.getDate() === 1 || (now.getDate() === 1 && dt.getDate() > 27)))) {
+    relText = t('misc.yesterday', 'Gestern');
+    relClass = 'act-pill-recent';
+  } else if (diffDays < 7) {
+    relText = `vor ${diffDays} T.`;
+    relClass = 'act-pill-recent';
+  } else {
+    relText = fmtD(dt);
+    relClass = 'act-pill-older';
+  }
+
+  const timeStr = isDateOnly ? '' : fmtTime(dt);
+
+  return `
+    <div class="act-cell-wrap">
+      <span class="act-pill ${relClass}">${esc(relText)}</span>
+      ${timeStr ? `<span class="act-cell-sub">${esc(timeStr)}</span>` : ''}
+    </div>
+  `;
+}
+
 window.handleActivitySearch = function(val) {
   activitySearchQuery = val;
   renderPlayerActivityTable();
@@ -2023,12 +2090,11 @@ function renderPlayerActivityTable() {
   const toolbarHtml = `
     <div class="player-controls-compact mb4">
       <div class="player-search-row">
-        <div class="search-wrap" style="flex:1;min-width:160px;position:relative">
+        <div class="search-wrap" style="flex:1;min-width:140px;position:relative">
           <i data-lucide="search" style="width:15px;height:15px;position:absolute;left:var(--sp3);top:50%;transform:translateY(-50%);color:var(--txm)"></i>
           <input type="text" class="fi" style="padding-left:34px;font-size:var(--text-sm)" placeholder="${esc(t('players.search', 'Spieler suchen...'))}" value="${esc(activitySearchQuery)}" oninput="handleActivitySearch(this.value)">
         </div>
         <div class="sort-wrap flex items-c g2">
-          <span class="txxs txm hide-xs" style="white-space:nowrap">${t('players.sort', 'Sortierung:')}</span>
           <div class="sort-select-wrap">
             <select class="sort-select" onchange="handleActivitySort(this.value)">
               <option value="interaction_desc" ${activitySortOption === 'interaction_desc' ? 'selected' : ''}>${t('players.activity_sort', 'Aktivität')} ↓</option>
@@ -2041,6 +2107,10 @@ function renderPlayerActivityTable() {
               <option value="name_desc" ${activitySortOption === 'name_desc' ? 'selected' : ''}>${t('players.name_sort', 'Name')} Z–A</option>
             </select>
             <i data-lucide="chevron-down" class="sort-select-arrow"></i>
+          </div>
+          <div class="seg-tabs act-view-toggle" role="tablist">
+            <button type="button" class="seg-tab ${activityViewMode === 'table' ? 'active' : ''}" onclick="setActivityViewMode('table')" title="${esc(t('misc.table_view', 'Tabelle'))}"><i data-lucide="table-properties" style="width:14px;height:14px"></i></button>
+            <button type="button" class="seg-tab ${activityViewMode === 'cards' ? 'active' : ''}" onclick="setActivityViewMode('cards')" title="${esc(t('misc.card_view', 'Karten'))}"><i data-lucide="layout-grid" style="width:14px;height:14px"></i></button>
           </div>
         </div>
       </div>
@@ -2078,56 +2148,111 @@ function renderPlayerActivityTable() {
     return false;
   };
 
-  const rowsHtml = filtered.map(p => {
-    const partDate = getLastParticipationDate(p.id);
-    const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
-    return `
-      <tr>
-        <td>
-          <div class="flex items-c g2">
-            <div class="av pc-av" style="width:28px;height:28px;min-width:28px;cursor:pointer" onclick="openIconPickerModal('${p.id}')" title="${esc(t('players.icon_short'))}">
-              <i data-lucide="${playerIcon(p)}" style="width:14px;height:14px"></i>
+  let contentHtml = '';
+
+  if (activityViewMode === 'cards') {
+    // ── CARDS VIEW ──
+    const cards = filtered.map(p => {
+      const partDate = getLastParticipationDate(p.id);
+      const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
+      const status = getActivityStatus(p);
+      const latestRel = p.lastInteraction ? formatActivityCell(p.lastInteraction) : (p.lastLogin ? formatActivityCell(p.lastLogin) : '');
+      return `
+        <div class="act-modern-card">
+          <div class="act-modern-card-head">
+            <div class="flex items-c g2" style="min-width:0">
+              <div class="act-av-wrap" onclick="event.stopPropagation();openIconPickerModal('${p.id}')" title="${esc(t('players.icon_short'))}">
+                <div class="av pc-av" style="width:34px;height:34px;min-width:34px">
+                  <i data-lucide="${playerIcon(p)}" style="width:16px;height:16px"></i>
+                </div>
+                <span class="act-status-dot ${status}"></span>
+              </div>
+              <div style="min-width:0">
+                <div class="act-card-name">${esc(p.name)}${adminBadge}</div>
+                ${p.contact ? `<div class="txxs txm">${esc(p.contact)}</div>` : ''}
+              </div>
             </div>
-            <div>
-              <div style="font-weight:600;display:flex;align-items:center;gap:6px">${esc(p.name)}${adminBadge}</div>
-              ${p.contact ? `<div class="txxs txm">${esc(p.contact)}</div>` : ''}
+            <div class="act-head-rel" style="flex-shrink:0">
+              ${latestRel}
             </div>
           </div>
-        </td>
-        <td><span class="act-tbl-val">${p.lastLogin ? fmtDTS(p.lastLogin) : '–'}</span></td>
-        <td><span class="act-tbl-val">${p.lastInteraction ? fmtDTS(p.lastInteraction) : '–'}</span></td>
-        <td><span class="act-tbl-val">${partDate ? fmtD(partDate) : '–'}</span></td>
-      </tr>
+          <div class="act-modern-card-metrics">
+            <div class="act-mcm-item">
+              <span class="act-mcm-lbl">${t('players.last_login', 'Login')}</span>
+              <span class="act-mcm-val">${p.lastLogin ? fmtDTS(p.lastLogin) : '–'}</span>
+            </div>
+            <div class="act-mcm-item">
+              <span class="act-mcm-lbl">${t('players.last_activity', 'Aktivität')}</span>
+              <span class="act-mcm-val">${p.lastInteraction ? fmtDTS(p.lastInteraction) : '–'}</span>
+            </div>
+            <div class="act-mcm-item">
+              <span class="act-mcm-lbl">${t('players.last_participation', 'Gespielt')}</span>
+              <span class="act-mcm-val">${partDate ? fmtD(partDate) : '–'}</span>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+    contentHtml = `<div class="act-card-list">${cards}</div>`;
+  } else {
+    // ── STICKY TABLE VIEW ──
+    const rowsHtml = filtered.map(p => {
+      const partDate = getLastParticipationDate(p.id);
+      const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
+      const status = getActivityStatus(p);
+      return `
+        <tr>
+          <td class="act-col-sticky">
+            <div class="flex items-c g2">
+              <div class="act-av-wrap" onclick="openIconPickerModal('${p.id}')" title="${esc(t('players.icon_short'))}">
+                <div class="av pc-av" style="width:28px;height:28px;min-width:28px">
+                  <i data-lucide="${playerIcon(p)}" style="width:14px;height:14px"></i>
+                </div>
+                <span class="act-status-dot ${status}"></span>
+              </div>
+              <div style="min-width:0;overflow:hidden">
+                <div style="font-weight:600;display:flex;align-items:center;gap:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}${adminBadge}</div>
+                ${p.contact ? `<div class="txxs txm" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.contact)}</div>` : ''}
+              </div>
+            </div>
+          </td>
+          <td>${formatActivityCell(p.lastLogin)}</td>
+          <td>${formatActivityCell(p.lastInteraction)}</td>
+          <td>${formatActivityCell(partDate, true)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    contentHtml = `
+      <div class="act-table-wrap">
+        <div class="act-table-scroll">
+          <table class="act-table">
+            <thead>
+              <tr>
+                <th class="act-col-sticky ${isSorted('name') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('name')" style="cursor:pointer;user-select:none">
+                  ${t('transactions.player', 'Spieler')}${getSortIcon('name')}
+                </th>
+                <th class="${isSorted('lastLogin') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('lastLogin')" style="cursor:pointer;user-select:none">
+                  ${t('players.last_login', 'Letzter Login')}${getSortIcon('lastLogin')}
+                </th>
+                <th class="${isSorted('interaction') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('interaction')" style="cursor:pointer;user-select:none">
+                  ${t('players.last_activity', 'Letzte Aktivität')}${getSortIcon('interaction')}
+                </th>
+                <th class="${isSorted('lastParticipation') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('lastParticipation')" style="cursor:pointer;user-select:none">
+                  ${t('players.last_participation', 'Letzte Teilnahme')}${getSortIcon('lastParticipation')}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+      </div>
     `;
-  }).join('');
+  }
 
-  const tableHtml = `
-    <div class="tw" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
-      <table class="dt act-table">
-        <thead>
-          <tr>
-            <th class="${isSorted('name') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('name')" style="cursor:pointer;user-select:none">
-              ${t('transactions.player', 'Spieler')}${getSortIcon('name')}
-            </th>
-            <th class="${isSorted('lastLogin') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('lastLogin')" style="cursor:pointer;user-select:none">
-              ${t('players.last_login', 'Letzter Login')}${getSortIcon('lastLogin')}
-            </th>
-            <th class="${isSorted('interaction') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('interaction')" style="cursor:pointer;user-select:none">
-              ${t('players.last_activity', 'Letzte Aktivität')}${getSortIcon('interaction')}
-            </th>
-            <th class="${isSorted('lastParticipation') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('lastParticipation')" style="cursor:pointer;user-select:none">
-              ${t('players.last_participation', 'Letzte Teilnahme')}${getSortIcon('lastParticipation')}
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rowsHtml}
-        </tbody>
-      </table>
-    </div>
-  `;
-
-  targets.forEach(el => { el.innerHTML = toolbarHtml + tableHtml; });
+  targets.forEach(el => { el.innerHTML = toolbarHtml + contentHtml; });
   if (window.lucide) lucide.createIcons();
 }
 
