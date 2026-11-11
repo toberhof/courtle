@@ -151,9 +151,10 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
 
-    // Click pencil (edit) button on Alice's card
+    // Click pencil (edit) button on Alice's card (expand card row first)
     const pc = page.locator('.pc').filter({ hasText: 'Alice' });
     await expect(pc).toBeVisible();
+    await pc.locator('.pc-row').click();
     await pc.locator('button.btn-sec').first().click();
     await expect(page.locator('#mo-player')).toHaveClass(/open/);
 
@@ -171,9 +172,10 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
 
-    // Click trash button on Alice's card
+    // Click trash button on Alice's card (expand card row first)
     const pc = page.locator('.pc').filter({ hasText: 'Alice' });
     await expect(pc).toBeVisible();
+    await pc.locator('.pc-row').click();
     await pc.locator('button.btn-dan').click();
 
     // Confirm modal appears
