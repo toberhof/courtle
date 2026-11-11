@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:467-->
+<!--built:468-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=467">
+<link rel="stylesheet" href="style.css?build=468">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=467" defer></script>
-<script src="app.js?build=467" defer></script>
+<script src="i18n.js?build=468" defer></script>
+<script src="app.js?build=468" defer></script>
 
 <div class="app-shell">
 
@@ -824,7 +824,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 467)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 468)</span>
 
 </footer>
 
@@ -873,25 +873,30 @@ if ('serviceWorker' in navigator) {
   </button>
 </div>
 <div class="bnav-admin-menu" id="bnav-admin-menu">
-  <div class="bnav-group-title" data-i18n="nav.group_sessions">Sessions</div>
-  <div class="bnav-group-grid">
-    <button onclick="showView('admin-plan');closeMobileAdminMenu()"><i data-lucide="clipboard-list"></i> <span data-i18n="nav.session_plan">Session Planer</span></button>
-    <button id="bnav-series" onclick="showView('series');closeMobileAdminMenu()"><i data-lucide="repeat"></i> <span data-i18n="nav.series">Session Serien</span></button>
-  </div>
-  <div class="bnav-group-title" data-i18n="nav.group_players">Spieler</div>
-  <div class="bnav-group-grid">
-    <button onclick="openPlayersTab('manage');closeMobileAdminMenu()"><i data-lucide="users"></i> <span data-i18n="nav.players">Spieler</span></button>
-  </div>
+  <button onclick="showView('admin-plan');closeMobileAdminMenu()">
+    <i data-lucide="clipboard-list"></i> <span data-i18n="nav.session_plan">Session Planer</span>
+  </button>
+  <button id="bnav-series" onclick="showView('series');closeMobileAdminMenu()">
+    <i data-lucide="repeat"></i> <span data-i18n="nav.series">Session Serien</span>
+  </button>
+  <button onclick="openPlayersTab('manage');closeMobileAdminMenu()">
+    <i data-lucide="users"></i> <span data-i18n="nav.players">Spieler</span>
+  </button>
+  <div class="bnav-divider"></div>
   <div class="bnav-group-title" data-i18n="nav.group_money">Finanzen</div>
-  <div class="bnav-group-grid">
-    <button onclick="showView('billing');closeMobileAdminMenu()"><i data-lucide="receipt"></i> <span data-i18n="nav.billing">Abrechnung</span><span class="nav-badge" id="bnav-billing-count" hidden></span></button>
-    <button class="bnav-quick-tx" onclick="closeMobileAdminMenu();openTx()"><i data-lucide="plus-circle"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
-    <button onclick="showView('history');closeMobileAdminMenu()"><i data-lucide="chart-no-axes-gantt"></i> <span data-i18n="nav.history">Transaktionen</span></button>
-  </div>
-  <div class="bnav-group-title" data-i18n="nav.group_system">System</div>
-  <div class="bnav-group-grid">
-    <button onclick="showView('settings');closeMobileAdminMenu()"><i data-lucide="sliders"></i> <span data-i18n="nav.settings">Einstellungen</span></button>
-  </div>
+  <button onclick="showView('billing');closeMobileAdminMenu()">
+    <i data-lucide="receipt"></i> <span data-i18n="nav.billing">Abrechnung</span><span class="nav-badge" id="bnav-billing-count" hidden></span>
+  </button>
+  <button class="bnav-quick-tx" onclick="closeMobileAdminMenu();openTx()">
+    <i data-lucide="plus-circle"></i> <span data-i18n="nav.quick_topup">Einzahlung</span>
+  </button>
+  <button onclick="showView('history');closeMobileAdminMenu()">
+    <i data-lucide="chart-no-axes-gantt"></i> <span data-i18n="nav.history">Transaktionen</span>
+  </button>
+  <div class="bnav-divider"></div>
+  <button onclick="showView('settings');closeMobileAdminMenu()">
+    <i data-lucide="sliders"></i> <span data-i18n="nav.settings">Einstellungen</span>
+  </button>
 </div>
 
 <!-- ── LANGUAGE MODAL ── -->
