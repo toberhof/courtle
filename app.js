@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 445;
+const CLIENT_BUILD = 446;
 let S = {
   players: [],
   transactions: [],
@@ -5127,36 +5127,217 @@ if (window.__pip) { console.log('[BANNER] __pip detected at boot, calling showAn
 // ════════════════════════════════════════
 // PULL-TO-REFRESH (iOS PWA)
 // ════════════════════════════════════════
-function isIOS() { return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
-function isStandalone() { return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true; }
-let _ptrStart = 0, _ptrPulling = false;
+function isIOS() { 
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); 
+}
+function isStandalone() { 
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true || window.location.search.includes('pwa=1'); 
+}
+
+let _ptrStartX = 0;
+let _ptrStartY = 0;
+let _ptrDistance = 0;
+let _ptrDirection = null; // null | 'h' | 'v'
+let _ptrActive = false;
+let _ptrArmed = false;
+let _ptrLoading = false;
+const PTR_THRESHOLD = 64; // px damped pull needed to arm refresh
+const PTR_MAX = 78;       // max damped visual travel
+
+const IGNORED_PTR_SELECTORS = [
+  '.plan-strip',
+  '.plan-nav-box',
+  '#session-selector-box',
+  '.player-pick-grid-wrap',
+  '.mo-backdrop',
+  '.modal',
+  '.mo-box',
+  '.tw',
+  '.table-wrap',
+  'input',
+  'textarea',
+  'select',
+  'button'
+].join(',');
+
+function _resetPtr(animate) {
+  _ptrActive = false;
+  _ptrArmed = false;
+  _ptrDistance = 0;
+  _ptrDirection = null;
+  const el = document.getElementById('ptr-indicator');
+  if (!el) return;
+  el.classList.remove('ptr-pulling', 'ptr-ready');
+  if (animate) {
+    el.classList.add('ptr-closing');
+    setTimeout(() => {
+      el.classList.remove('ptr-closing');
+      el.style.transform = '';
+      el.style.opacity = '';
+      const arrow = el.querySelector('.ptr-arrow');
+      if (arrow) arrow.style.transform = '';
+    }, 250);
+  } else {
+    el.style.transform = '';
+    el.style.opacity = '';
+    const arrow = el.querySelector('.ptr-arrow');
+    if (arrow) arrow.style.transform = '';
+  }
+}
 
 document.addEventListener('touchstart', e => {
+  if (_ptrLoading) return;
   if (!isStandalone() || !isIOS()) return;
-  _ptrStart = e.touches[0].clientY;
-  _ptrPulling = false;
+
+  // Must be scrolled to top of page
+  if (window.scrollY > 5) return;
+
+  // Ignore touches starting inside horizontal scrollers, modals, or form controls
+  if (e.target.closest(IGNORED_PTR_SELECTORS)) return;
+
+  // Never trigger if any modal overlay is active
+  if (document.querySelector('.modal.open, .mo-backdrop.open')) return;
+
+  _ptrStartX = e.touches[0].clientX;
+  _ptrStartY = e.touches[0].clientY;
+  _ptrDistance = 0;
+  _ptrDirection = null;
+  _ptrActive = true;
+  _ptrArmed = false;
 }, { passive: true });
 
 document.addEventListener('touchmove', e => {
-  if (!_ptrStart) return;
-  const dy = e.touches[0].clientY - _ptrStart;
-  if (dy > 0 && window.scrollY === 0) {
-    _ptrPulling = true;
-    const el = document.getElementById('ptr-indicator');
-    if (el) { el.classList.remove('ptr-hidden'); el.classList.add('ptr-visible'); el.classList.remove('ptr-loading'); }
+  if (!_ptrActive || _ptrLoading) return;
+
+  const touch = e.touches[0];
+  const dx = touch.clientX - _ptrStartX;
+  const dy = touch.clientY - _ptrStartY;
+
+  // Lock gesture direction once finger moves enough
+  if (_ptrDirection === null) {
+    if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+      if (Math.abs(dx) >= Math.abs(dy) * 0.75 || dy < 0) {
+        // Horizontal, diagonal, or upward swipe -> disable PTR for this gesture
+        _ptrActive = false;
+        return;
+      }
+      _ptrDirection = 'v';
+    } else {
+      return;
+    }
   }
-}, { passive: true });
+
+  if (_ptrDirection !== 'v') return;
+
+  // Cancel immediately if page has scrolled down
+  if (window.scrollY > 0 || dy <= 0) {
+    _resetPtr(false);
+    return;
+  }
+
+  // Prevent native viewport rubber-band bounce while pulling our indicator
+  if (e.cancelable) {
+    e.preventDefault();
+  }
+
+  // Physics damping: smooth rubber-band resistance
+  const damped = Math.min(PTR_MAX, Math.pow(dy, 0.8) * 1.45);
+  _ptrDistance = damped;
+
+  const el = document.getElementById('ptr-indicator');
+  if (!el) return;
+
+  const progress = Math.min(1, damped / PTR_THRESHOLD);
+  el.classList.add('ptr-pulling');
+  el.classList.remove('ptr-closing');
+
+  const currentY = -45 + (damped * 1.05);
+  el.style.transform = `translate(-50%, ${currentY}px) scale(${0.85 + (progress * 0.15)})`;
+  el.style.opacity = String(Math.min(1, progress * 1.3));
+
+  const arrow = el.querySelector('.ptr-arrow');
+  if (damped >= PTR_THRESHOLD) {
+    if (!_ptrArmed) {
+      _ptrArmed = true;
+      el.classList.add('ptr-ready');
+      if (navigator.vibrate) { try { navigator.vibrate(12); } catch (_) {} }
+    }
+    if (arrow) arrow.style.transform = 'rotate(180deg)';
+  } else {
+    if (_ptrArmed) {
+      _ptrArmed = false;
+      el.classList.remove('ptr-ready');
+    }
+    if (arrow) arrow.style.transform = `rotate(${progress * 180}deg)`;
+  }
+}, { passive: false });
 
 document.addEventListener('touchend', async () => {
-  if (!_ptrPulling) { _ptrStart = 0; return; }
+  if (!_ptrActive || _ptrLoading) return;
+  const wasArmed = _ptrArmed;
+  _ptrActive = false;
+
   const el = document.getElementById('ptr-indicator');
-  if (el) el.classList.add('ptr-loading');
-  await loadState();
-  renderSessions();
-  lucide.createIcons();
-  if (typeof renderAdminPlan === 'function') renderAdminPlan();
-  if (el) { el.classList.remove('ptr-visible', 'ptr-loading'); el.classList.add('ptr-hidden'); }
-  _ptrStart = 0; _ptrPulling = false;
+  if (el) el.classList.remove('ptr-pulling');
+
+  if (wasArmed) {
+    _ptrLoading = true;
+    if (el) {
+      el.classList.remove('ptr-ready');
+      el.classList.add('ptr-loading');
+      el.style.transform = '';
+      el.style.opacity = '';
+    }
+
+    try {
+      await loadState();
+      if (isAdmin) {
+        renderAll();
+      } else {
+        renderSessions();
+        renderMyHistory();
+        renderMyTransactions();
+        lucide.createIcons();
+        syncSwipeHeight();
+      }
+    } catch (err) {
+      console.warn('[PTR] Refresh failed:', err);
+    }
+
+    if (el) {
+      el.classList.remove('ptr-loading');
+      el.classList.add('ptr-closing');
+      setTimeout(() => {
+        el.classList.remove('ptr-closing');
+        el.style.transform = '';
+        el.style.opacity = '';
+        const arrow = el.querySelector('.ptr-arrow');
+        if (arrow) arrow.style.transform = '';
+      }, 300);
+    }
+    _ptrLoading = false;
+    _ptrArmed = false;
+  } else {
+    if (el) {
+      el.classList.add('ptr-closing');
+      setTimeout(() => {
+        el.classList.remove('ptr-closing', 'ptr-ready');
+        el.style.transform = '';
+        el.style.opacity = '';
+        const arrow = el.querySelector('.ptr-arrow');
+        if (arrow) arrow.style.transform = '';
+      }, 250);
+    }
+  }
+
+  _ptrDistance = 0;
+  _ptrDirection = null;
+}, { passive: true });
+
+document.addEventListener('touchcancel', () => {
+  if (!_ptrLoading) {
+    _resetPtr(true);
+  }
 }, { passive: true });
 
 let _adminWlDate = null;
