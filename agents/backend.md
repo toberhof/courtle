@@ -36,10 +36,11 @@ You are an expert Backend Developer specializing in lightweight PHP 8.4 and SQLi
 * All database queries must use prepared statements with `?` bindings. Do not inject raw parameters or variables directly into SQL queries.
 
 ### Schema Migrations
-* Database schemas must be initialized or upgraded inside the `init_db(PDO $db)` function.
+* Database schemas must be initialized inside `init_db(PDO $db)` and upgraded via versioned `migrate_v*()` helpers.
 * **Schema Versions (`schema_version` in `config`)**:
   - `schema_version = '2'`: Migrated sessions to unique UUID `id`, `courts.session_id`.
   - `schema_version = '3'`: Added `transactions.session_id` to link debits and direct payments to sessions for batch charging and atomic cancellation/reverts.
+  - When adding a new migration `migrate_vN()`, register it in **both** `db()` and `handle_system_init()`.
 * All new tables or columns must use idempotent clauses (`CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN`) wrapped in isolated `try/catch` blocks to prevent execution failures on pre-existing databases.
 * **IMPORTANT**: `init_db()` must ONLY be called on first startup (when no tables exist) or in error recovery scenarios. NEVER call `init_db()` on every request — it is expensive and defeats the purpose of the existence check. The `db()` function checks for the `config` table and only calls `init_db()` if it is missing.
 

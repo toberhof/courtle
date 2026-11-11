@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:449-->
+<!--built:466-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=449">
+<link rel="stylesheet" href="style.css?build=466">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=449" defer></script>
-<script src="app.js?build=449" defer></script>
+<script src="i18n.js?build=466" defer></script>
+<script src="app.js?build=466" defer></script>
 
 <div class="app-shell">
 
@@ -102,11 +102,8 @@ if ('serviceWorker' in navigator) {
         </button>
         <div class="nav-dd-divider"></div>
         <div class="nav-dd-group-title" data-i18n="nav.group_players">Spieler</div>
-        <button class="nav-dd-item" id="nav-players" onclick="openPlayersTab('list');closeNavDD()">
+        <button class="nav-dd-item" id="nav-players" onclick="openPlayersTab('manage');closeNavDD()">
           <i data-lucide="users" style="width:16px;height:16px"></i><span data-i18n="nav.players">Spieler</span>
-        </button>
-        <button class="nav-dd-item" id="nav-activity" onclick="openPlayersTab('activity');closeNavDD()">
-          <i data-lucide="activity" style="width:16px;height:16px"></i><span data-i18n="nav.activity">Aktivität</span>
         </button>
         <div class="nav-dd-divider"></div>
         <div class="nav-dd-group-title" data-i18n="nav.group_money">Finanzen</div>
@@ -119,16 +116,10 @@ if ('serviceWorker' in navigator) {
         <button class="nav-dd-item" id="nav-history" onclick="showView('history');closeNavDD()">
           <i data-lucide="chart-no-axes-gantt" style="width:16px;height:16px"></i><span data-i18n="nav.history">Transaktionen</span>
         </button>
-        <button class="nav-dd-item" id="nav-expenses" onclick="showView('expenses');closeNavDD()">
-          <i data-lucide="credit-card" style="width:16px;height:16px"></i><span data-i18n="nav.expenses">Ausgaben</span>
-        </button>
         <div class="nav-dd-divider"></div>
         <div class="nav-dd-group-title" data-i18n="nav.group_system">System</div>
         <button class="nav-dd-item" id="nav-settings" onclick="showView('settings');closeNavDD()">
           <i data-lucide="sliders" style="width:16px;height:16px"></i><span data-i18n="nav.settings">Einstellungen</span>
-        </button>
-        <button class="nav-dd-item" id="nav-backup" onclick="showView('backup');closeNavDD()">
-          <i data-lucide="hard-drive-download" style="width:16px;height:16px"></i><span data-i18n="nav.backup">Datensicherung</span>
         </button>
       </div>
     </div>
@@ -239,18 +230,8 @@ if ('serviceWorker' in navigator) {
     </div>
   </div>
 
-  <!-- EXPENSES (admin) -->
-  <section class="view" id="view-expenses">
-    <div class="flex items-c just-b mb4 wrap g2">
-      <div style="display:flex;flex-direction:column;gap:var(--sp1);align-items:flex-start">
-        <h1 class="page-title" style="margin-bottom:0" data-i18n="nav.expenses">Ausgaben</h1>
-        <p class="txsm txm" data-i18n="expenses.operator_desc">Trage hier Rechnungen ein, die an den Court-Betreiber bezahlt wurden.</p>
-      </div>
-      <button class="btn btn-pri" onclick="openExpenseModal()"><i data-lucide="plus"></i> <span data-i18n="dashboard.expenses_record">Erfassen</span></button>
-    </div>
-    <div id="expenses-kpi-container" class="kpi-grid mb6"></div>
-    <div id="expenses-container" class="expense-list"></div>
-  </section>
+  <!-- EXPENSES (admin - merged into view-history) -->
+  <section class="view" id="view-expenses" style="display:none"></section>
 
   <!-- BILLING (admin) -->
   <section class="view" id="view-billing">
@@ -290,7 +271,7 @@ if ('serviceWorker' in navigator) {
         <h2 class="sec-title" style="margin-bottom:0" data-i18n="session.court">Court</h2>
         <div class="flex g2">
           <span class="txxs txm" id="plan-slots-meta"></span>
-          <button class="btn btn-xs btn-sec" id="add-court-btn" onclick="addCourtToSessionFromBtn()"><i data-lucide="plus"></i> <span data-i18n="session.add_court">Court</span></button>
+          <button class="btn btn-sm btn-sec" id="add-court-btn" onclick="addCourtToSessionFromBtn()"><i data-lucide="plus"></i> <span data-i18n="session.add_court">Court</span></button>
         </div>
       </div>
       <div id="plan-slots-editor"></div>
@@ -312,16 +293,17 @@ if ('serviceWorker' in navigator) {
   <section class="view" id="view-players">
     <div class="flex items-c just-b mb4 wrap g2">
       <h1 class="page-title" style="margin-bottom:0" data-i18n="view.players">Spieler</h1>
-      <div class="flex items-c g2">
-        <button class="btn btn-ok btn-sm" onclick="openTx()" type="button"><i data-lucide="plus-circle"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
-        <button class="btn btn-pri btn-sm" onclick="openAddPlayer()" type="button"><i data-lucide="user-plus"></i> <span data-i18n="players.add">Hinzufügen</span></button>
+      <div id="players-header-action">
+        <button class="btn btn-ok btn-sm" onclick="openAddPlayer()" type="button"><i data-lucide="user-plus"></i> <span data-i18n="players.add">Hinzufügen</span></button>
       </div>
     </div>
     <div class="seg-tabs mb4" id="players-tabs" role="tablist">
-      <button class="seg-tab active" id="players-tab-list" role="tab" aria-selected="true" onclick="setPlayersTab('list')"><span data-i18n="players.tab_list">Guthaben</span></button>
-      <button class="seg-tab" id="players-tab-activity" role="tab" aria-selected="false" onclick="setPlayersTab('activity')"><span data-i18n="players.tab_activity">Aktivität</span></button>
+      <button class="seg-tab active" id="players-tab-manage" role="tab" aria-selected="true" onclick="setPlayersTab('manage')"><span data-i18n="players.tab_manage">Verwaltung</span></button>
+      <button class="seg-tab" id="players-tab-balance" role="tab" aria-selected="false" onclick="setPlayersTab('balance')"><span data-i18n="players.tab_list">Guthaben</span></button>
     </div>
-    <div id="players-panel-list">
+
+    <!-- PANEL 1: VERWALTUNG & AKTIVITÄT -->
+    <div id="players-panel-manage">
       <div class="player-controls-compact mb4">
         <div class="player-search-row">
           <div class="search-wrap" style="flex:1;min-width:160px;position:relative">
@@ -330,239 +312,462 @@ if ('serviceWorker' in navigator) {
           </div>
           <div class="sort-wrap flex items-c g2">
             <span class="txxs txm hide-xs" style="white-space:nowrap" data-i18n="players.sort">Sortierung:</span>
-            <select id="player-sort" class="fi" style="width:auto;font-size:var(--text-sm)" onchange="handlePlayerSort(this.value)">
-              <option value="name_asc">Name A-Z</option>
-              <option value="name_desc">Name Z-A</option>
-              <option value="balance_desc">Guthaben ↓</option>
-              <option value="balance_asc">Guthaben ↑</option>
-            </select>
+            <div class="sort-select-wrap">
+              <select id="player-sort" class="sort-select" onchange="handlePlayerSort(this.value)">
+                <option value="name_asc">Name A–Z</option>
+                <option value="name_desc">Name Z–A</option>
+                <option value="interaction_desc">Aktivität ↓</option>
+                <option value="interaction_asc">Aktivität ↑</option>
+                <option value="login_desc">Login ↓</option>
+                <option value="login_asc">Login ↑</option>
+                <option value="participation_desc">Gespielt ↓</option>
+                <option value="participation_asc">Gespielt ↑</option>
+              </select>
+              <i data-lucide="chevron-down" class="sort-select-arrow"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pg" id="players-grid"></div>
+    </div>
+
+    <!-- PANEL 2: GUTHABEN & TRANSAKTIONEN -->
+    <div id="players-panel-balance" style="display:none">
+      <div class="player-controls-compact mb4">
+        <div class="player-search-row">
+          <div class="search-wrap" style="flex:1;min-width:160px;position:relative">
+            <i data-lucide="search" style="width:15px;height:15px;position:absolute;left:var(--sp3);top:50%;transform:translateY(-50%);color:var(--txm)"></i>
+            <input type="text" id="player-balance-search" class="fi" style="padding-left:34px;font-size:var(--text-sm)" data-i18n-placeholder="players.search" placeholder="Spieler suchen..." oninput="handlePlayerBalanceSearch(this.value)">
+          </div>
+          <div class="sort-wrap flex items-c g2">
+            <span class="txxs txm hide-xs" style="white-space:nowrap" data-i18n="players.sort">Sortierung:</span>
+            <div class="sort-select-wrap">
+              <select id="player-balance-sort" class="sort-select" onchange="handlePlayerBalanceSort(this.value)">
+                <option value="name_asc">Name A–Z</option>
+                <option value="name_desc">Name Z–A</option>
+                <option value="balance_desc">Guthaben ↓</option>
+                <option value="balance_asc">Guthaben ↑</option>
+              </select>
+              <i data-lucide="chevron-down" class="sort-select-arrow"></i>
+            </div>
           </div>
         </div>
         <div class="player-filter-pills" id="player-filter-pills"></div>
       </div>
-      <div class="pg" id="players-grid"></div>
-    </div>
-    <div id="players-panel-activity" style="display:none">
-      <div id="players-activity-table"></div>
+      <div class="pg" id="players-balance-grid"></div>
     </div>
   </section>
 
-  <!-- HISTORY (admin) -->
+  <!-- FINANCES & TRANSACTIONS (admin) -->
   <section class="view" id="view-history">
     <div class="flex items-c just-b mb4 wrap g2">
       <div>
-        <h1 class="page-title" style="margin-bottom:2px" data-i18n="view.history">Transaktionen</h1>
-        <p class="txsm txm" data-i18n="history.subtitle">Interne Guthaben-Buchungen: Spieler-Einzahlungen, Korrekturen und abgerechnete Sessions.</p>
+        <h1 class="page-title" style="margin-bottom:var(--sp1)" id="fin-view-title" data-i18n="finances.title">Transaktionen</h1>
+        <p class="txsm txm" id="fin-view-subtitle" data-i18n="finances.subtitle_team">Teamkasse &amp; Court-Kosten im Außenverhältnis.</p>
       </div>
-      <div class="flex items-c g2 wrap">
-        <button class="btn btn-ok btn-sm" onclick="openTx(document.getElementById('hist-filter')?.value || null)" type="button"><i data-lucide="plus"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
-        <button class="btn btn-sec btn-sm" onclick="downloadHistoryCSV()" data-i18n-title="history.csv_export" style="white-space:nowrap"><i data-lucide="download"></i> <span data-i18n="history.csv">CSV</span></button>
-        <select class="fi" id="hist-filter" style="width:auto;font-size:var(--text-sm)" onchange="renderHistory()">
+      <div class="flex items-c g2" id="history-header-actions">
+        <button class="btn btn-ok btn-sm" id="hist-btn-add-tx" onclick="openTx(document.getElementById('hist-filter')?.value || null)" type="button"><i data-lucide="plus-circle"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
+        <button class="btn btn-ok btn-sm" id="hist-btn-add-expense" onclick="openExpenseModal()" type="button"><i data-lucide="plus-circle"></i> <span data-i18n="expenses.add_expense">Court-Kosten</span></button>
+      </div>
+    </div>
+
+    <!-- Top-Level Dimension Switcher -->
+    <div class="seg-tabs mb4" id="fin-dimension-tabs" role="tablist">
+      <button class="seg-tab active" id="fin-tab-team" role="tab" aria-selected="true" onclick="setFinDimension('team')" type="button">
+        <i data-lucide="piggy-bank"></i>
+        <span data-i18n="finances.tab_team">Teamkasse</span>
+      </button>
+      <button class="seg-tab" id="fin-tab-players" role="tab" aria-selected="false" onclick="setFinDimension('players')" type="button">
+        <i data-lucide="users"></i>
+        <span data-i18n="finances.tab_players">Spielerkonten</span>
+      </button>
+    </div>
+
+    <!-- KPI Grid -->
+    <div id="kpi-container" class="kpi-grid mb4"></div>
+
+    <!-- Filter Pills & Controls Toolbar -->
+    <div class="fin-controls-bar mb3">
+      <!-- Sub-Filter: Teamkasse -->
+      <div class="player-filter-pills" id="team-type-tabs" role="tablist">
+        <button class="pf-pill active" id="hist-tab-team-all" role="tab" aria-selected="true" onclick="setTeamFilter('all')" type="button"><span data-i18n="finances.filter_all_moves">Alle</span> <span class="pf-cnt" id="fin-cnt-team-all">0</span></button>
+        <button class="pf-pill pf-pos" id="hist-tab-team-credits" role="tab" aria-selected="false" onclick="setTeamFilter('credits')" type="button"><span data-i18n="history.filter_credits">Einzahlungen</span> <span class="pf-cnt" id="fin-cnt-team-credits">0</span></button>
+        <button class="pf-pill pf-neg" id="hist-tab-expenses" role="tab" aria-selected="false" onclick="setTeamFilter('expenses')" type="button"><span data-i18n="history.filter_expenses">Court-Kosten</span> <span class="pf-cnt" id="fin-cnt-team-expenses">0</span></button>
+      </div>
+
+      <!-- Sub-Filter: Spielerkonten -->
+      <div class="player-filter-pills" id="history-type-tabs" role="tablist" style="display:none">
+        <button class="pf-pill active" id="hist-tab-all" role="tab" aria-selected="true" onclick="setHistoryTypeFilter('all')" type="button"><span data-i18n="history.filter_all">Alle</span> <span class="pf-cnt" id="fin-cnt-hist-all">0</span></button>
+        <button class="pf-pill pf-pos" id="hist-tab-credits" role="tab" aria-selected="false" onclick="setHistoryTypeFilter('credits')" type="button"><span data-i18n="history.filter_credits">Einzahlungen</span> <span class="pf-cnt" id="fin-cnt-hist-credits">0</span></button>
+        <button class="pf-pill pf-neg" id="hist-tab-debits" role="tab" aria-selected="false" onclick="setHistoryTypeFilter('debits')" type="button"><span data-i18n="history.filter_debits">Sessions</span> <span class="pf-cnt" id="fin-cnt-hist-debits">0</span></button>
+      </div>
+
+      <div class="fin-controls-right" id="fin-controls-right" style="display:none">
+        <select class="fi fin-player-select" id="hist-filter" onchange="renderHistory()">
           <option value="" data-i18n="players.csv_all">Alle Spieler</option>
         </select>
+        <button class="btn btn-sec btn-sm fin-csv-btn" id="hist-btn-csv" onclick="downloadHistoryCSV()" data-i18n-title="history.csv_export" type="button"><i data-lucide="download" style="width:14px;height:14px"></i> <span data-i18n="history.csv">CSV</span></button>
       </div>
     </div>
-    <div id="kpi-container" class="kpi-grid mb4"></div>
-    <div class="seg-tabs mb4" id="history-type-tabs" role="tablist">
-      <button class="seg-tab active" id="hist-tab-all" role="tab" aria-selected="true" onclick="setHistoryTypeFilter('all')"><span data-i18n="history.filter_all">Alle</span></button>
-      <button class="seg-tab" id="hist-tab-credits" role="tab" aria-selected="false" onclick="setHistoryTypeFilter('credits')"><span data-i18n="history.filter_credits">Einzahlungen (+)</span></button>
-      <button class="seg-tab" id="hist-tab-debits" role="tab" aria-selected="false" onclick="setHistoryTypeFilter('debits')"><span data-i18n="history.filter_debits">Abbuchungen (–)</span></button>
-    </div>
-    <div class="hl" id="history-list"></div>
+
+    <!-- Content-Listen -->
+    <div class="expense-list" id="expenses-container"></div>
+    <div class="history-list" id="history-list" style="display:none"></div>
   </section>
 
 <!-- SETTINGS (admin) -->
   <section class="view" id="view-settings">
-    <div class="card mb6">
-      <h2 class="sec-title" data-i18n="settings.general">Allgemein</h2>
-      <p class="txsm txm mb4" data-i18n="settings.general_desc">Globale Systemeinstellungen.</p>
-
-      <div class="fg">
-        <label class="fl" for="disp-team-name" data-i18n="settings.team_name">Team-Name</label>
-        <input type="text" id="disp-team-name" class="fi" data-i18n-placeholder="settings.team_name_placeholder" placeholder="z. B. Padel-Frechen" autocomplete="organization">
-        <p class="txsm txm" style="margin-left:2px" data-i18n="settings.team_name_hint">Wird als Seitentitel und im Login-Modal angezeigt.</p>
+    <div class="flex items-c just-b mb4">
+      <div>
+        <h1 class="page-title" style="margin-bottom:var(--sp1)" data-i18n="view.settings">Einstellungen</h1>
+        <p class="txsm txm" data-i18n="settings.subtitle">System- und Sessioneinstellungen verwalten.</p>
       </div>
-
-      <div class="fg" style="margin-top:10px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="sys-series-enabled" style="width:20px;height:20px" checked>
-          <span data-i18n="settings.series_enabled">Session-Serien aktiviert</span>
-        </label>
-        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.series_hint">Wenn deaktiviert, werden alle angelegten Serien ignoriert. Bestehende Sessions bleiben erhalten.</p>
+      <div class="settings-save-badge" id="settings-save-pill">
+        <i data-lucide="check"></i>
+        <span data-i18n="settings.saved_badge">Gespeichert</span>
       </div>
+    </div>
 
-      <div class="fg" style="gap:4px">
-        <label class="fl" for="sys-cancel-hours" data-i18n="settings.cancel_hours">Globale Abmeldefrist</label>
-        <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
-          <input type="number" id="sys-cancel-hours" class="fi" min="0" max="240" step="1" value="7" style="max-width:90px" inputmode="numeric">
-          <span style="font-size:1.2em;font-weight:bold;line-height:1;user-select:none">:</span>
-          <select id="sys-cancel-minutes" class="fi" style="max-width:80px">
-            <option value="0">00</option>
-            <option value="15">15</option>
-            <option value="30">30</option>
-            <option value="45">45</option>
-          </select>
+    <!-- Soft Tabs (Segmented Control) -->
+    <div class="seg-tabs mb4" id="settings-tabs" role="tablist">
+      <button class="seg-tab active" id="settings-tab-general" role="tab" aria-selected="true" onclick="setSettingsTab('general')">
+        <span data-i18n="settings.tab_general">Allgemein</span>
+      </button>
+      <button class="seg-tab" id="settings-tab-sessions" role="tab" aria-selected="false" onclick="setSettingsTab('sessions')">
+        <span data-i18n="settings.tab_sessions">Sessions</span>
+      </button>
+      <button class="seg-tab" id="settings-tab-backup" role="tab" aria-selected="false" onclick="setSettingsTab('backup')">
+        <span data-i18n="settings.tab_backup">Datensicherung</span>
+      </button>
+    </div>
+
+    <!-- TAB 1: ALLGEMEIN (General + Display merged) -->
+    <div id="settings-panel-general" role="tabpanel">
+      <!-- Section: Team & Identität -->
+      <div class="settings-group-title">
+        <i data-lucide="sliders-horizontal" style="width:14px;height:14px"></i>
+        <span data-i18n="settings.section_team">Team & System</span>
+      </div>
+      <div class="settings-group">
+        <div class="settings-row settings-row-stacked">
+          <div class="settings-label">
+            <label class="settings-title" for="disp-team-name" data-i18n="settings.team_name">Team-Name</label>
+            <p class="settings-desc" data-i18n="settings.team_name_hint">Wird als Seitentitel und im Login-Modal angezeigt.</p>
+          </div>
+          <div class="settings-control" style="width:100%;margin-top:var(--sp2)">
+            <div class="ios-input-wrap">
+              <i data-lucide="pencil" class="ios-input-icon"></i>
+              <input type="text" id="disp-team-name" class="ios-input" data-i18n-placeholder="settings.team_name_placeholder" placeholder="z. B. Padel-Frechen" autocomplete="organization" onchange="settingsAutoSave()" oninput="settingsAutoSaveDebounced()">
+            </div>
+          </div>
         </div>
-        <p class="txsm txm" style="margin-left:2px;width:100%" data-i18n="settings.cancel_hours_hint">Standard-Frist für alle Sessions ohne individuelle Einstellung (max. 240:00).</p>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="sys-language" data-i18n="settings.system_language">Systemsprache</label>
+            <p class="settings-desc" data-i18n="settings.system_language_hint">Standardsprache für neue Spieler, wenn keine Browser-Erkennung möglich ist.</p>
+          </div>
+          <div class="settings-control">
+            <div class="ios-select-wrap">
+              <select id="sys-language" class="ios-select" onchange="settingsAutoSave()">
+                <option value="" data-i18n="language.auto">Automatisch</option>
+                <option value="de" data-i18n="language.german">Deutsch</option>
+                <option value="en" data-i18n="language.english">English</option>
+                <option value="es" data-i18n="language.spanish">Español</option>
+                <option value="it" data-i18n="language.italian">Italiano</option>
+                <option value="fr" data-i18n="language.french">Français</option>
+                <option value="pt" data-i18n="language.portuguese">Português</option>
+              </select>
+              <i data-lucide="chevron-down" class="ios-select-arrow"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="sr-currency" data-i18n="settings.currency">Währung</label>
+          </div>
+          <div class="settings-control">
+            <div class="ios-select-wrap">
+              <select id="sr-currency" class="ios-select" onchange="const c = document.getElementById('settings-cost-currency'); if(c) c.textContent = this.value; settingsAutoSave();">
+                <option value="€" data-i18n="currency.eur">€ EUR – Euro</option>
+                <option value="$" data-i18n="currency.usd">$ USD – US-Dollar</option>
+                <option value="£" data-i18n="currency.gbp">£ GBP – Britisches Pfund</option>
+                <option value="CHF" data-i18n="currency.chf">CHF – Schweizer Franken</option>
+                <option value="SEK" data-i18n="currency.sek">SEK – Schwedische Krone</option>
+                <option value="NOK" data-i18n="currency.nok">NOK – Norwegische Krone</option>
+                <option value="DKK" data-i18n="currency.dkk">DKK – Dänische Krone</option>
+                <option value="zł" data-i18n="currency.pln">zł PLN – Polnischer Zloty</option>
+                <option value="Kč" data-i18n="currency.czk">Kč CZK – Tschechische Krone</option>
+                <option value="Ft" data-i18n="currency.huf">Ft HUF – Ungarischer Forint</option>
+                <option value="lei" data-i18n="currency.ron">lei RON – Rumänischer Leu</option>
+                <option value="лв" data-i18n="currency.bgn">лв BGN – Bulgarischer Lew</option>
+                <option value="₽" data-i18n="currency.rub">₽ RUB – Russischer Rubel</option>
+                <option value="₺" data-i18n="currency.try">₺ TRY – Türkische Lira</option>
+                <option value="C$" data-i18n="currency.cad">C$ CAD – Kanadischer Dollar</option>
+                <option value="MX$" data-i18n="currency.mxn">MX$ MXN – Mexikanischer Peso</option>
+                <option value="R$" data-i18n="currency.brl">R$ BRL – Brasilianischer Real</option>
+                <option value="AR$" data-i18n="currency.ars">AR$ ARS – Argentinischer Peso</option>
+                <option value="CL$" data-i18n="currency.clp">CL$ CLP – Chilenischer Peso</option>
+                <option value="CO$" data-i18n="currency.cop">CO$ COP – Kolumbianischer Peso</option>
+              </select>
+              <i data-lucide="chevron-down" class="ios-select-arrow"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="disp-date-format" data-i18n="settings.date_format">Datumsformat</label>
+            <p class="settings-desc" data-i18n="settings.date_format_hint">Legt fest, wie Datumsangaben im System angezeigt werden.</p>
+          </div>
+          <div class="settings-control">
+            <div class="ios-select-wrap">
+              <select id="disp-date-format" class="ios-select" onchange="settingsAutoSave()">
+                <option value="dmy" data-i18n="settings.date_format_dmy">TT.MM.JJJJ (31.12.2025)</option>
+                <option value="mdy" data-i18n="settings.date_format_mdy">MM/TT/JJJJ (12/31/2025)</option>
+                <option value="ymd" data-i18n="settings.date_format_ymd">JJJJ-MM-TT (2025-12-31)</option>
+              </select>
+              <i data-lucide="chevron-down" class="ios-select-arrow"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="disp-time-format" data-i18n="settings.time_format">Uhrzeitformat</label>
+            <p class="settings-desc" data-i18n="settings.time_format_hint">Legt fest, ob Uhrzeiten im 24h- oder 12h-Format (AM/PM) angezeigt werden.</p>
+          </div>
+          <div class="settings-control">
+            <div class="ios-select-wrap">
+              <select id="disp-time-format" class="ios-select" onchange="settingsAutoSave()">
+                <option value="24h" data-i18n="settings.time_format_24h">24h (16:00)</option>
+                <option value="12h" data-i18n="settings.time_format_12h">12h (4:00 PM)</option>
+              </select>
+              <i data-lucide="chevron-down" class="ios-select-arrow"></i>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="fg">
-        <label class="fl" for="sr-cost" data-i18n="settings.cost">Standard-Preis pro Slot</label>
-        <input type="number" id="sr-cost" class="fi" style="max-width:150px" value="16">
-        <p class="txsm txm" style="margin-top:4px" data-i18n="settings.cost_hint">Gilt für alle Sessions, sofern nicht pro Session überschrieben.</p>
+      <!-- Section: Datenschutz & Sichtbarkeit -->
+      <div class="settings-group-title">
+        <i data-lucide="shield" style="width:14px;height:14px"></i>
+        <span data-i18n="settings.section_privacy">Datenschutz</span>
+      </div>
+      <div class="settings-group">
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="disp-privacy-mode" data-i18n="settings.privacy_mode">Datenschutz-Modus</label>
+            <p class="settings-desc" data-i18n="settings.privacy_mode_hint">Wenn aktiviert, werden in der Session-Übersicht für nicht eingeloggte Besucher nur "Gebucht" statt der Spielernamen und keine Orts-/Adressangaben angezeigt.</p>
+          </div>
+          <div class="settings-control">
+            <label class="switch">
+              <input type="checkbox" id="disp-privacy-mode" onchange="settingsAutoSave()">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="disp-total-privacy-mode" data-i18n="settings.total_privacy_mode">Total Privacy (Sessions verbergen)</label>
+            <p class="settings-desc" data-i18n="settings.total_privacy_mode_hint">Blendet die gesamte Session-Übersicht für nicht eingeloggte Besucher aus. Termine sind erst nach dem Login sichtbar.</p>
+          </div>
+          <div class="settings-control">
+            <label class="switch">
+              <input type="checkbox" id="disp-total-privacy-mode" onchange="settingsAutoSave()">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
       </div>
 
-      <div class="fg">
-        <label class="fl" for="sr-courts" data-i18n="settings.courts">Standard-Anzahl Courts</label>
-        <input type="number" id="sr-courts" class="fi" min="1" max="10" step="1" value="2" style="max-width:150px">
-        <p class="txsm txm" style="margin-top:4px" data-i18n="settings.courts_hint">Gilt für alle Sessions, sofern nicht durch eine Serie oder die Session selbst überschrieben.</p>
+      <!-- Section: Darstellung (Display Options) -->
+      <div class="settings-group-title">
+        <i data-lucide="layout" style="width:14px;height:14px"></i>
+        <span data-i18n="settings.section_display">Darstellung</span>
+      </div>
+      <div class="settings-group">
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="disp-court-grouping" data-i18n="settings.court_grouping">Courts gruppiert anzeigen</label>
+            <p class="settings-desc" data-i18n="settings.court_grouping_hint">Wenn deaktiviert, werden alle Slots als eine flache Liste dargestellt.</p>
+          </div>
+          <div class="settings-control">
+            <label class="switch">
+              <input type="checkbox" id="disp-court-grouping" checked onchange="settingsAutoSave()">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="disp-show-cancel-deadline" data-i18n="settings.show_cancel_deadline">Abmeldefrist in Session-Cards anzeigen</label>
+            <p class="settings-desc" data-i18n="settings.show_cancel_deadline_hint">Zeigt die Abmeldefrist in der Session-Übersicht. Folgt dem Datenschutz-Modus.</p>
+          </div>
+          <div class="settings-control">
+            <label class="switch">
+              <input type="checkbox" id="disp-show-cancel-deadline" checked onchange="settingsAutoSave()">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
       </div>
 
-      <div class="fg" style="margin-top:10px">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="sys-auto-compact-slots" style="width:20px;height:20px">
-          <span data-i18n="settings.auto_compact_slots">Spieler-Slots automatisch nachrücken</span>
-        </label>
-        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.auto_compact_slots_hint">Rückt verbleibende Spieler bei einer Abmeldung automatisch in die vorderen Courts nach, sodass keine Lücken entstehen.</p>
+      <!-- Hidden test hooks for backward compatibility -->
+      <button class="btn btn-pri btn-sm" onclick="saveDisplaySettings()" style="display:none" aria-hidden="true"></button>
+    </div>
+
+    <!-- TAB 2: SESSIONS -->
+    <div id="settings-panel-sessions" role="tabpanel" style="display:none">
+      <!-- Section: Standardwerte (Defaults) -->
+      <div class="settings-group-title">
+        <i data-lucide="calendar" style="width:14px;height:14px"></i>
+        <span data-i18n="settings.section_defaults">Standardwerte</span>
+      </div>
+      <div class="settings-group">
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="sr-courts" data-i18n="settings.courts">Standard-Anzahl Courts</label>
+            <p class="settings-desc" data-i18n="settings.courts_hint">Gilt für alle Sessions, sofern nicht durch eine Serie oder die Session selbst überschrieben.</p>
+          </div>
+          <div class="settings-control">
+            <div class="ios-stepper">
+              <button type="button" class="ios-stepper-btn" onclick="stepNumber('sr-courts', -1, 1, 10)" aria-label="Minus">
+                <i data-lucide="minus"></i>
+              </button>
+              <input type="number" id="sr-courts" class="ios-stepper-val" min="1" max="10" step="1" value="2" onchange="settingsAutoSave()">
+              <button type="button" class="ios-stepper-btn" onclick="stepNumber('sr-courts', 1, 1, 10)" aria-label="Plus">
+                <i data-lucide="plus"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="sr-cost" data-i18n="settings.cost">Standard-Preis pro Slot</label>
+            <p class="settings-desc" data-i18n="settings.cost_hint">Gilt für alle Sessions, sofern nicht pro Session überschrieben.</p>
+          </div>
+          <div class="settings-control">
+            <div class="ios-stepper">
+              <button type="button" class="ios-stepper-btn" onclick="stepCost(-1)" aria-label="Minus">
+                <i data-lucide="minus"></i>
+              </button>
+              <div class="ios-cost-input-wrap">
+                <input type="number" id="sr-cost" class="ios-cost-val" value="16" min="1" max="999" step="0.5" onchange="settingsAutoSave()" oninput="settingsAutoSaveDebounced()">
+                <span id="settings-cost-currency" class="ios-cost-cur">€</span>
+              </div>
+              <button type="button" class="ios-stepper-btn" onclick="stepCost(1)" aria-label="Plus">
+                <i data-lucide="plus"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="sys-billing-rounding" data-i18n="settings.billing_rounding">Rundung bei Kostenteilung</label>
+            <p class="settings-desc" data-i18n="settings.billing_rounding_hint">Legt fest, wie ungerade Cent-Beträge geteilt werden, wenn bei der Abrechnung ein Session-Gesamtpreis auf die Teilnehmer umgelegt wird.</p>
+          </div>
+          <div class="settings-control">
+            <div class="ios-select-wrap">
+              <select id="sys-billing-rounding" class="ios-select" onchange="settingsAutoSave()">
+                <option value="exact" data-i18n="settings.rounding_exact">Exakte Summe (Splitwise-Prinzip)</option>
+                <option value="ceil" data-i18n="settings.rounding_ceil">Immer auf Cent aufrunden (Kassenpuffer)</option>
+                <option value="round" data-i18n="settings.rounding_round">Kaufmännisch runden</option>
+              </select>
+              <i data-lucide="chevron-down" class="ios-select-arrow"></i>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="sys-cancel-hours" data-i18n="settings.cancel_hours">Globale Abmeldefrist</label>
+            <p class="settings-desc" data-i18n="settings.cancel_hours_hint">Standard-Frist für alle Sessions ohne individuelle Einstellung (max. 240:00).</p>
+          </div>
+          <div class="settings-control">
+            <div class="ios-time-picker">
+              <input type="number" id="sys-cancel-hours" class="ios-time-digit" min="0" max="240" step="1" value="7" inputmode="numeric" onchange="settingsAutoSave()" oninput="settingsAutoSaveDebounced()">
+              <span class="ios-time-sep">:</span>
+              <select id="sys-cancel-minutes" class="ios-time-select" onchange="settingsAutoSave()">
+                <option value="0">00</option>
+                <option value="15">15</option>
+                <option value="30">30</option>
+                <option value="45">45</option>
+              </select>
+              <span class="ios-time-unit">Std</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="fg" style="margin-top:10px">
-        <button class="btn btn-pri btn-sm" onclick="saveSystemSettings()">
-          <i data-lucide="save"></i> <span data-i18n="settings.save">Speichern</span>
+      <!-- Section: Regeln & Automatisierung -->
+      <div class="settings-group-title">
+        <i data-lucide="sparkles" style="width:14px;height:14px"></i>
+        <span data-i18n="settings.section_automation">Regeln & Automatisierung</span>
+      </div>
+      <div class="settings-group">
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="sys-auto-compact-slots" data-i18n="settings.auto_compact_slots">Spieler-Slots automatisch nachrücken</label>
+            <p class="settings-desc" data-i18n="settings.auto_compact_slots_hint">Rückt verbleibende Spieler bei einer Abmeldung automatisch in die vorderen Courts nach, sodass keine Lücken entstehen.</p>
+          </div>
+          <div class="settings-control">
+            <label class="switch">
+              <input type="checkbox" id="sys-auto-compact-slots" onchange="settingsAutoSave()">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="sys-series-enabled" data-i18n="settings.series_enabled">Session-Serien aktiviert</label>
+            <p class="settings-desc" data-i18n="settings.series_hint">Wenn deaktiviert, werden alle angelegten Serien ignoriert. Bestehende Sessions bleiben erhalten.</p>
+          </div>
+          <div class="settings-control">
+            <label class="switch">
+              <input type="checkbox" id="sys-series-enabled" checked onchange="settingsAutoSave()">
+              <span class="switch-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Hidden test hooks for backward compatibility -->
+      <button class="btn btn-pri btn-sm" onclick="saveSystemSettings()" style="display:none" aria-hidden="true"></button>
+    </div>
+
+    <!-- TAB 3: BACKUP -->
+    <div id="settings-panel-backup" role="tabpanel" style="display:none">
+      <div class="settings-group-title">
+        <i data-lucide="hard-drive-download" style="width:14px;height:14px"></i>
+        <span data-i18n="backup.title">Datensicherung</span>
+      </div>
+      <div class="card mb6">
+        <h2 class="sec-title" data-i18n="backup.export_card">Backup exportieren</h2>
+        <p class="txsm txm mb4" data-i18n="backup.export_desc">
+          Sichert alle Spieler, Sessions, Buchungen, Transaktionen und Ausgaben als JSON-Datei.
+        </p>
+        <button class="btn btn-pri btn-sm" onclick="exportData()">
+          <i data-lucide="download"></i> <span data-i18n="settings.export">Export</span>
         </button>
       </div>
-    </div>
 
-<!-- 1. Anzeige -->
-    <div class="card mb6">
-      <h2 class="sec-title" data-i18n="settings.display">Anzeige</h2>
-      <p class="txsm txm mb4" data-i18n="settings.display_desc">Passe die Darstellung der Session-Übersicht an.</p>
-
-      <div class="fg">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="disp-court-grouping" style="width:20px;height:20px" checked>
-          <span data-i18n="settings.court_grouping">Courts gruppiert anzeigen</span>
-        </label>
-        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.court_grouping_hint">Wenn deaktiviert, werden alle Slots als eine flache Liste dargestellt.</p>
-      </div>
-
-      <div class="fg">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="disp-privacy-mode" style="width:20px;height:20px">
-          <span data-i18n="settings.privacy_mode">Datenschutz-Modus</span>
-        </label>
-        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.privacy_mode_hint">Wenn aktiviert, werden in der Session-Übersicht für nicht eingeloggte Besucher nur "Gebucht" statt der Spielernamen und keine Orts-/Adressangaben angezeigt.</p>
-      </div>
-
-      <div class="fg">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="disp-total-privacy-mode" style="width:20px;height:20px">
-          <span data-i18n="settings.total_privacy_mode">Total Privacy (Sessions verbergen)</span>
-        </label>
-        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.total_privacy_mode_hint">Blendet die gesamte Session-Übersicht für nicht eingeloggte Besucher aus. Termine sind erst nach dem Login sichtbar.</p>
-      </div>
-
-      <div class="fg">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-          <input type="checkbox" id="disp-show-cancel-deadline" style="width:20px;height:20px" checked>
-          <span data-i18n="settings.show_cancel_deadline">Abmeldefrist in Session-Cards anzeigen</span>
-        </label>
-        <p class="txsm txm" style="margin-left:28px" data-i18n="settings.show_cancel_deadline_hint">Zeigt die Abmeldefrist in der Session-Übersicht. Folgt dem Datenschutz-Modus.</p>
-      </div>
-
-      <div class="fg">
-        <label class="fl" for="sr-currency" data-i18n="settings.currency">Währung</label>
-        <select id="sr-currency" class="fi" style="max-width:220px">
-          <option value="€" data-i18n="currency.eur">€ EUR – Euro</option>
-          <option value="$" data-i18n="currency.usd">$ USD – US-Dollar</option>
-          <option value="£" data-i18n="currency.gbp">£ GBP – Britisches Pfund</option>
-          <option value="CHF" data-i18n="currency.chf">CHF – Schweizer Franken</option>
-          <option value="SEK" data-i18n="currency.sek">SEK – Schwedische Krone</option>
-          <option value="NOK" data-i18n="currency.nok">NOK – Norwegische Krone</option>
-          <option value="DKK" data-i18n="currency.dkk">DKK – Dänische Krone</option>
-          <option value="zł" data-i18n="currency.pln">zł PLN – Polnischer Zloty</option>
-          <option value="Kč" data-i18n="currency.czk">Kč CZK – Tschechische Krone</option>
-          <option value="Ft" data-i18n="currency.huf">Ft HUF – Ungarischer Forint</option>
-          <option value="lei" data-i18n="currency.ron">lei RON – Rumänischer Leu</option>
-          <option value="лв" data-i18n="currency.bgn">лв BGN – Bulgarischer Lew</option>
-          <option value="₽" data-i18n="currency.rub">₽ RUB – Russischer Rubel</option>
-          <option value="₺" data-i18n="currency.try">₺ TRY – Türkische Lira</option>
-          <option value="C$" data-i18n="currency.cad">C$ CAD – Kanadischer Dollar</option>
-          <option value="MX$" data-i18n="currency.mxn">MX$ MXN – Mexikanischer Peso</option>
-          <option value="R$" data-i18n="currency.brl">R$ BRL – Brasilianischer Real</option>
-          <option value="AR$" data-i18n="currency.ars">AR$ ARS – Argentinischer Peso</option>
-          <option value="CL$" data-i18n="currency.clp">CL$ CLP – Chilenischer Peso</option>
-          <option value="CO$" data-i18n="currency.cop">CO$ COP – Kolumbianischer Peso</option>
-        </select>
-      </div>
-
-      <div class="fg">
-        <label class="fl" for="sys-language" data-i18n="settings.system_language">Systemsprache</label>
-        <select id="sys-language" class="fi" style="max-width:220px">
-          <option value="" data-i18n="language.auto">Automatisch</option>
-          <option value="de" data-i18n="language.german">Deutsch</option>
-          <option value="en" data-i18n="language.english">English</option>
-          <option value="es" data-i18n="language.spanish">Español</option>
-          <option value="it" data-i18n="language.italian">Italiano</option>
-          <option value="fr" data-i18n="language.french">Français</option>
-          <option value="pt" data-i18n="language.portuguese">Português</option>
-        </select>
-        <p class="txsm txm" style="margin-top:4px" data-i18n="settings.system_language_hint">Standardsprache für neue Spieler, wenn keine Browser-Erkennung möglich ist.</p>
-      </div>
-
-      <div class="fg">
-        <label class="fl" for="disp-time-format" data-i18n="settings.time_format">Uhrzeitformat</label>
-        <select id="disp-time-format" class="fi" style="max-width:220px">
-          <option value="24h" data-i18n="settings.time_format_24h">24h (16:00)</option>
-          <option value="12h" data-i18n="settings.time_format_12h">12h (4:00 PM)</option>
-        </select>
-        <p class="txsm txm" style="margin-top:4px" data-i18n="settings.time_format_hint">Legt fest, ob Uhrzeiten im 24h- oder 12h-Format (AM/PM) angezeigt werden.</p>
-      </div>
-
-      <div class="fg">
-        <label class="fl" for="disp-date-format" data-i18n="settings.date_format">Datumsformat</label>
-        <select id="disp-date-format" class="fi" style="max-width:220px">
-          <option value="dmy" data-i18n="settings.date_format_dmy">TT.MM.JJJJ (31.12.2025)</option>
-          <option value="mdy" data-i18n="settings.date_format_mdy">MM/TT/JJJJ (12/31/2025)</option>
-          <option value="ymd" data-i18n="settings.date_format_ymd">JJJJ-MM-TT (2025-12-31)</option>
-        </select>
-        <p class="txsm txm" style="margin-top:4px" data-i18n="settings.date_format_hint">Legt fest, wie Datumsangaben im System angezeigt werden.</p>
-      </div>
-
-      <div class="fg" style="margin-top:10px">
-        <button class="btn btn-pri btn-sm" onclick="saveDisplaySettings()">
-          <i data-lucide="save"></i> <span data-i18n="settings.save_display">Speichern</span>
+      <div class="card mb6">
+        <h2 class="sec-title" data-i18n="backup.import_card">Backup wiederherstellen</h2>
+        <p class="txsm txm mb4" data-i18n-html="backup.import_desc">
+          Stellt ein zuvor exportiertes Backup wieder her. <strong>Achtung:</strong> Alle aktuellen Daten werden dadurch überschrieben!
+        </p>
+        <button class="btn btn-sec btn-sm" onclick="document.getElementById('imp').click()">
+          <i data-lucide="upload"></i> <span data-i18n="settings.import">Import</span>
         </button>
+        <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(event)">
       </div>
-    </div>
-  </section>
-
-  <!-- BACKUP (admin) -->
-  <section class="view" id="view-backup">
-    <div class="mb4">
-      <h1 class="page-title" style="margin-bottom:var(--sp1)" data-i18n="backup.title">Datensicherung</h1>
-      <p class="txsm txm" data-i18n="backup.subtitle">System-Backups exportieren und wiederherstellen.</p>
-    </div>
-
-    <div class="card mb6">
-      <h2 class="sec-title" data-i18n="backup.export_card">Backup exportieren</h2>
-      <p class="txsm txm mb4" data-i18n="backup.export_desc">
-        Sichert alle Spieler, Sessions, Buchungen, Transaktionen und Ausgaben als JSON-Datei.
-      </p>
-      <button class="btn btn-pri btn-sm" onclick="exportData()">
-        <i data-lucide="download"></i> <span data-i18n="settings.export">Export</span>
-      </button>
-    </div>
-
-    <div class="card mb6">
-      <h2 class="sec-title" data-i18n="backup.import_card">Backup wiederherstellen</h2>
-      <p class="txsm txm mb4" data-i18n-html="backup.import_desc">
-        Stellt ein zuvor exportiertes Backup wieder her. <strong>Achtung:</strong> Alle aktuellen Daten werden dadurch überschrieben!
-      </p>
-      <button class="btn btn-sec btn-sm" onclick="document.getElementById('imp').click()">
-        <i data-lucide="upload"></i> <span data-i18n="settings.import">Import</span>
-      </button>
-      <input type="file" id="imp" accept=".json" style="display:none" onchange="importData(event)">
     </div>
   </section>
 
@@ -570,7 +775,7 @@ if ('serviceWorker' in navigator) {
   <section class="view" id="view-series">
     <div class="flex items-c just-b mb6">
       <h1 class="page-title" style="margin-bottom:0" data-i18n="view.series">Session Serien</h1>
-      <button class="btn btn-pri" onclick="openAddSeries()"><i data-lucide="plus"></i> <span data-i18n="series.new">Neue Serie</span></button>
+      <button class="btn btn-ok btn-sm" onclick="openAddSeries()"><i data-lucide="plus"></i> <span data-i18n="series.new">Neue Serie</span></button>
     </div>
     <div id="series-list"></div>
   </section>
@@ -593,7 +798,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 449)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 466)</span>
 
 </footer>
 
@@ -649,20 +854,17 @@ if ('serviceWorker' in navigator) {
   </div>
   <div class="bnav-group-title" data-i18n="nav.group_players">Spieler</div>
   <div class="bnav-group-grid">
-    <button onclick="openPlayersTab('list');closeMobileAdminMenu()"><i data-lucide="users"></i> <span data-i18n="nav.players">Spieler</span></button>
-    <button onclick="openPlayersTab('activity');closeMobileAdminMenu()"><i data-lucide="activity"></i> <span data-i18n="nav.activity">Aktivität</span></button>
+    <button onclick="openPlayersTab('manage');closeMobileAdminMenu()"><i data-lucide="users"></i> <span data-i18n="nav.players">Spieler</span></button>
   </div>
   <div class="bnav-group-title" data-i18n="nav.group_money">Finanzen</div>
   <div class="bnav-group-grid">
     <button onclick="showView('billing');closeMobileAdminMenu()"><i data-lucide="receipt"></i> <span data-i18n="nav.billing">Abrechnung</span><span class="nav-badge" id="bnav-billing-count" hidden></span></button>
     <button class="bnav-quick-tx" onclick="closeMobileAdminMenu();openTx()"><i data-lucide="plus-circle"></i> <span data-i18n="nav.quick_topup">Einzahlung</span></button>
     <button onclick="showView('history');closeMobileAdminMenu()"><i data-lucide="chart-no-axes-gantt"></i> <span data-i18n="nav.history">Transaktionen</span></button>
-    <button onclick="showView('expenses');closeMobileAdminMenu()"><i data-lucide="credit-card"></i> <span data-i18n="nav.expenses">Ausgaben</span></button>
   </div>
   <div class="bnav-group-title" data-i18n="nav.group_system">System</div>
   <div class="bnav-group-grid">
     <button onclick="showView('settings');closeMobileAdminMenu()"><i data-lucide="sliders"></i> <span data-i18n="nav.settings">Einstellungen</span></button>
-    <button onclick="showView('backup');closeMobileAdminMenu()"><i data-lucide="hard-drive-download"></i> <span data-i18n="nav.backup">Datensicherung</span></button>
   </div>
 </div>
 
@@ -767,10 +969,18 @@ if ('serviceWorker' in navigator) {
 <!-- ── EDIT EXPENSE MODAL ── -->
 <div class="mo" id="mo-edit-expense">
   <div class="mo-box">
-    <div class="mo-head"><h2 class="mo-title" data-i18n="expenses.edit_title">Auslage bearbeiten</h2><button class="mo-close btn-icon" onclick="closeMo('mo-edit-expense')"><i data-lucide="x"></i></button></div>
+    <div class="mo-head"><h2 class="mo-title" data-i18n="expenses.edit_title">Court-Kosten bearbeiten</h2><button class="mo-close btn-icon" onclick="closeMo('mo-edit-expense')"><i data-lucide="x"></i></button></div>
     <div class="fg"><label class="fl" data-i18n="expenses.amount">Betrag</label><input type="number" id="eex-amount" class="fi" data-i18n-placeholder="expenses.amount_placeholder" placeholder="3000" min="1" step="0.01"></div>
     <div class="fg"><label class="fl" data-i18n="expenses.date">Datum</label><input type="date" id="eex-date" class="fi"></div>
     <div class="fg"><label class="fl" data-i18n="expenses.note">Notiz</label><input type="text" id="eex-note" class="fi" data-i18n-placeholder="expenses.note_placeholder" placeholder="z.B. Rechnung Halle 2026"></div>
+    <div class="fg"><label class="fl" data-i18n="expenses.paid_by">Bezahlt von</label>
+      <div class="billing-select-wrap">
+        <select id="eex-paid-by" class="billing-payer-select">
+          <option value="" data-i18n="billing.paid_by_team">Teamkasse</option>
+        </select>
+        <i data-lucide="chevron-down" class="billing-select-arrow"></i>
+      </div>
+    </div>
     <div class="mo-foot">
       <button class="btn btn-sec" onclick="closeMo('mo-edit-expense')" data-i18n="expenses.cancel">Abbrechen</button>
       <button class="btn btn-pri" onclick="saveEditedExpense()"><i data-lucide="save"></i> <span data-i18n="expenses.save">Speichern</span></button>
@@ -780,11 +990,19 @@ if ('serviceWorker' in navigator) {
 
 <div class="mo" id="mo-expense">
   <div class="mo-box">
-    <div class="mo-head"><h2 class="mo-title" data-i18n="expenses.title">Auslage erfassen</h2><button class="mo-close btn-icon" onclick="closeMo('mo-expense')"><i data-lucide="x"></i></button></div>
-    <p class="txsm txm mb4" data-i18n="expenses.desc">Trage hier Rechnungen ein, die du aus eigener Tasche für die Plätze bezahlt hast.</p>
+    <div class="mo-head"><h2 class="mo-title" data-i18n="expenses.title">Court-Kosten erfassen</h2><button class="mo-close btn-icon" onclick="closeMo('mo-expense')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" data-i18n="expenses.desc">Trage hier Rechnungen ein, die du aus eigener Tasche für die Courts bezahlt hast.</p>
     <div class="fg"><label class="fl" data-i18n="expenses.amount">Betrag</label><input type="number" id="ex-amount" class="fi" data-i18n-placeholder="expenses.amount_placeholder" placeholder="3000" min="1" step="0.01"></div>
     <div class="fg"><label class="fl" data-i18n="expenses.date">Datum</label><input type="date" id="ex-date" class="fi"></div>
     <div class="fg"><label class="fl" data-i18n="expenses.note">Notiz</label><input type="text" id="ex-note" class="fi" data-i18n-placeholder="expenses.note_placeholder" placeholder="z.B. Rechnung Halle 2026"></div>
+    <div class="fg"><label class="fl" data-i18n="expenses.paid_by">Bezahlt von</label>
+      <div class="billing-select-wrap">
+        <select id="ex-paid-by" class="billing-payer-select">
+          <option value="" data-i18n="billing.paid_by_team">Teamkasse</option>
+        </select>
+        <i data-lucide="chevron-down" class="billing-select-arrow"></i>
+      </div>
+    </div>
     <div class="mo-foot">
       <button class="btn btn-sec" onclick="closeMo('mo-expense')" data-i18n="expenses.cancel">Abbrechen</button>
       <button class="btn btn-pri" onclick="saveExpense()"><i data-lucide="save"></i> <span data-i18n="expenses.save">Speichern</span></button>
@@ -818,24 +1036,43 @@ if ('serviceWorker' in navigator) {
 
 <!-- ── ADD SESSION MODAL ── -->
 <div class="mo" id="mo-add-session">
-  <div class="mo-box">
+  <div class="mo-box" style="max-width: 480px;">
     <div class="mo-head">
-      <h2 class="mo-title" data-i18n="modal.add_session">Session hinzufügen</h2>
+      <div class="flex items-c g2">
+        <div class="stat-icon" style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:oklch(from var(--pri) l c h / .1);color:var(--pri)">
+          <i data-lucide="calendar-plus" style="width:16px;height:16px"></i>
+        </div>
+        <h2 class="mo-title" data-i18n="modal.add_session">Session hinzufügen</h2>
+      </div>
       <button class="mo-close btn-icon" onclick="closeMo('mo-add-session')">
         <i data-lucide="x"></i>
       </button>
     </div>
-    <div class="fg">
-      <label class="fl" for="add-sess-date" data-i18n="modal.date">Datum</label>
-      <input type="date" id="add-sess-date" class="fi" style="max-width:180px;">
-    </div>
-    <div class="fg">
-      <label class="fl" for="add-sess-start" data-i18n="modal.start_time">Startzeit</label>
-      <input type="time" id="add-sess-start" class="fi" style="max-width:150px;">
-    </div>
-    <div class="fg">
-      <label class="fl" for="add-sess-end" data-i18n="modal.end_time">Endzeit</label>
-      <input type="time" id="add-sess-end" class="fi" style="max-width:150px;">
+    <div class="settings-group mb4">
+      <div class="settings-row">
+        <div class="settings-meta">
+          <label class="settings-title" for="add-sess-date" data-i18n="modal.date">Datum</label>
+        </div>
+        <div class="settings-control">
+          <div class="ios-input-wrap" style="width:180px">
+            <i data-lucide="calendar"></i>
+            <input type="date" id="add-sess-date">
+          </div>
+        </div>
+      </div>
+      <div class="settings-row">
+        <div class="settings-meta">
+          <label class="settings-title" data-i18n="session.time">Uhrzeit</label>
+        </div>
+        <div class="settings-control">
+          <div class="ios-time-picker">
+            <i data-lucide="clock"></i>
+            <input type="time" id="add-sess-start">
+            <span class="tx-m" style="padding:0 2px">–</span>
+            <input type="time" id="add-sess-end">
+          </div>
+        </div>
+      </div>
     </div>
     <div class="mo-foot">
       <button class="btn btn-sec" onclick="closeMo('mo-add-session')" data-i18n="modal.cancel">
@@ -1016,20 +1253,17 @@ if ('serviceWorker' in navigator) {
 
 <div id="toast" role="status" aria-live="polite"></div>
 
-<!-- ── Team Randomizer Modal ── -->
-<div class="mo" id="mo-teams" onclick="if(event.target===this)closeMo('mo-teams')">
-  <div class="mo-box" style="max-width:480px;width:95%;position:relative">
-    <button class="mo-close btn-icon" style="position:absolute;top:var(--sp5);right:var(--sp5);z-index:10" onclick="closeMo('mo-teams')"><i data-lucide="x"></i></button>
+<!-- ── Court Mixer Modal ── -->
+<div class="mo" id="mo-teams">
+  <div class="mo-box" style="max-width:520px;width:95%">
     <div class="mo-head">
-      <div style="display:flex;flex-direction:column;gap:4px">
-        <span class="mo-title" data-i18n="teams.title">Teams würfeln</span>
-        <span class="mo-subtitle" data-i18n="teams.subtitle" style="font-size:var(--text-xs);color:var(--txm);font-weight:400;line-height:1.4">Spieler vor Ort schnell auf die Courts verteilen. Die Zuteilung ist temporär und wird nicht gespeichert.</span>
-      </div>
+      <h2 class="mo-title" data-i18n="teams.title">Court Mixer</h2>
+      <button class="mo-close btn-icon" onclick="closeMo('mo-teams')"><i data-lucide="x"></i></button>
     </div>
-    <div id="mo-teams-body" style="padding:var(--sp4);display:flex;flex-direction:column;gap:var(--sp4)"></div>
-    <div class="mo-foot">
-      <button class="btn btn-sec" onclick="closeMo('mo-teams')" data-i18n="modal.close">Schließen</button>
-      <button class="btn btn-pri" onclick="shuffleTeams()"><i data-lucide="shuffle"></i> <span data-i18n="teams.shuffle">Neu würfeln</span></button>
+    <p class="txsm txm mb4" data-i18n="teams.subtitle">Spieler vor Ort schnell auf die Courts verteilen. Die Zuteilung ist temporär und wird nicht gespeichert.</p>
+    <div id="mo-teams-body" class="court-mixer-body mb4"></div>
+    <div class="court-mixer-foot">
+      <button class="btn btn-sec" id="btn-shuffle-teams" onclick="shuffleTeams()"><i data-lucide="shuffle"></i> <span data-i18n="teams.shuffle">Mix!</span></button>
     </div>
   </div>
 </div>
@@ -1130,54 +1364,168 @@ if ('serviceWorker' in navigator) {
 </div>
 <!-- ── SERIES EDIT MODAL ── -->
 <div class="mo" id="mo-series-edit">
-  <div class="mo-box">
-    <div class="mo-head"><h2 class="mo-title" id="mo-series-title" data-i18n="series.new">Neue Serie</h2><button class="mo-close btn-icon" onclick="closeMo('mo-series-edit')"><i data-lucide="x"></i></button></div>
+  <div class="mo-box" style="max-width:560px">
+    <div class="mo-head">
+      <div class="flex items-c g2">
+        <div class="stat-icon" style="width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:oklch(from var(--pri) l c h / .1);color:var(--pri)">
+          <i data-lucide="repeat" style="width:16px;height:16px"></i>
+        </div>
+        <h2 class="mo-title" id="mo-series-title" data-i18n="series.new">Neue Serie</h2>
+      </div>
+      <button class="mo-close btn-icon" onclick="closeMo('mo-series-edit')"><i data-lucide="x"></i></button>
+    </div>
     <input type="hidden" id="series-edit-id">
     <div class="mo-body">
-      <div class="fg"><label class="fl" data-i18n="players.name">Name</label><input type="text" id="series-edit-name" class="fi" data-i18n-placeholder="series.name_placeholder" placeholder="z. B. Dienstag Abend"></div>
-      
-      <div class="fg"><label class="fl" for="series-edit-location" data-i18n="settings.series_location">Standard-Adresse</label><input type="text" id="series-edit-location" class="fi" data-i18n-placeholder="settings.series_location_placeholder" placeholder="z. B. Padel Arena Köln, Musterstraße 1"></div>
-      
-      <div class="fg"><label class="fl" data-i18n="settings.series_days">Wochentage</label><div style="display:flex;gap:8px;flex-wrap:wrap" id="series-edit-days">
-        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="1"> <span data-i18n="day.mon">Mo</span></label>
-        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="2"> <span data-i18n="day.tue">Di</span></label>
-        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="3"> <span data-i18n="day.wed">Mi</span></label>
-        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="4"> <span data-i18n="day.thu">Do</span></label>
-        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="5"> <span data-i18n="day.fri">Fr</span></label>
-        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="6"> <span data-i18n="day.sat">Sa</span></label>
-        <label style="display:flex;align-items:center;gap:4px;font-size:var(--text-sm)"><input type="checkbox" value="0"> <span data-i18n="day.sun">So</span></label>
-      </div></div>
-      
-      <div class="mo-row-2">
-        <div class="fg"><label class="fl" for="series-edit-time-start" data-i18n="settings.series_time_start">Session-Zeit (Start)</label><input type="time" id="series-edit-time-start" class="fi" value="19:00"></div>
-        <div class="fg"><label class="fl" for="series-edit-time-end" data-i18n="settings.series_time_end">Session-Zeit (Ende)</label><input type="time" id="series-edit-time-end" class="fi" value="21:00"></div>
+
+      <!-- Section: Basis & Ort -->
+      <div class="settings-group-title" style="margin-top:0">
+        <i data-lucide="tag" style="width:14px;height:14px"></i>
+        <span data-i18n="series.section_basic">Basis & Ort</span>
       </div>
-      
-      <div class="mo-row-2">
-        <div class="fg"><label class="fl" for="series-edit-courts" data-i18n="settings.series_courts">Anzahl Courts</label><input type="number" id="series-edit-courts" class="fi" value="2"></div>
-        <div class="fg"><label class="fl" for="series-edit-price" data-i18n="settings.series_cost">Kosten pro Spieler</label><input type="number" id="series-edit-price" class="fi" placeholder="16"></div>
+      <div class="settings-group mb4">
+        <div class="settings-row settings-row-stacked">
+          <div class="settings-label">
+            <label class="settings-title" for="series-edit-name" data-i18n="players.name">Name</label>
+          </div>
+          <div class="settings-control" style="width:100%;margin-top:var(--sp1)">
+            <div class="ios-input-wrap">
+              <i data-lucide="calendar" class="ios-input-icon"></i>
+              <input type="text" id="series-edit-name" class="ios-input" data-i18n-placeholder="series.name_placeholder" placeholder="z. B. Dienstag Abend">
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row settings-row-stacked">
+          <div class="settings-label">
+            <label class="settings-title" for="series-edit-location" data-i18n="settings.series_location">Standard-Adresse</label>
+          </div>
+          <div class="settings-control" style="width:100%;margin-top:var(--sp1)">
+            <div class="ios-input-wrap">
+              <i data-lucide="map-pin" class="ios-input-icon"></i>
+              <input type="text" id="series-edit-location" class="ios-input" data-i18n-placeholder="settings.series_location_placeholder" placeholder="z. B. Padel Arena Köln, Musterstraße 1">
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row settings-row-stacked">
+          <div class="settings-label">
+            <label class="settings-title" data-i18n="settings.series_days">Wochentage</label>
+          </div>
+          <div class="settings-control" style="width:100%;margin-top:var(--sp2);justify-content:flex-start">
+            <div class="ios-weekday-group" id="series-edit-days">
+              <label class="ios-day-pill"><input type="checkbox" value="1"> <span data-i18n="day.mon">Mo</span></label>
+              <label class="ios-day-pill"><input type="checkbox" value="2"> <span data-i18n="day.tue">Di</span></label>
+              <label class="ios-day-pill"><input type="checkbox" value="3"> <span data-i18n="day.wed">Mi</span></label>
+              <label class="ios-day-pill"><input type="checkbox" value="4"> <span data-i18n="day.thu">Do</span></label>
+              <label class="ios-day-pill"><input type="checkbox" value="5"> <span data-i18n="day.fri">Fr</span></label>
+              <label class="ios-day-pill"><input type="checkbox" value="6"> <span data-i18n="day.sat">Sa</span></label>
+              <label class="ios-day-pill"><input type="checkbox" value="0"> <span data-i18n="day.sun">So</span></label>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="fg">
-        <label class="fl" for="series-edit-court-names" data-i18n="session.court_numbers">Court-Nummern / Namen</label>
-        <input type="text" id="series-edit-court-names" class="fi" data-i18n-placeholder="session.court_numbers_placeholder" placeholder="z. B. 3, 4 oder Center Court, Court 2">
-        <p class="txxs txm mt1" data-i18n="session.court_numbers_hint">Kommagetrennt für Court 1, Court 2, usw.</p>
+      <!-- Section: Zeit & Courts -->
+      <div class="settings-group-title">
+        <i data-lucide="clock" style="width:14px;height:14px"></i>
+        <span data-i18n="series.section_time_courts">Zeit & Courts</span>
       </div>
-      
-      <div class="fg">
-        <label class="fl" for="series-edit-occurrences" data-i18n="settings.series_occurrences">Wie viele Termine im Voraus anzeigen?</label>
-        <input type="number" id="series-edit-occurrences" class="fi" value="6">
-        <p class="txxs txm mt1" data-i18n="series.occurrences_hint">Bestimmt, wie viele zukünftige Spieltage automatisch im Voraus generiert werden.</p>
+      <div class="settings-group mb4">
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" data-i18n="session.time">Uhrzeit</label>
+          </div>
+          <div class="settings-control">
+            <div class="ios-time-picker">
+              <input type="time" id="series-edit-time-start" class="ios-time-digit" style="width:75px" value="19:00">
+              <span class="ios-time-sep">–</span>
+              <input type="time" id="series-edit-time-end" class="ios-time-digit" style="width:75px" value="21:00">
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="series-edit-courts" data-i18n="settings.series_courts">Anzahl Courts</label>
+          </div>
+          <div class="settings-control">
+            <div class="ios-stepper">
+              <button type="button" class="ios-stepper-btn" onclick="stepNumber('series-edit-courts', -1, 1, 20)"><i data-lucide="minus"></i></button>
+              <input type="number" id="series-edit-courts" class="ios-stepper-val" value="2" min="1" max="20">
+              <button type="button" class="ios-stepper-btn" onclick="stepNumber('series-edit-courts', 1, 1, 20)"><i data-lucide="plus"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="series-edit-price" data-i18n="settings.series_cost">Kosten pro Spieler</label>
+          </div>
+          <div class="settings-control">
+            <div class="ios-stepper">
+              <button type="button" class="ios-stepper-btn" onclick="stepNumber('series-edit-price', -1, 0, 999)"><i data-lucide="minus"></i></button>
+              <div class="ios-cost-input-wrap">
+                <input type="number" id="series-edit-price" class="ios-cost-val" placeholder="16" min="0" max="999" step="0.5">
+                <span class="ios-cost-cur">€</span>
+              </div>
+              <button type="button" class="ios-stepper-btn" onclick="stepNumber('series-edit-price', 1, 0, 999)"><i data-lucide="plus"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row settings-row-stacked">
+          <div class="settings-label">
+            <label class="settings-title" for="series-edit-court-names" data-i18n="session.court_numbers">Court-Nummern / Namen</label>
+            <p class="settings-desc" data-i18n="session.court_numbers_hint">Kommagetrennt für Court 1, Court 2, usw.</p>
+          </div>
+          <div class="settings-control" style="width:100%;margin-top:var(--sp1)">
+            <div class="ios-input-wrap">
+              <i data-lucide="layout-grid" class="ios-input-icon"></i>
+              <input type="text" id="series-edit-court-names" class="ios-input" data-i18n-placeholder="session.court_numbers_placeholder" placeholder="z. B. 3, 4 oder Center Court, Court 2">
+            </div>
+          </div>
+        </div>
       </div>
-      
-      <div class="fg">
-        <label class="fl" for="series-edit-cancel-hours" data-i18n="series.cancel_hours_label">Abmeldefrist</label>
-        <input type="text" id="series-edit-cancel-hours" class="fi" placeholder="7:00">
-        <p class="txxs txm mt1" data-i18n="series.cancel_hours_hint">Frist in Stunden:Minuten vor Spielbeginn, bis zu der sich Spieler kostenlos abmelden können (z. B. 7:00).</p>
+
+      <!-- Section: Vorlauf & Fristen -->
+      <div class="settings-group-title">
+        <i data-lucide="sparkles" style="width:14px;height:14px"></i>
+        <span data-i18n="series.section_rules">Vorlauf & Fristen</span>
       </div>
-      
+      <div class="settings-group mb4">
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="series-edit-occurrences" data-i18n="settings.series_occurrences">Termine im Voraus anzeigen</label>
+            <p class="settings-desc" data-i18n="series.occurrences_hint">Wie viele zukünftige Spieltage automatisch generiert werden.</p>
+          </div>
+          <div class="settings-control">
+            <div class="ios-stepper">
+              <button type="button" class="ios-stepper-btn" onclick="stepNumber('series-edit-occurrences', -1, 1, 52)"><i data-lucide="minus"></i></button>
+              <input type="number" id="series-edit-occurrences" class="ios-stepper-val" value="6" min="1" max="52">
+              <button type="button" class="ios-stepper-btn" onclick="stepNumber('series-edit-occurrences', 1, 1, 52)"><i data-lucide="plus"></i></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="settings-label">
+            <label class="settings-title" for="series-edit-cancel-hours" data-i18n="series.cancel_hours_label">Abmeldefrist</label>
+            <p class="settings-desc" data-i18n="series.cancel_hours_hint">Frist in Stunden:Minuten vor Spielbeginn (z. B. 7:00).</p>
+          </div>
+          <div class="settings-control">
+            <div class="ios-input-wrap" style="width:110px">
+              <i data-lucide="clock" class="ios-input-icon"></i>
+              <input type="text" id="series-edit-cancel-hours" class="ios-input" placeholder="7:00" style="text-align:center">
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
-    <div class="mo-foot"><button class="btn btn-sec" onclick="closeMo('mo-series-edit')" data-i18n="modal.cancel">Abbrechen</button><button class="btn btn-pri" onclick="saveSeriesEdit()"><i data-lucide="save"></i> <span data-i18n="misc.save">Speichern</span></button></div>
+    <div class="mo-foot">
+      <button class="btn btn-sec" onclick="closeMo('mo-series-edit')" data-i18n="modal.cancel">Abbrechen</button>
+      <button class="btn btn-pri" onclick="saveSeriesEdit()"><i data-lucide="save"></i> <span data-i18n="misc.save">Speichern</span></button>
+    </div>
   </div>
 </div>
 

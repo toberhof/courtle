@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:449
-const CLIENT_BUILD = 449;
+// built:466
+const CLIENT_BUILD = 466;
 let S = {
   players: [],
   transactions: [],
@@ -140,8 +140,8 @@ let editPid = null;
 let txPid = null;
 let slotCtx = null;
 let iconTarget = null;
-let activitySortColumn = 'lastInteraction';
-let activitySortAsc = false;
+let activitySortOption = 'interaction_desc';
+let activitySearchQuery = '';
 let playerSearchQuery = '';
 let playerSortOption = 'name_asc';
 let expandedSessionGroups = {};
@@ -1367,7 +1367,7 @@ function buildSessionCard(dateOrSess, isNextSession = false) {
       actionBtn = `<div class="flex g2 items-c wrap"><button class="btn btn-pri btn-sm" onclick="guestAssignAny('${sessId}')"><i data-lucide="user-plus"></i> ${t('session.book_slot')}</button>${addGuestBtn}</div>`;
     } else {
       actionBtn = `<div class="flex g2 items-c wrap">
-        <button class="btn btn-gld btn-sm" onclick="joinWaitlist('${sessId}')"><i data-lucide="list-plus"></i> ${t('session.join_waitlist')}</button>
+        <button class="btn btn-sec btn-sm" onclick="joinWaitlist('${sessId}')"><i data-lucide="list-plus"></i> ${t('session.join_waitlist')}</button>
       </div>`;
     }
   } else if (!guestId && !past) {
@@ -1377,7 +1377,7 @@ function buildSessionCard(dateOrSess, isNextSession = false) {
   const chargedBadge = sess.charged ? `<span class="badge bg-neu">${t('session.charged')}</span>` : '';
 
   const teamBtn = isNextSession && filled >= 2
-    ? `<button class="btn btn-sec" onclick="openTeamRandomizer('${sessId}')" data-i18n-title="teams.title"><i data-lucide="shuffle" style="width:16px;height:16px"></i> ${t('session.shuffle_teams')}</button>`
+    ? `<button class="btn btn-sec btn-sm" onclick="openTeamRandomizer('${sessId}')" data-i18n-title="teams.title"><i data-lucide="shuffle"></i> ${t('session.shuffle_teams')}</button>`
     : '';
 
   const { start, end } = getSessionTime(sess);
@@ -1671,6 +1671,7 @@ function renderAll() {
   renderAdminPlan();
   renderBilling();
   renderPlayers();
+  renderPlayerBalances();
   renderHistory();
   renderMyHistory();
   renderMyTransactions();
@@ -1683,45 +1684,141 @@ function renderAll() {
 }
 
 // ════════════════════════════════════════
-// EXPENSES (AUSGABEN)
+// EXPENSES (AUSGABEN / PLATZKOSTEN & TEAMKASSE LEDGER)
 // ════════════════════════════════════════
 function renderExpenses() {
   const el = document.getElementById('expenses-container');
   if (!el) return;
-  if (!S.expenses || !S.expenses.length) {
-    el.innerHTML = `<div class="empty" style="grid-column:1/-1"><i data-lucide="credit-card"></i><h3>${t('dashboard.no_expenses')}</h3></div>`;
+
+  const expenses = (S.expenses || []).map(ex => ({
+    type: 'expense',
+    id: ex.id,
+    date: ex.date,
+    amount: ex.amount,
+    note: ex.note || '',
+    paidBy: ex.paidBy,
+    sessionId: ex.sessionId,
+    timestamp: ex.date + 'T12:00:00'
+  }));
+
+  const deposits = (S.transactions || []).filter(tx => tx.credit).map(tx => {
+    const p = (S.players || []).find(x => x.id === tx.playerId);
+    const formattedNote = formatTxNotePlain(tx);
+    return {
+      type: 'credit',
+      id: tx.id,
+      date: tx.date,
+      amount: tx.amount,
+      note: formattedNote,
+      playerName: p ? p.name : t('misc.deleted'),
+      playerId: tx.playerId,
+      sessionId: tx.sessionId,
+      timestamp: tx.createdAt || (tx.date + 'T12:00:00')
+    };
+  });
+
+  const cntAll = document.getElementById('fin-cnt-team-all');
+  const cntCred = document.getElementById('fin-cnt-team-credits');
+  const cntExp = document.getElementById('fin-cnt-team-expenses');
+  if (cntAll) cntAll.textContent = expenses.length + deposits.length;
+  if (cntCred) cntCred.textContent = deposits.length;
+  if (cntExp) cntExp.textContent = expenses.length;
+
+  let items = [];
+  if (teamFilter === 'expenses') {
+    items = expenses;
+  } else if (teamFilter === 'credits') {
+    items = deposits;
+  } else {
+    items = [...expenses, ...deposits];
+  }
+
+  items.sort((a, b) => b.date.localeCompare(a.date) || (b.timestamp || '').localeCompare(a.timestamp || ''));
+
+  if (!items.length) {
+    el.innerHTML = `<div class="empty"><i data-lucide="receipt"></i><h3>${t('finances.no_movements', 'Keine Buchungen vorhanden')}</h3></div>`;
+    if (window.lucide) lucide.createIcons();
     return;
   }
-  const sorted = [...S.expenses].sort((a,b) => b.date.localeCompare(a.date));
-  
-  el.innerHTML = sorted.map(ex => {
-    const dObj = new Date(ex.date + 'T00:00:00');
-    const monthStr = dObj.toLocaleDateString('de-DE', { month: 'short' }).toUpperCase().replace('.', '');
-    const dayNum = dObj.toLocaleDateString('de-DE', { day: 'numeric' });
-    
-    return `<div class="expense-card">
-      <div class="expense-date-badge">
-        <div class="month">${esc(monthStr)}</div>
-        <div class="day">${esc(dayNum)}</div>
-      </div>
-      <div class="expense-card-details">
-        <div class="expense-card-note">${esc(ex.note || t('nav.expenses'))}</div>
-        <div class="expense-card-meta">${fmtD(ex.date)}</div>
-      </div>
-      <div class="expense-card-right">
-        <div class="expense-card-amount">– ${fmtE(ex.amount)}</div>
-        <div class="expense-card-actions">
-          <button class="btn btn-sec btn-sm" onclick="editExpense('${ex.id}')" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="edit-2" style="width:14px;height:14px"></i></button>
-          <button class="btn btn-dan btn-sm" onclick="deleteExpense('${ex.id}')" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
+
+  const loc = getLocale();
+  el.className = 'expense-list';
+  el.innerHTML = items.map(it => {
+    const dObj = new Date(it.date + 'T00:00:00');
+    const monthStr = dObj.toLocaleDateString(loc, { month: 'short' }).toUpperCase().replace('.', '');
+    const dayNum = dObj.toLocaleDateString(loc, { day: 'numeric' });
+
+    if (it.type === 'expense') {
+      const expTitle = it.note || t('history.filter_expenses', 'Court-Kosten');
+      let badgesHtml = `<span class="badge bg-err" style="font-size:10px;padding:1px 6px">${esc(t('history.filter_expenses', 'Court-Kosten'))}</span>`;
+      if (it.paidBy) {
+        const p = S.players.find(x => x.id === it.paidBy);
+        badgesHtml += `<span class="badge bg-pri" style="font-size:10px;padding:1px 6px"><i data-lucide="user" style="width:10px;height:10px"></i> ${esc(p ? p.name : t('billing.outlay_badge', 'Auslage'))}</span>`;
+      }
+      const metaSource = it.paidBy ? t('billing.outlay_badge', 'Auslage') : t('billing.paid_by_team', 'Teamkasse');
+      return `<div class="expense-card">
+        <div class="expense-date-badge">
+          <div class="month">${esc(monthStr)}</div>
+          <div class="day">${esc(dayNum)}</div>
         </div>
-      </div>
-    </div>`;
+        <div class="expense-card-details">
+          <div class="expense-card-note"><span>${esc(expTitle)}</span>${badgesHtml}</div>
+          <div class="expense-card-meta">${fmtD(it.date)} · ${esc(metaSource)}</div>
+        </div>
+        <div class="expense-card-right">
+          <div class="expense-card-amount db">– ${fmtE(it.amount)}</div>
+          <div class="expense-card-actions">
+            <button class="btn btn-sec btn-sm fin-act-btn" onclick="editExpense('${it.id}')" type="button" title="${esc(t('common.edit', 'Bearbeiten'))}"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
+            <button class="btn btn-dan btn-sm fin-act-btn" onclick="deleteExpense('${it.id}')" type="button" title="${esc(t('common.delete', 'Löschen'))}"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
+          </div>
+        </div>
+      </div>`;
+    } else {
+      const isDefaultNote = !it.note || it.note.toLowerCase() === t('transactions.credit_type').toLowerCase();
+      const metaStr = isDefaultNote ? fmtD(it.date) : `${fmtD(it.date)} · ${esc(it.note)}`;
+      return `<div class="expense-card">
+        <div class="expense-date-badge">
+          <div class="month">${esc(monthStr)}</div>
+          <div class="day">${esc(dayNum)}</div>
+        </div>
+        <div class="expense-card-details">
+          <div class="expense-card-note">
+            <span>${esc(it.playerName)}</span>
+            <span class="badge bg-ok" style="font-size:10px;padding:1px 6px">${esc(t('transactions.credit_type'))}</span>
+          </div>
+          <div class="expense-card-meta">${metaStr}</div>
+        </div>
+        <div class="expense-card-right">
+          <div class="expense-card-amount cr">+ ${fmtE(it.amount)}</div>
+          <div class="expense-card-actions">
+            <button class="btn btn-sec btn-sm fin-act-btn" onclick="openEditTx('${it.id}')" type="button" title="${esc(t('common.edit', 'Bearbeiten'))}"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
+          </div>
+        </div>
+      </div>`;
+    }
   }).join('');
 }
+function populateExpensePayerSelect(selId, selectedPid = '') {
+  const sel = document.getElementById(selId);
+  if (!sel) return;
+  const opts = [`<option value="">${t('billing.paid_by_team', 'Teamkasse')}</option>`];
+  const activePlayers = (S.players || []).filter(p => p.active !== false);
+  if (activePlayers.length) {
+    opts.push(`<optgroup label="${t('billing.paid_by_player_group', 'Auslage durch Spieler')}">`);
+    activePlayers.forEach(p => {
+      opts.push(`<option value="${p.id}" ${p.id === selectedPid ? 'selected' : ''}>${esc(p.name)}</option>`);
+    });
+    opts.push('</optgroup>');
+  }
+  sel.innerHTML = opts.join('');
+  sel.value = selectedPid || '';
+}
+
 function openExpenseModal() {
   document.getElementById('ex-amount').value = '';
   document.getElementById('ex-date').value = toDS(new Date());
   document.getElementById('ex-note').value = '';
+  populateExpensePayerSelect('ex-paid-by', '');
   openMo('mo-expense');
   setTimeout(() => document.getElementById('ex-amount').focus(), 100);
 }
@@ -1730,10 +1827,11 @@ async function saveExpense() {
   if (!amt || amt <= 0) { showToast('Gültigen Betrag eingeben.'); return; }
   const date = document.getElementById('ex-date').value || toDS(new Date());
   const note = document.getElementById('ex-note').value.trim();
+  const paidBy = document.getElementById('ex-paid-by')?.value || null;
   try {
-    const res = await apiFetch('POST', '/expenses', { amount: amt, date, note });
+    const res = await apiFetch('POST', '/expenses', { amount: amt, date, note, paid_by: paidBy });
     if (!S.expenses) S.expenses = [];
-    S.expenses.push({ id: res.id, amount: amt, date, note, createdAt: new Date().toISOString() });
+    S.expenses.push({ id: res.id, amount: amt, date, note, paidBy, createdAt: new Date().toISOString() });
     closeMo('mo-expense');
     renderAll();
     showToast(t('toast.expense_saved'));
@@ -1752,6 +1850,7 @@ function editExpense(exId) {
   document.getElementById('eex-amount').value = ex.amount;
   document.getElementById('eex-date').value = ex.date;
   document.getElementById('eex-note').value = ex.note || '';
+  populateExpensePayerSelect('eex-paid-by', ex.paidBy || '');
   openMo('mo-edit-expense');
   setTimeout(() => document.getElementById('eex-amount').focus(), 100);
 }
@@ -1762,11 +1861,12 @@ async function saveEditedExpense() {
   if (!amt || amt <= 0) { showToast('Gültigen Betrag eingeben.'); return; }
   const date = document.getElementById('eex-date').value || toDS(new Date());
   const note = document.getElementById('eex-note').value.trim();
+  const paidBy = document.getElementById('eex-paid-by')?.value || null;
   try {
-    await apiFetch('PUT', '/expenses/' + editExpenseId, { amount: amt, date, note });
+    await apiFetch('PUT', '/expenses/' + editExpenseId, { amount: amt, date, note, paid_by: paidBy });
     const idx = S.expenses.findIndex(x => x.id === editExpenseId);
     if (idx >= 0) {
-      S.expenses[idx] = { ...S.expenses[idx], amount: amt, date, note };
+      S.expenses[idx] = { ...S.expenses[idx], amount: amt, date, note, paidBy };
     }
     editExpenseId = null;
     closeMo('mo-edit-expense');
@@ -1812,9 +1912,25 @@ function bal(pid) {
   return p && p.balance !== undefined ? parseFloat(p.balance) : 0;
 }
 function renderKPIs() {
-  // 1. Transaktionen (interner Spieler-Geldkreislauf)
   const kpiEl = document.getElementById('kpi-container');
-  if (kpiEl) {
+  if (!kpiEl) return;
+
+  if (finDimension === 'team') {
+    // Außenverhältnis (Teamkasse / Betreiber-Zahlungen)
+    const totalPaid = (S.transactions || []).filter(t => t.credit).reduce((s, t) => s + t.amount, 0);
+    const exp = (S.expenses || []).reduce((s, x) => s + x.amount, 0);
+    const cf = totalPaid - exp;
+
+    const expensesKpis = [
+      { l: t('dashboard.kpi_payments'), v: '+' + fmtE(totalPaid), c: 'pos', s: t('dashboard.kpi_payments_sub') },
+      { l: t('history.kpi_expenses', 'Court-Kosten'), v: '–' + fmtE(exp), c: 'neg', s: t('expenses.kpi_sub') },
+      { l: t('history.kpi_team_kasse', 'Echte Teamkasse'), v: fmtE(cf), c: cf < 0 ? 'neg' : cf === 0 ? '' : 'pos', s: cf < 0 ? t('dashboard.kpi_cashflow_advance') : t('dashboard.kpi_cashflow_covered') },
+    ];
+
+    kpiEl.innerHTML = expensesKpis.map(k =>
+      `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
+  } else {
+    // Innenverhältnis (Spieler-Guthaben / Session-Verbrauch)
     const sel = document.getElementById('hist-filter');
     const filterPid = sel ? sel.value : '';
     const filteredPlayer = filterPid ? S.players.find(p => p.id === filterPid) : null;
@@ -1824,33 +1940,39 @@ function renderKPIs() {
     const debits = txSource.filter(t => !t.credit).reduce((s, t) => s + t.amount, 0);
     const netBal = paid - debits;
 
-    const historyKpis = [
-      { l: t('dashboard.kpi_payments'), v: '+' + fmtE(paid), c: 'pos', s: filteredPlayer ? esc(filteredPlayer.name) : t('dashboard.kpi_payments_sub') },
-      { l: t('history.kpi_debits'), v: '–' + fmtE(debits), c: 'neg', s: t('history.kpi_debits_sub') },
-      { l: t('dashboard.kpi_total_balance'), v: fmtE(netBal), c: netBal >= 0 ? 'pos' : 'neg', s: filteredPlayer ? t('transactions.current_balance') : t('dashboard.kpi_total_balance_sub') },
-    ];
+    let historyKpis;
+    if (filteredPlayer) {
+      historyKpis = [
+        { l: t('dashboard.kpi_payments'), v: '+' + fmtE(paid), c: 'pos', s: esc(filteredPlayer.name) },
+        { l: t('history.kpi_debits'), v: '–' + fmtE(debits), c: 'neg', s: t('history.kpi_debits_sub') },
+        { l: t('dashboard.kpi_total_balance'), v: fmtE(netBal), c: netBal >= 0 ? 'pos' : 'neg', s: t('transactions.current_balance') },
+      ];
+    } else {
+      const circulating = (S.players || []).filter(p => p.active !== false && p.balance > 0).reduce((s, p) => s + p.balance, 0);
+      const debts = (S.players || []).filter(p => p.active !== false && p.balance < 0).reduce((s, p) => s + p.balance, 0);
+      historyKpis = [
+        { l: t('finances.kpi_circulating', 'Guthaben im Umlauf'), v: '+' + fmtE(circulating), c: 'pos', s: t('finances.kpi_circulating_sub', 'Guthaben aller Spieler') },
+        { l: t('history.kpi_debits'), v: '–' + fmtE(debits), c: 'neg', s: t('history.kpi_debits_sub') },
+        { l: t('finances.kpi_debts', 'Offene Spielerschulden'), v: fmtE(debts), c: debts < 0 ? 'neg' : '', s: t('finances.kpi_debts_sub', 'Negative Spielersalden') },
+      ];
+    }
 
     kpiEl.innerHTML = historyKpis.map(k =>
       `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
   }
-
-  // 2. Ausgaben (externer Team-Kassen-Geldkreislauf)
-  const expKpiEl = document.getElementById('expenses-kpi-container');
-  if (expKpiEl) {
-    const totalPaid = (S.transactions || []).filter(t => t.credit).reduce((s, t) => s + t.amount, 0);
-    const exp = (S.expenses || []).reduce((s, x) => s + x.amount, 0);
-    const cf = totalPaid - exp;
-
-    const expensesKpis = [
-      { l: t('dashboard.kpi_expenses'), v: fmtE(exp), c: 'neg', s: t('expenses.kpi_sub') },
-      { l: t('dashboard.kpi_payments'), v: fmtE(totalPaid), c: 'pos', s: t('dashboard.kpi_payments_sub') },
-      { l: t('dashboard.kpi_cashflow'), v: fmtE(cf), c: cf < 0 ? 'neg' : cf === 0 ? '' : 'pos', s: cf < 0 ? t('dashboard.kpi_cashflow_advance') : t('dashboard.kpi_cashflow_covered') },
-    ];
-
-    expKpiEl.innerHTML = expensesKpis.map(k =>
-      `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
-  }
 }
+window.handleActivitySearch = function(val) {
+  activitySearchQuery = val;
+  renderPlayerActivityTable();
+  if (window.lucide) lucide.createIcons();
+};
+
+window.handleActivitySort = function(val) {
+  activitySortOption = val;
+  renderPlayerActivityTable();
+  if (window.lucide) lucide.createIcons();
+};
+
 function renderPlayerActivityTable() {
   const targets = [
     document.getElementById('balance-table'),
@@ -1859,59 +1981,122 @@ function renderPlayerActivityTable() {
   if (!targets.length) return;
   const activePlayers = S.players.filter(p => p.active !== false);
   if (!activePlayers.length) {
-    targets.forEach(el => { el.innerHTML = ''; });
+    targets.forEach(el => { el.innerHTML = `<div class="empty"><i data-lucide="users"></i><p>${t('players.no_players')}</p></div>`; });
+    if (window.lucide) lucide.createIcons();
     return;
   }
 
-  const sorted = [...activePlayers].sort((a, b) => {
-    let valA, valB;
-    if (activitySortColumn === 'name') {
-      valA = a.name.toLowerCase();
-      valB = b.name.toLowerCase();
-    } else if (activitySortColumn === 'lastInteraction') {
-      valA = a.lastInteraction || '';
-      valB = b.lastInteraction || '';
-    } else if (activitySortColumn === 'lastLogin') {
-      valA = a.lastLogin || '';
-      valB = b.lastLogin || '';
-    } else if (activitySortColumn === 'lastParticipation') {
-      valA = getLastParticipationDate(a.id) || '';
-      valB = getLastParticipationDate(b.id) || '';
+  let filtered = [...activePlayers];
+  if (activitySearchQuery) {
+    const q = activitySearchQuery.toLowerCase().trim();
+    filtered = filtered.filter(p => p.name.toLowerCase().includes(q) || (p.contact && p.contact.toLowerCase().includes(q)));
+  }
+
+  filtered.sort((a, b) => {
+    switch (activitySortOption) {
+      case 'interaction_asc':
+        return (a.lastInteraction || '').localeCompare(b.lastInteraction || '');
+      case 'login_desc':
+        return (b.lastLogin || '').localeCompare(a.lastLogin || '');
+      case 'login_asc':
+        return (a.lastLogin || '').localeCompare(b.lastLogin || '');
+      case 'participation_desc': {
+        const pA = getLastParticipationDate(a.id) || '';
+        const pB = getLastParticipationDate(b.id) || '';
+        return pB.localeCompare(pA);
+      }
+      case 'participation_asc': {
+        const pA = getLastParticipationDate(a.id) || '';
+        const pB = getLastParticipationDate(b.id) || '';
+        return pA.localeCompare(pB);
+      }
+      case 'name_desc':
+        return b.name.localeCompare(a.name);
+      case 'name_asc':
+        return a.name.localeCompare(b.name);
+      case 'interaction_desc':
+      default:
+        return (b.lastInteraction || '').localeCompare(a.lastInteraction || '');
     }
-    if (valA < valB) return activitySortAsc ? -1 : 1;
-    if (valA > valB) return activitySortAsc ? 1 : -1;
-    return 0;
   });
 
-  const arrow = activitySortAsc ? '↑' : '↓';
+  const toolbarHtml = `
+    <div class="act-controls-row">
+      <div class="search-wrap" style="flex:1;min-width:160px;position:relative">
+        <i data-lucide="search" style="width:15px;height:15px;position:absolute;left:var(--sp3);top:50%;transform:translateY(-50%);color:var(--txm)"></i>
+        <input type="text" class="fi" style="padding-left:34px;font-size:var(--text-sm);height:38px" placeholder="${esc(t('players.search', 'Spieler suchen...'))}" value="${esc(activitySearchQuery)}" oninput="handleActivitySearch(this.value)">
+      </div>
+      <div class="sort-wrap flex items-c g2">
+        <span class="txxs txm hide-xs" style="white-space:nowrap">${t('players.sort', 'Sortierung:')}</span>
+        <div class="sort-select-wrap">
+          <select class="sort-select" onchange="handleActivitySort(this.value)">
+            <option value="interaction_desc" ${activitySortOption === 'interaction_desc' ? 'selected' : ''}>${t('players.activity_sort', 'Aktivität')} ↓</option>
+            <option value="interaction_asc" ${activitySortOption === 'interaction_asc' ? 'selected' : ''}>${t('players.activity_sort', 'Aktivität')} ↑</option>
+            <option value="login_desc" ${activitySortOption === 'login_desc' ? 'selected' : ''}>${t('players.login_sort', 'Login')} ↓</option>
+            <option value="login_asc" ${activitySortOption === 'login_asc' ? 'selected' : ''}>${t('players.login_sort', 'Login')} ↑</option>
+            <option value="participation_desc" ${activitySortOption === 'participation_desc' ? 'selected' : ''}>${t('players.last_participation', 'Gespielt')} ↓</option>
+            <option value="participation_asc" ${activitySortOption === 'participation_asc' ? 'selected' : ''}>${t('players.last_participation', 'Gespielt')} ↑</option>
+            <option value="name_asc" ${activitySortOption === 'name_asc' ? 'selected' : ''}>${t('players.name_sort', 'Name')} A–Z</option>
+            <option value="name_desc" ${activitySortOption === 'name_desc' ? 'selected' : ''}>${t('players.name_sort', 'Name')} Z–A</option>
+          </select>
+          <i data-lucide="chevron-down" class="sort-select-arrow"></i>
+        </div>
+      </div>
+    </div>
+  `;
 
-  const html = `<div class="tw"><table class="dt"><thead><tr>
-       <th onclick="sortActivityTable('name')">${t('players.name_sort')} ${activitySortColumn === 'name' ? arrow : ''}</th>
-       <th onclick="sortActivityTable('lastLogin')">${t('players.login_sort')} ${activitySortColumn === 'lastLogin' ? arrow : ''}</th>
-       <th onclick="sortActivityTable('lastInteraction')">${t('players.activity_sort')} ${activitySortColumn === 'lastInteraction' ? arrow : ''}</th>
-       <th onclick="sortActivityTable('lastParticipation')">${t('players.last_participation')} ${activitySortColumn === 'lastParticipation' ? arrow : ''}</th>
-     </tr></thead><tbody>
-    ${sorted.map(p => {
-      const partDate = getLastParticipationDate(p.id);
-      return `<tr>
-        <td class="fw6">${esc(p.name)}</td>
-        <td class="txm txxs">${p.lastLogin ? fmtDTS(p.lastLogin) : '–'}</td>
-        <td class="txm txxs">${p.lastInteraction ? fmtDTS(p.lastInteraction) : '–'}</td>
-        <td class="txm txxs">${partDate ? fmtD(partDate) : '–'}</td>
-      </tr>`;}).join('')}
-  </tbody></table></div>`;
-  targets.forEach(el => { el.innerHTML = html; });
+  if (!filtered.length) {
+    targets.forEach(el => { el.innerHTML = toolbarHtml + `<div class="empty"><i data-lucide="search-x"></i><p>${t('players.search_empty', 'Keine passenden Spieler gefunden.')}</p></div>`; });
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  const cardsHtml = filtered.map(p => {
+    const partDate = getLastParticipationDate(p.id);
+    const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
+    return `
+      <div class="act-card">
+        <div class="act-card-head">
+          <div class="av pc-av">
+            <i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>
+          </div>
+          <div class="pc-name">${esc(p.name)}${adminBadge}</div>
+        </div>
+        <div class="act-metrics">
+          <div class="act-metric-item">
+            <span class="act-metric-lbl">${t('players.login_sort', 'Login')}</span>
+            <span class="act-metric-val">${p.lastLogin ? fmtDTS(p.lastLogin) : '–'}</span>
+          </div>
+          <div class="act-metric-item">
+            <span class="act-metric-lbl">${t('players.activity_sort', 'Aktivität')}</span>
+            <span class="act-metric-val">${p.lastInteraction ? fmtDTS(p.lastInteraction) : '–'}</span>
+          </div>
+          <div class="act-metric-item">
+            <span class="act-metric-lbl">${t('players.last_participation', 'Gespielt')}</span>
+            <span class="act-metric-val">${partDate ? fmtD(partDate) : '–'}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const fullHtml = toolbarHtml + `<div class="act-list">${cardsHtml}</div>`;
+  targets.forEach(el => { el.innerHTML = fullHtml; });
+  if (window.lucide) lucide.createIcons();
 }
 
 function sortActivityTable(column) {
-  if (activitySortColumn === column) {
-    activitySortAsc = !activitySortAsc;
+  if (column === 'name') {
+    activitySortOption = activitySortOption === 'name_asc' ? 'name_desc' : 'name_asc';
+  } else if (column === 'lastLogin') {
+    activitySortOption = activitySortOption === 'login_desc' ? 'login_asc' : 'login_desc';
+  } else if (column === 'lastParticipation') {
+    activitySortOption = activitySortOption === 'participation_desc' ? 'participation_asc' : 'participation_desc';
   } else {
-    activitySortColumn = column;
-    activitySortAsc = true;
+    activitySortOption = activitySortOption === 'interaction_desc' ? 'interaction_asc' : 'interaction_desc';
   }
   renderPlayerActivityTable();
-  lucide.createIcons();
+  if (window.lucide) lucide.createIcons();
 }
 
 // ════════════════════════════════════════
@@ -1975,6 +2160,12 @@ function togglePlanDetails() {
   if (btn) btn.classList.toggle('active-toggle', planDetailsOpen);
 }
 
+let _planDetailChanges = {};
+
+function planDetailChange(field, value) {
+  _planDetailChanges[field] = value;
+}
+
 function planDetailAutoSave(field, value) {
   planDetailChange(field, value);
   if (_planSaveTimeout) clearTimeout(_planSaveTimeout);
@@ -1984,7 +2175,7 @@ function planDetailAutoSave(field, value) {
 }
 
 async function savePlanDetailsSilent() {
-  if (Object.keys(_planDetailChanges).length === 0) return;
+  if (Object.keys(_planDetailChanges).length === 0) return true;
   const ind = document.getElementById('plan-save-indicator');
   try {
     const updates = {};
@@ -2013,9 +2204,29 @@ async function savePlanDetailsSilent() {
       newInd.classList.add('show');
       setTimeout(() => newInd.classList.remove('show'), 2000);
     }
+    return true;
   } catch (e) {
     showToast('⚠️ ' + (e.message || t('misc.save_failed')));
+    return false;
   }
+}
+
+async function savePlanDetails() {
+  if (_planSaveTimeout) {
+    clearTimeout(_planSaveTimeout);
+    _planSaveTimeout = null;
+  }
+  if (Object.keys(_planDetailChanges).length > 0) {
+    const ok = await savePlanDetailsSilent();
+    if (!ok) return;
+  } else {
+    const newInd = document.getElementById('plan-save-indicator');
+    if (newInd) {
+      newInd.classList.add('show');
+      setTimeout(() => newInd.classList.remove('show'), 2000);
+    }
+  }
+  showToast(t('toast.changes_saved'));
 }
 
 let _planStripAnimateNext = true;
@@ -2026,6 +2237,11 @@ function renderAdminPlan(keepDetailsOpen) {
   const selBox = document.getElementById('session-selector-box');
   const headBox = document.getElementById('admin-plan-header-dynamic');
 
+  const activeEl = document.activeElement;
+  const activeId = (activeEl && headBox && headBox.contains(activeEl) && activeEl.id) ? activeEl.id : null;
+  const selStart = (activeEl && typeof activeEl.selectionStart === 'number') ? activeEl.selectionStart : null;
+  const selEnd = (activeEl && typeof activeEl.selectionEnd === 'number') ? activeEl.selectionEnd : null;
+
   if (allSessions.length === 0) {
     if (selBox) selBox.innerHTML = '<div class="plan-strip" id="plan-strip" role="listbox"></div>';
     if (headBox) {
@@ -2035,8 +2251,8 @@ function renderAdminPlan(keepDetailsOpen) {
           <h2 class="sec-title">${t('planner.empty_title')}</h2>
           <p class="txsm txm mb4">${t('planner.empty_text')}</p>
           <div class="flex just-c g2">
-            <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()"><i data-lucide="plus"></i> ${t('session.new')}</button>
-            <button class="btn btn-sec btn-sm" onclick="showView('series')"><i data-lucide="repeat"></i> ${t('planner.setup_series')}</button>
+            <button class="btn btn-ok btn-sm" onclick="openAddSessionModal()"><i data-lucide="plus"></i> ${t('session.new')}</button>
+            <button class="btn-nav" onclick="showView('series')"><i data-lucide="repeat"></i> ${t('planner.setup_series')}</button>
           </div>
         </div>`;
     }
@@ -2153,14 +2369,14 @@ function renderAdminPlan(keepDetailsOpen) {
         <div class="plan-top-bar">
           <span class="plan-top-label"><i data-lucide="calendar-days"></i> ${t('planner.select_session_label')}</span>
           <div class="plan-top-actions">
-            <button class="btn ${isAtUpcoming ? 'btn-sec active-toggle' : 'btn-sec'} btn-sm" id="plan-jump-upcoming-btn" onclick="planGoToUpcoming()" title="${esc(t('planner.jump_upcoming_title'))}" type="button">
+            <button class="btn btn-sec btn-sm" id="plan-jump-upcoming-btn" onclick="planGoToUpcoming()" title="${esc(t('planner.jump_upcoming_title'))}" type="button">
               <i data-lucide="calendar-arrow-up"></i> <span>${t('planner.jump_upcoming')}</span>
             </button>
             <div class="btn btn-sec btn-sm" id="plan-date-picker-wrap" style="position:relative;overflow:hidden;cursor:pointer;margin:0;display:inline-flex;align-items:center;justify-content:center" title="${esc(t('planner.jump_to_date'))}">
               <i data-lucide="calendar-search"></i>
               <input type="date" id="plan-date-picker" value="${sess.date}" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2;margin:0;padding:0;border:none;pointer-events:auto" onchange="planGoToDateClosest(this.value)">
             </div>
-            <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()" type="button"><i data-lucide="plus"></i> <span data-i18n="session.new">${t('session.new')}</span></button>
+            <button class="btn btn-ok btn-sm" onclick="openAddSessionModal()" type="button"><i data-lucide="plus"></i> <span data-i18n="session.new">${t('session.new')}</span></button>
           </div>
         </div>
         <div class="plan-strip-wrap">
@@ -2179,11 +2395,11 @@ function renderAdminPlan(keepDetailsOpen) {
   if (isCancelled) {
     primaryActionBtn = `<button class="btn btn-ok btn-sm" onclick="toggleSessionCancel()"><i data-lucide="rotate-ccw"></i> ${t('session.reactivate')}</button>`;
   } else if (sess.charged) {
-    primaryActionBtn = `<button class="btn btn-sec btn-sm" onclick="setBillingTab('charged');showView('billing')"><i data-lucide="receipt"></i> ${t('planner.view_in_billing')}</button>`;
+    primaryActionBtn = `<button class="btn-nav" onclick="setBillingTab('charged');showView('billing')"><i data-lucide="arrow-up-right"></i> ${t('planner.view_in_billing')}</button>`;
   } else if (isAwaiting) {
-    primaryActionBtn = `<button class="btn btn-gld btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="receipt"></i> ${t('planner.to_billing')}</button>`;
+    primaryActionBtn = `<button class="btn btn-pri btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="receipt"></i> ${t('session.billing_charge')}</button>`;
   } else if (filled > 0) {
-    primaryActionBtn = `<button class="btn btn-pri btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="credit-card"></i> ${t('session.billing_charge')}</button>`;
+    primaryActionBtn = `<button class="btn btn-sec btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="credit-card"></i> ${t('session.billing_charge')}</button>`;
   }
 
   if (keepDetailsOpen) planDetailsOpen = true;
@@ -2203,6 +2419,8 @@ function renderAdminPlan(keepDetailsOpen) {
         </div>
         <div class="flex items-c g2 wrap">
           ${primaryActionBtn}
+          ${!isCancelled && !sess.charged ? `<button class="btn btn-dan btn-sm" id="plan-cancel-btn" onclick="toggleSessionCancel()"><i data-lucide="x-circle"></i> ${t('session.cancel')}</button>` : ''}
+          ${isCancelled ? `<button class="btn btn-dan btn-sm" id="plan-delete-btn" onclick="deleteSession()"><i data-lucide="trash-2"></i> ${t('misc.delete')}</button>` : ''}
           <button class="btn btn-sec btn-sm ${showDetails ? 'active-toggle' : ''}" id="plan-edit-toggle-btn" onclick="togglePlanDetails()"><i data-lucide="sliders-horizontal"></i> <span>${t('planner.edit_details')}</span></button>
         </div>
       </div>
@@ -2218,81 +2436,141 @@ function renderAdminPlan(keepDetailsOpen) {
 
       <div class="plan-edit-drawer" id="session-details-box" ${showDetails ? '' : 'hidden'}>
         ${sess.charged ? `<p class="txxs txm mb3">${t('planner.locked_charged')}</p>` : ''}
-        <div class="plan-edit-grid">
-          <div class="fg">
-            <label class="fl">${t('session.date')}</label>
-            <input type="date" class="fi" style="font-size:var(--text-sm)"
-                   value="${sess.date}"
-                   ${sess.charged ? 'disabled' : ''}
-                   onchange="planDetailAutoSave('date', this.value)">
-          </div>
-          <div class="fg">
-            <label class="fl">${t('session.time')}</label>
-            <div class="flex items-c g2">
-              <input type="time" class="fi" style="flex:1;font-size:var(--text-sm)"
-                     value="${sessTime.start}"
-                     ${sess.charged ? 'disabled' : ''}
-                     onchange="planDetailAutoSave('timeStart', this.value)">
-              <span class="tx-sm tx-m">–</span>
-              <input type="time" class="fi" style="flex:1;font-size:var(--text-sm)"
-                     value="${sessTime.end}"
-                     ${sess.charged ? 'disabled' : ''}
-                     onchange="planDetailAutoSave('timeEnd', this.value)">
+        
+        <div class="settings-group-title">
+          <i data-lucide="calendar" style="width:14px;height:14px"></i>
+          <span>${t('planner.edit_details', 'Details bearbeiten')}</span>
+        </div>
+
+        <div class="settings-group mb3">
+          <div class="settings-row">
+            <div class="settings-meta">
+              <label class="settings-title" for="plan-date-input">${t('session.date')}</label>
+              <div class="settings-desc">${t('session.date_desc', 'Datum des Spieltags')}</div>
+            </div>
+            <div class="settings-control">
+              <div class="ios-input-wrap plan-edit-control">
+                <i data-lucide="calendar"></i>
+                <input type="date" id="plan-date-input"
+                       value="${sess.date}"
+                       ${sess.charged ? 'disabled' : ''}
+                       onchange="planDetailAutoSave('date', this.value)">
+              </div>
             </div>
           </div>
-          <div class="fg">
-            <label class="fl">${t('session.name')}</label>
-            <input type="text" id="plan-name-input" class="fi" placeholder="${esc(getSessionName(sess))}"
-                   style="font-size:var(--text-sm)"
-                   value="${esc(sess.name || '')}"
-                   ${sess.charged ? 'disabled' : ''}
-                   oninput="planDetailAutoSave('name', this.value)"
-                   onchange="planDetailAutoSave('name', this.value)">
+
+          <div class="settings-row">
+            <div class="settings-meta">
+              <label class="settings-title">${t('session.time')}</label>
+              <div class="settings-desc">${t('session.time_desc', 'Start- und Endzeit')}</div>
+            </div>
+            <div class="settings-control">
+              <div class="ios-time-picker plan-edit-control">
+                <i data-lucide="clock"></i>
+                <input type="time" id="plan-time-start"
+                       value="${sessTime.start}"
+                       ${sess.charged ? 'disabled' : ''}
+                       onchange="planDetailAutoSave('timeStart', this.value)">
+                <span class="tx-m" style="padding:0 4px">–</span>
+                <input type="time" id="plan-time-end"
+                       value="${sessTime.end}"
+                       ${sess.charged ? 'disabled' : ''}
+                       onchange="planDetailAutoSave('timeEnd', this.value)">
+              </div>
+            </div>
           </div>
-          <div class="fg">
-            <label class="fl">${t('session.address')}</label>
-            <input type="text" class="fi" placeholder="${esc(S.cfg.srlocation || t('session.address_placeholder'))}"
-                   style="font-size:var(--text-sm)"
-                   value="${esc(sess.location || '')}"
-                   ${sess.charged ? 'disabled' : ''}
-                   oninput="planDetailAutoSave('location', this.value)"
-                   onchange="planDetailAutoSave('location', this.value)">
+
+          <div class="settings-row">
+            <div class="settings-meta">
+              <label class="settings-title" for="plan-name-input">${t('session.name')}</label>
+              <div class="settings-desc">${t('session.name_desc', 'Name oder Thema der Session')}</div>
+            </div>
+            <div class="settings-control">
+              <div class="ios-input-wrap plan-edit-control">
+                <i data-lucide="tag"></i>
+                <input type="text" id="plan-name-input" placeholder="${esc(getSessionName(sess))}"
+                       value="${esc(sess.name || '')}"
+                       ${sess.charged ? 'disabled' : ''}
+                       oninput="planDetailAutoSave('name', this.value)"
+                       onchange="planDetailAutoSave('name', this.value)">
+              </div>
+            </div>
           </div>
-          <div class="fg">
-            <label class="fl">${t('session.price')} (${t('session.per_slot')})</label>
-            <input type="number" id="plan-price-input" class="fi" placeholder="${S.cfg.sr_cost || S.cfg.cost || 16}"
-                   style="font-size:var(--text-sm)"
-                   value="${sess.price !== null && sess.price !== undefined ? sess.price : ''}"
-                   ${sess.charged ? 'disabled' : ''}
-                   oninput="planDetailAutoSave('price', this.value)"
-                   onchange="planDetailAutoSave('price', this.value)">
-          </div>
-          <div class="fg">
-            <label class="fl">${t('session.cancel_deadline')}</label>
-            <input type="text" id="plan-cancel-hours" class="fi" placeholder="7:00"
-                   style="font-size:var(--text-sm)"
-                   value="${sess.cancelHours !== null && sess.cancelHours !== undefined ? formatCancelHours(sess.cancelHours) : ''}"
-                   ${sess.charged ? 'disabled' : ''}
-                   onchange="planDetailAutoSave('cancelHours', parseCancelHours(this.value))">
-          </div>
-          <div class="fg fg-full">
-            <label class="fl">${t('session.comment')}</label>
-            <input type="text" id="plan-note-input" class="fi" placeholder="${t('session.comment_placeholder')}"
-                   style="font-size:var(--text-sm)"
-                   value="${esc(sess.note || '')}"
-                   ${sess.charged ? 'disabled' : ''}
-                   oninput="planDetailAutoSave('note', this.value)"
-                   onchange="planDetailAutoSave('note', this.value)">
+
+          <div class="settings-row">
+            <div class="settings-meta">
+              <label class="settings-title" for="plan-location-input">${t('session.address')}</label>
+              <div class="settings-desc">${t('session.address_desc', 'Veranstaltungsort oder Halle')}</div>
+            </div>
+            <div class="settings-control">
+              <div class="ios-input-wrap plan-edit-control">
+                <i data-lucide="map-pin"></i>
+                <input type="text" id="plan-location-input" placeholder="${esc(S.cfg.srlocation || t('session.address_placeholder'))}"
+                       value="${esc(sess.location || '')}"
+                       ${sess.charged ? 'disabled' : ''}
+                       oninput="planDetailAutoSave('location', this.value)"
+                       onchange="planDetailAutoSave('location', this.value)">
+              </div>
+            </div>
           </div>
         </div>
-        ${!sess.charged ? `
-        <div class="flex items-c just-b wrap g2 mt4" style="padding-top:var(--sp3);border-top:1px dashed var(--bor)">
-          <div class="flex g2 wrap">
-            ${!isCancelled ? `<button class="btn btn-dan btn-sm" onclick="toggleSessionCancel()"><i data-lucide="x-circle"></i> ${t('session.cancel')}</button>` : ''}
-            ${isCancelled ? `<button class="btn btn-dan btn-sm" onclick="deleteSession()"><i data-lucide="trash-2"></i> ${t('misc.delete')}</button>` : ''}
+
+        <div class="settings-group-title">
+          <i data-lucide="sliders" style="width:14px;height:14px"></i>
+          <span>${t('session.conditions_notes', 'Konditionen & Notizen')}</span>
+        </div>
+
+        <div class="settings-group mb3">
+          <div class="settings-row">
+            <div class="settings-meta">
+              <label class="settings-title" for="plan-price-input">${t('session.price')} (${t('session.per_slot')})</label>
+              <div class="settings-desc">${t('session.price_desc', 'Kostenbeitrag pro Platz')}</div>
+            </div>
+            <div class="settings-control">
+              <div class="ios-input-wrap plan-edit-control">
+                <i data-lucide="euro"></i>
+                <input type="number" id="plan-price-input" placeholder="${S.cfg.sr_cost || S.cfg.cost || 16}" step="0.5"
+                       value="${sess.price !== null && sess.price !== undefined ? sess.price : ''}"
+                       ${sess.charged ? 'disabled' : ''}
+                       oninput="planDetailAutoSave('price', this.value)"
+                       onchange="planDetailAutoSave('price', this.value)">
+              </div>
+            </div>
           </div>
-          <button class="btn btn-pri btn-sm" onclick="savePlanDetails()"><i data-lucide="save"></i> ${t('misc.save')}</button>
-        </div>` : ''}
+
+          <div class="settings-row">
+            <div class="settings-meta">
+              <label class="settings-title" for="plan-cancel-hours">${t('session.cancel_deadline')}</label>
+              <div class="settings-desc">${t('session.cancel_deadline_desc', 'Kostenfreie Absagefrist')}</div>
+            </div>
+            <div class="settings-control">
+              <div class="ios-input-wrap plan-edit-control">
+                <i data-lucide="hourglass"></i>
+                <input type="text" id="plan-cancel-hours" placeholder="7:00"
+                       value="${sess.cancelHours !== null && sess.cancelHours !== undefined ? formatCancelHours(sess.cancelHours) : ''}"
+                       ${sess.charged ? 'disabled' : ''}
+                       onchange="planDetailAutoSave('cancelHours', parseCancelHours(this.value))">
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-row">
+            <div class="settings-meta">
+              <label class="settings-title" for="plan-note-input">${t('session.comment')}</label>
+              <div class="settings-desc">${t('session.comment_desc', 'Zusätzliche Infos für Mitspieler')}</div>
+            </div>
+            <div class="settings-control">
+              <div class="ios-input-wrap plan-edit-control">
+                <i data-lucide="message-square"></i>
+                <input type="text" id="plan-note-input" placeholder="${t('session.comment_placeholder')}"
+                       value="${esc(sess.note || '')}"
+                       ${sess.charged ? 'disabled' : ''}
+                       oninput="planDetailAutoSave('note', this.value)"
+                       onchange="planDetailAutoSave('note', this.value)">
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     `;
   }
@@ -2377,26 +2655,30 @@ function renderAdminPlan(keepDetailsOpen) {
   // 6. Update active tab views
   setPlanTab(planTab);
 
-  // Auto-scroll active chip into view
+  // Auto-scroll active chip horizontally inside plan-strip (avoids vertical window scrolling on iOS)
   const animateScroll = _planStripAnimateNext;
   _planStripAnimateNext = false;
 
   setTimeout(() => {
-    const activeChip = document.querySelector('.plan-chip.active');
-    if (activeChip) {
-      if (animateScroll) {
-        const strip = document.getElementById('plan-strip');
-        if (strip && strip.scrollLeft !== 0) {
-          strip.scrollLeft = 0;
-        }
-        activeChip.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
-      } else {
-        activeChip.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
-      }
+    const strip = document.getElementById('plan-strip');
+    const activeChip = strip?.querySelector('.plan-chip.active');
+    if (strip && activeChip) {
+      const targetLeft = activeChip.offsetLeft - (strip.clientWidth - activeChip.offsetWidth) / 2;
+      strip.scrollTo({ left: Math.max(0, targetLeft), behavior: animateScroll ? 'smooth' : 'auto' });
     }
   }, animateScroll ? 100 : 20);
 
   lucide.createIcons();
+
+  if (activeId) {
+    const el = document.getElementById(activeId);
+    if (el) {
+      el.focus();
+      if (selStart !== null && selEnd !== null && typeof el.setSelectionRange === 'function') {
+        try { el.setSelectionRange(selStart, selEnd); } catch(_) {}
+      }
+    }
+  }
 }
 
 async function renderSessionHistory(dateOrId) {
@@ -2868,7 +3150,7 @@ function renderBilling() {
               <div class="bi-meta">${t('billing.session_meta').replace('{slots}', tot.slots).replace('{players}', tot.players)}</div>
               <div class="bi-actions">
                 <button class="btn btn-sec btn-sm" onclick="openBillingModal(['${s.id}'])">${t('billing.review')}</button>
-                <button class="btn btn-sec btn-sm" onclick="openBillingInPlanner('${s.id}')">${t('billing.open_in_planner')}</button>
+                <button class="btn-nav" onclick="openBillingInPlanner('${s.id}')"><i data-lucide="arrow-up-right"></i> ${t('billing.open_in_planner')}</button>
               </div>
             </div>
             <div class="bi-sum">${fmtE(tot.sum)}</div>
@@ -2940,11 +3222,64 @@ function openChargeModal() {
   openBillingModal([sess.id || planDate]);
 }
 
+function computeSessionSlotShares(totalPrice, counts, roundingMode, paidByPid) {
+  const totalSlots = Object.values(counts).reduce((a, b) => a + b, 0);
+  if (totalSlots <= 0) return {};
+
+  const totalCents = Math.round(totalPrice * 100);
+  const shares = {};
+
+  if (roundingMode === 'exact') {
+    const baseCents = Math.floor(totalCents / totalSlots);
+    const remCents = totalCents % totalSlots;
+
+    const slotOwners = [];
+    if (paidByPid && counts[paidByPid]) {
+      for (let i = 0; i < counts[paidByPid]; i++) slotOwners.push(paidByPid);
+    }
+    Object.entries(counts).forEach(([pid, n]) => {
+      if (pid === paidByPid) return;
+      for (let i = 0; i < n; i++) slotOwners.push(pid);
+    });
+
+    const assignedCents = {};
+    for (let i = 0; i < slotOwners.length; i++) {
+      const pid = slotOwners[i];
+      const extra = i < remCents ? 1 : 0;
+      assignedCents[pid] = (assignedCents[pid] || 0) + baseCents + extra;
+    }
+    Object.keys(counts).forEach(pid => {
+      shares[pid] = (assignedCents[pid] || 0) / 100;
+    });
+  } else if (roundingMode === 'ceil') {
+    const slotCents = Math.ceil(totalCents / totalSlots);
+    Object.entries(counts).forEach(([pid, n]) => {
+      shares[pid] = (slotCents * n) / 100;
+    });
+  } else { // 'round'
+    const slotCents = Math.round(totalCents / totalSlots);
+    Object.entries(counts).forEach(([pid, n]) => {
+      shares[pid] = (slotCents * n) / 100;
+    });
+  }
+
+  return shares;
+}
+
 function openBillingModal(ids) {
   const sessions = ids.map(id => (S.sessions || []).find(s => s.id === id)).filter(Boolean);
   if (!sessions.length) return;
   if (!sessions.some(s => Object.keys(sessionChargeMap(s)).length)) { showToast(t('session.billing_no_players')); return; }
-  billingModal = { ids: sessions.map(s => s.id), paid: {}, step: 1 };
+  
+  const totalPriceMap = {};
+  const payerMap = {};
+  sessions.forEach(s => {
+    const tot = billingSessionTotals(s);
+    totalPriceMap[s.id] = tot.sum;
+    payerMap[s.id] = 'team_abo'; // default
+  });
+
+  billingModal = { ids: sessions.map(s => s.id), paid: {}, totalPrice: totalPriceMap, payer: payerMap, step: 1 };
   renderBillingModal();
   openMo('mo-billing');
 }
@@ -2955,54 +3290,205 @@ function billingPlayerName(pid, n) {
   return esc(p ? p.name : '?') + guests;
 }
 
+function onBillingPriceInput(sid, val) {
+  const num = parseFloat(val);
+  billingModal.totalPrice[sid] = !isNaN(num) && num >= 0 ? num : 0;
+  updateBillingBlockLive(sid);
+}
+
+function onBillingPayerChange(sid, payerVal) {
+  billingModal.payer[sid] = payerVal;
+  updateBillingBlockLive(sid);
+}
+
+function getBillingPayerPlayerId(sid) {
+  const p = billingModal.payer ? billingModal.payer[sid] : null;
+  if (p && p.startsWith('player:')) return p.slice(7);
+  return null;
+}
+
+function updateBillingBlockLive(sid) {
+  const s = S.sessions.find(x => x.id === sid);
+  if (!s) return;
+  const tot = billingSessionTotals(s);
+  const curTot = billingModal.totalPrice[sid] !== undefined ? billingModal.totalPrice[sid] : tot.sum;
+  const rounding = S.cfg.billing_rounding || 'exact';
+  const paidByPid = getBillingPayerPlayerId(sid);
+  const shares = computeSessionSlotShares(curTot, tot.counts, rounding, paidByPid);
+
+  const slotCost = tot.slots > 0 ? (curTot / tot.slots) : 0;
+  const hintEl = document.getElementById(`billing-price-hint-${sid}`);
+  if (hintEl) {
+    hintEl.textContent = t('billing.per_slot_label', '÷ {slots} Slots = {cost} / Slot')
+      .replace('{slots}', tot.slots)
+      .replace('{cost}', fmtE(slotCost));
+  }
+  const sumEl = document.getElementById(`billing-summary-sum-${sid}`);
+  if (sumEl) {
+    sumEl.textContent = fmtE(curTot);
+  }
+
+  // Update rows in review list
+  Object.entries(tot.counts).forEach(([pid, n]) => {
+    const amtEl = document.getElementById(`billing-amt-${sid}-${pid}`);
+    if (amtEl) amtEl.textContent = fmtE(shares[pid] || 0);
+  });
+}
+
 function renderBillingModal() {
   const sessions = billingModal.ids.map(id => S.sessions.find(s => s.id === id)).filter(Boolean);
   const body = document.getElementById('mo-billing-body');
   const foot = document.getElementById('mo-billing-foot');
   document.getElementById('mo-billing-title').textContent = `${t('billing.title')} · ${billingModal.step}/2 ${billingModal.step === 1 ? t('billing.step_review') : t('billing.step_confirm')}`;
 
+  const rounding = S.cfg.billing_rounding || 'exact';
+
   if (billingModal.step === 1) {
     body.innerHTML = sessions.map(s => {
       const tot = billingSessionTotals(s);
-      const cost = getSessionCost(s);
-      const rows = Object.entries(tot.counts).map(([pid, n]) => `<tr>
-        <td>${billingPlayerName(pid, n)}</td>
-        <td style="text-align:center">${n}</td>
-        <td>${fmtE(cost * n)}</td>
-        <td style="text-align:center"><input type="checkbox" style="width:18px;height:18px;cursor:pointer" ${billingModal.paid[s.id + ':' + pid] ? 'checked' : ''} onchange="billingModal.paid['${s.id}:${pid}']=this.checked" aria-label="${esc(t('billing.direct_paid'))}"></td>
-      </tr>`).join('');
+      const curTot = billingModal.totalPrice[s.id] !== undefined ? billingModal.totalPrice[s.id] : tot.sum;
+      const payerVal = billingModal.payer[s.id] || 'team_abo';
+      const paidByPid = getBillingPayerPlayerId(s.id);
+      const shares = computeSessionSlotShares(curTot, tot.counts, rounding, paidByPid);
+      const slotCost = tot.slots > 0 ? (curTot / tot.slots) : 0;
+
+      // Build payer select
+      const activePlayers = (S.players || []).filter(p => p.active !== false);
+      const participantPids = Object.keys(tot.counts);
+      const sortedPlayers = [...activePlayers].sort((a, b) => {
+        const aPart = participantPids.includes(a.id);
+        const bPart = participantPids.includes(b.id);
+        if (aPart && !bPart) return -1;
+        if (!aPart && bPart) return 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      const payerOpts = [
+        `<option value="team_abo" ${payerVal === 'team_abo' ? 'selected' : ''}>${t('billing.paid_by_team_abo', 'Teamkasse · Abo (bereits erfasst)')}</option>`,
+        `<option value="team_single" ${payerVal === 'team_single' ? 'selected' : ''}>${t('billing.paid_by_team_single', 'Teamkasse · Einzelbuchung (neu als Ausgabe)')}</option>`,
+        `<optgroup label="${t('billing.paid_by_player_group', 'Auslage durch Spieler')}">`,
+        ...sortedPlayers.map(p => `<option value="player:${p.id}" ${payerVal === 'player:' + p.id ? 'selected' : ''}>${esc(p.name)}</option>`),
+        `</optgroup>`
+      ].join('');
+
+      const rows = Object.entries(tot.counts).map(([pid, n]) => {
+        const isPaid = !!billingModal.paid[s.id + ':' + pid];
+        const slotLabel = n > 1 ? `${n} Slots` : `1 Slot`;
+        return `
+          <div class="billing-p-row ${isPaid ? 'is-direct' : ''}" id="billing-p-row-${s.id}-${pid}">
+            <div class="billing-p-info">
+              <span class="billing-p-name">${billingPlayerName(pid, n)}</span>
+              <span class="billing-p-slots-badge">${slotLabel}</span>
+            </div>
+            <div class="billing-p-right">
+              <span class="billing-p-amt" id="billing-amt-${s.id}-${pid}">${fmtE(shares[pid] || 0)}</span>
+              <label class="billing-direct-toggle" title="${esc(t('billing.direct_paid_hint'))}">
+                <input type="checkbox" ${isPaid ? 'checked' : ''} onchange="billingModal.paid['${s.id}:${pid}']=this.checked;document.getElementById('billing-p-row-${s.id}-${pid}')?.classList.toggle('is-direct', this.checked)">
+                <span>${t('billing.direct_paid')}</span>
+              </label>
+            </div>
+          </div>
+        `;
+      }).join('');
+
       return `<details class="billing-block" ${sessions.length === 1 ? 'open' : ''}>
-        <summary><span>${esc(getSessionName(s))} · ${billingSessionHeader(s)}</span><span>${fmtE(tot.sum)}</span></summary>
-        <div class="tw"><table class="dt"><thead><tr><th>${t('billing.player')}</th><th style="text-align:center">${t('billing.slots')}</th><th>${t('billing.amount')}</th>
-          <th style="text-align:center" title="${esc(t('billing.direct_paid_hint'))}">${t('billing.direct_paid')} ⓘ</th></tr></thead><tbody>${rows}</tbody></table>
-        <button class="btn btn-sec btn-xs" style="margin:var(--sp2)" onclick="billingMarkAllPaid('${s.id}')">${t('billing.all_direct_paid')}</button></div>
+        <summary><span>${esc(getSessionName(s))} · ${billingSessionHeader(s)}</span><span id="billing-summary-sum-${s.id}">${fmtE(curTot)}</span></summary>
+        
+        <div class="billing-session-ctrls">
+          <div class="billing-ctrl-group">
+            <label class="fl billing-ctrl-label">
+              <i data-lucide="tag"></i>
+              <span>${t('billing.total_session_price', 'Session-Gesamtpreis')}</span>
+            </label>
+            <div class="billing-price-box">
+              <div class="billing-price-input-wrap">
+                <input type="number" class="fi billing-total-price-input" step="0.01" min="0" value="${curTot.toFixed(2)}" oninput="onBillingPriceInput('${s.id}', this.value)">
+                <span class="billing-price-cur">€</span>
+              </div>
+              <div class="billing-slot-badge" id="billing-price-hint-${s.id}">
+                ${t('billing.per_slot_label', '÷ {slots} Slots = {cost} / Slot').replace('{slots}', tot.slots).replace('{cost}', fmtE(slotCost))}
+              </div>
+            </div>
+          </div>
+          <div class="billing-ctrl-group">
+            <label class="fl billing-ctrl-label">
+              <i data-lucide="wallet"></i>
+              <span>${t('billing.paid_by', 'Bezahlt von')}</span>
+            </label>
+            <div class="billing-select-wrap">
+              <select class="fi billing-payer-select" onchange="onBillingPayerChange('${s.id}', this.value)">
+                ${payerOpts}
+              </select>
+              <i data-lucide="chevron-down" class="billing-select-arrow"></i>
+            </div>
+          </div>
+        </div>
+
+        <div style="padding:var(--sp3) var(--sp4)">
+          <div class="billing-review-list">${rows}</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:var(--sp2);flex-wrap:wrap;gap:var(--sp2)">
+            <button class="btn btn-sec btn-xs" onclick="billingMarkAllPaid('${s.id}')">${t('billing.all_direct_paid')}</button>
+          </div>
+        </div>
       </details>`;
-    }).join('') + `<p class="txxs txm">ⓘ ${t('billing.direct_paid_hint')}</p>`;
+    }).join('') + `<p class="txxs txm mt2">ⓘ ${t('billing.direct_paid_hint')}</p>`;
     foot.innerHTML = `<button class="btn btn-sec" onclick="closeMo('mo-billing')">${t('modal.cancel')}</button>
       <button class="btn btn-pri" onclick="billingModal.step=2;renderBillingModal()">${t('billing.next')}</button>`;
   } else {
     const per = {};
     let totalSlots = 0, totalDebit = 0, totalDirect = 0;
     sessions.forEach(s => {
-      const cost = getSessionCost(s);
-      Object.entries(sessionChargeMap(s)).forEach(([pid, n]) => {
-        per[pid] = per[pid] || { debit: 0, direct: 0 };
-        per[pid].debit += cost * n;
-        totalSlots += n; totalDebit += cost * n;
-        if (billingModal.paid[s.id + ':' + pid]) { per[pid].direct += cost * n; totalDirect += cost * n; }
+      const tot = billingSessionTotals(s);
+      const curTot = billingModal.totalPrice[s.id] !== undefined ? billingModal.totalPrice[s.id] : tot.sum;
+      const paidByPid = getBillingPayerPlayerId(s.id);
+      const shares = computeSessionSlotShares(curTot, tot.counts, rounding, paidByPid);
+
+      Object.entries(tot.counts).forEach(([pid, n]) => {
+        const amt = shares[pid] || 0;
+        per[pid] = per[pid] || { debit: 0, direct: 0, outlay: 0 };
+        per[pid].debit += amt;
+        totalSlots += n;
+        totalDebit += amt;
+        if (billingModal.paid[s.id + ':' + pid]) {
+          per[pid].direct += amt;
+          totalDirect += amt;
+        }
       });
+
+      // If outlay by player
+      if (paidByPid) {
+        per[paidByPid] = per[paidByPid] || { debit: 0, direct: 0, outlay: 0 };
+        per[paidByPid].outlay += curTot;
+      }
     });
+
     const rows = Object.entries(per).map(([pid, v]) => {
       const now = bal(pid);
-      const after = now - v.debit + v.direct;
-      return `<tr><td>${billingPlayerName(pid, 1)}</td>
-        <td>${fmtE(now)}</td>
-        <td>– ${fmtE(v.debit)}</td>
-        <td>${v.direct ? '+ ' + fmtE(v.direct) : '–'}</td>
-        <td class="${after < 0 ? 'billing-neg' : ''}" style="font-weight:700">${fmtE(after)}${after < 0 ? ` <span title="${esc(t('billing.negative_warning'))}">⚠</span>` : ''}</td></tr>`;
+      const after = now - v.debit + v.direct + v.outlay;
+      
+      const metaParts = [`${t('billing.debit')}: –${fmtE(v.debit)}`];
+      if (v.direct) metaParts.push(`${t('billing.direct')}: +${fmtE(v.direct)}`);
+      if (v.outlay) metaParts.push(`<span class="badge bg-pri" style="font-size:10px">+${fmtE(v.outlay)} ${t('billing.outlay_badge', 'Auslage')}</span>`);
+
+      return `
+        <div class="billing-delta-row">
+          <div class="billing-delta-top">
+            <span class="billing-delta-name">${billingPlayerName(pid, 1)}</span>
+            <div class="billing-delta-flow">
+              <span class="txm">${fmtE(now)}</span>
+              <span class="txm">→</span>
+              <span class="billing-delta-after ${after < 0 ? 'neg' : ''}">${fmtE(after)}${after < 0 ? ` <span title="${esc(t('billing.negative_warning'))}">⚠</span>` : ''}</span>
+            </div>
+          </div>
+          <div class="billing-delta-meta">
+            ${metaParts.join(' · ')}
+          </div>
+        </div>
+      `;
     }).join('');
-    body.innerHTML = `<p class="txsm txm mb4">${t('billing.summary_text').replace('{n}', sessions.length).replace('{slots}', totalSlots).replace('{sum}', fmtE(totalDebit)).replace('{direct}', fmtE(totalDirect))}</p>
-      <div class="tw"><table class="dt"><thead><tr><th>${t('billing.player')}</th><th>${t('billing.balance_now')}</th><th>${t('billing.debit')}</th><th>${t('billing.direct')}</th><th>${t('billing.balance_after')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+
+    body.innerHTML = `<p class="txsm txm mb3">${t('billing.summary_text').replace('{n}', sessions.length).replace('{slots}', totalSlots).replace('{sum}', fmtE(totalDebit)).replace('{direct}', fmtE(totalDirect))}</p>
+      <div class="billing-confirm-list">${rows}</div>`;
     foot.innerHTML = `<button class="btn btn-sec" onclick="billingModal.step=1;renderBillingModal()">${t('billing.back')}</button>
       <button class="btn btn-pri" onclick="doCharge()"><i data-lucide="credit-card"></i> ${t('billing.finish')}</button>`;
   }
@@ -3026,7 +3512,18 @@ async function doCharge() {
     const items = billingModal.ids.map(id => {
       const s = S.sessions.find(x => x.id === id);
       const pids = Object.keys(sessionChargeMap(s)).filter(pid => billingModal.paid[id + ':' + pid]);
-      return { id, paid_pids: pids };
+      const curTot = billingModal.totalPrice && billingModal.totalPrice[id] !== undefined ? billingModal.totalPrice[id] : null;
+      const payerVal = billingModal.payer ? billingModal.payer[id] : 'team_abo';
+      const paidByPlayerId = payerVal && payerVal.startsWith('player:') ? payerVal.slice(7) : null;
+      const recordTeamExpense = payerVal === 'team_single';
+
+      return {
+        id,
+        paid_pids: pids,
+        total_price: curTot,
+        paid_by_player_id: paidByPlayerId,
+        record_team_expense: recordTeamExpense
+      };
     });
     await apiFetch('POST', '/charge', { items });
     await loadState();
@@ -3060,56 +3557,78 @@ function revertBilling(id) {
 // ════════════════════════════════════════
 // ADMIN – PLAYERS
 // ════════════════════════════════════════
-let playersTab = 'list';
+let playersTab = 'manage';
 let playerBalanceFilter = 'all';
+let playerManageFilter = 'active';
 let expandedPlayerId = null;
+let expandedBalancePlayerId = null;
+let playerBalanceSearchQuery = '';
+let playerBalanceSortOption = 'name_asc';
 
 function setPlayersTab(tab) {
-  playersTab = tab === 'activity' ? 'activity' : 'list';
-  const btnList = document.getElementById('players-tab-list');
-  const btnAct = document.getElementById('players-tab-activity');
-  const pList = document.getElementById('players-panel-list');
-  const pAct = document.getElementById('players-panel-activity');
-  if (btnList) {
-    btnList.classList.toggle('active', playersTab === 'list');
-    btnList.setAttribute('aria-selected', playersTab === 'list' ? 'true' : 'false');
+  playersTab = (tab === 'balance' || tab === 'list') ? 'balance' : 'manage';
+  const btnManage = document.getElementById('players-tab-manage');
+  const btnBalance = document.getElementById('players-tab-balance');
+  const pManage = document.getElementById('players-panel-manage');
+  const pBalance = document.getElementById('players-panel-balance');
+  const headerAction = document.getElementById('players-header-action');
+
+  if (btnManage) {
+    btnManage.classList.toggle('active', playersTab === 'manage');
+    btnManage.setAttribute('aria-selected', playersTab === 'manage' ? 'true' : 'false');
   }
-  if (btnAct) {
-    btnAct.classList.toggle('active', playersTab === 'activity');
-    btnAct.setAttribute('aria-selected', playersTab === 'activity' ? 'true' : 'false');
+  if (btnBalance) {
+    btnBalance.classList.toggle('active', playersTab === 'balance');
+    btnBalance.setAttribute('aria-selected', playersTab === 'balance' ? 'true' : 'false');
   }
-  if (pList) pList.style.display = playersTab === 'list' ? '' : 'none';
-  if (pAct) pAct.style.display = playersTab === 'activity' ? '' : 'none';
-  if (playersTab === 'activity') renderPlayerActivityTable();
+  if (pManage) pManage.style.display = playersTab === 'manage' ? '' : 'none';
+  if (pBalance) pBalance.style.display = playersTab === 'balance' ? '' : 'none';
+
+  if (headerAction) {
+    if (playersTab === 'balance') {
+      headerAction.innerHTML = `<button class="btn btn-ok btn-sm" onclick="openTx()" type="button"><i data-lucide="plus-circle"></i> <span>${t('nav.quick_topup')}</span></button>`;
+    } else {
+      headerAction.innerHTML = `<button class="btn btn-ok btn-sm" onclick="openAddPlayer()" type="button"><i data-lucide="user-plus"></i> <span>${t('players.add')}</span></button>`;
+    }
+  }
+
+  if (playersTab === 'balance') {
+    renderPlayerBalances();
+  } else {
+    renderPlayers();
+  renderPlayerBalances();
+  }
   if (window.lucide) lucide.createIcons();
 }
 
 function openPlayersTab(tab) {
   setPlayersTab(tab);
   showView('players');
-  if (tab === 'activity') {
-    const navAct = document.getElementById('nav-activity');
-    const navPl = document.getElementById('nav-players');
-    if (navPl) navPl.classList.remove('active');
-    if (navAct) navAct.classList.add('active');
-  }
 }
 
 function setPlayerBalanceFilter(filter) {
   playerBalanceFilter = filter;
-  renderPlayers();
+  renderPlayerBalances();
   if (window.lucide) lucide.createIcons();
 }
 
 function togglePlayerDrawer(pid) {
   expandedPlayerId = expandedPlayerId === pid ? null : pid;
   renderPlayers();
+  renderPlayerBalances();
+  if (window.lucide) lucide.createIcons();
+}
+
+function togglePlayerBalanceDrawer(pid) {
+  expandedBalancePlayerId = expandedBalancePlayerId === pid ? null : pid;
+  renderPlayerBalances();
   if (window.lucide) lucide.createIcons();
 }
 
 function openPlayerFullHistory(pid) {
   const sel = document.getElementById('hist-filter');
   showView('history');
+  setFinDimension('players');
   if (sel) {
     sel.value = pid;
     renderHistory();
@@ -3119,15 +3638,30 @@ function openPlayerFullHistory(pid) {
 window.handlePlayerSearch = function(val) {
   playerSearchQuery = val;
   renderPlayers();
-  lucide.createIcons();
+  renderPlayerBalances();
+  if (window.lucide) lucide.createIcons();
 };
 
 window.handlePlayerSort = function(val) {
   playerSortOption = val;
   renderPlayers();
-  lucide.createIcons();
+  renderPlayerBalances();
+  if (window.lucide) lucide.createIcons();
 };
 
+window.handlePlayerBalanceSearch = function(val) {
+  playerBalanceSearchQuery = val;
+  renderPlayerBalances();
+  if (window.lucide) lucide.createIcons();
+};
+
+window.handlePlayerBalanceSort = function(val) {
+  playerBalanceSortOption = val;
+  renderPlayerBalances();
+  if (window.lucide) lucide.createIcons();
+};
+
+// TAB 1: VERWALTUNG & AKTIVITÄT
 function renderPlayers() {
   const g = document.getElementById('players-grid');
   if (!g) return;
@@ -3137,9 +3671,132 @@ function renderPlayers() {
   const sortSelect = document.getElementById('player-sort');
   if (sortSelect) sortSelect.value = playerSortOption;
 
-  const allActive = S.players.filter(p => p.active !== false);
+  const allActive = (S.players || []).filter(p => p.active !== false);
   let activePlayers = [...allActive];
-  const inactivePlayers = S.players.filter(p => p.active === false);
+  const inactivePlayers = (S.players || []).filter(p => p.active === false);
+
+  if (!activePlayers.length && !inactivePlayers.length) {
+    g.innerHTML = `<div class="empty" style="grid-column:1/-1"><i data-lucide="users"></i><h3>${t('players.no_players')}</h3><p>${t('players.add_first')}</p><button class="btn btn-pri" onclick="openAddPlayer()"><i data-lucide="user-plus"></i> ${t('players.add')}</button></div>`;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  if (playerSearchQuery) {
+    const query = playerSearchQuery.toLowerCase().trim();
+    activePlayers = activePlayers.filter(p => 
+      p.name.toLowerCase().includes(query) || 
+      (p.contact && p.contact.toLowerCase().includes(query))
+    );
+  }
+
+  activePlayers.sort((a, b) => {
+    switch (playerSortOption) {
+      case 'name_desc':
+        return b.name.localeCompare(a.name);
+      case 'name_asc':
+        return a.name.localeCompare(b.name);
+      case 'interaction_asc':
+        return (a.lastInteraction || '').localeCompare(b.lastInteraction || '');
+      case 'login_desc':
+        return (b.lastLogin || '').localeCompare(a.lastLogin || '');
+      case 'login_asc':
+        return (a.lastLogin || '').localeCompare(b.lastLogin || '');
+      case 'participation_desc': {
+        const pA = getLastParticipationDate(a.id) || '';
+        const pB = getLastParticipationDate(b.id) || '';
+        return pB.localeCompare(pA);
+      }
+      case 'participation_asc': {
+        const pA = getLastParticipationDate(a.id) || '';
+        const pB = getLastParticipationDate(b.id) || '';
+        return pA.localeCompare(pB);
+      }
+      case 'interaction_desc':
+      default:
+        return (b.lastInteraction || '').localeCompare(a.lastInteraction || '');
+    }
+  });
+
+  let html = activePlayers.map(p => {
+    const isExpanded = expandedPlayerId === p.id;
+    const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
+    const partDate = getLastParticipationDate(p.id);
+
+    let drawerHtml = '';
+    if (isExpanded) {
+      drawerHtml = `<div class="pc-drawer" onclick="event.stopPropagation()">
+        <div class="pc-drawer-actions">
+          <button class="btn btn-xs btn-sec" onclick="openEditPlayer('${p.id}')" type="button"><i data-lucide="pencil"></i> ${t('players.edit_short')}</button>
+          <button class="btn btn-xs btn-sec" onclick="openAdminSetPin('${p.id}')" type="button"><i data-lucide="key-round"></i> ${t('players.pin_short')}</button>
+          <button class="btn btn-xs btn-sec" onclick="openIconPickerModal('${p.id}')" type="button"><i data-lucide="smile"></i> ${t('players.icon_short')}</button>
+          <button class="btn btn-xs btn-dan" onclick="deletePlayer('${p.id}')" type="button"><i data-lucide="user-x"></i> ${t('players.deactivate')}</button>
+        </div>
+      </div>`;
+    }
+
+    return `<div class="pc ${isExpanded ? 'expanded' : ''}">
+      <div class="pc-row" onclick="togglePlayerDrawer('${p.id}')">
+        <div class="av pc-av" onclick="event.stopPropagation();openIconPickerModal('${p.id}')" title="${esc(t('players.icon_short'))}">
+          <i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>
+        </div>
+        <div class="pc-info">
+          <div class="pc-name">${esc(p.name)}${adminBadge}</div>
+          ${p.contact ? `<div class="pc-meta">${esc(p.contact)}</div>` : ''}
+        </div>
+        <div class="pc-right">
+          <span class="pc-chev ${isExpanded ? 'open' : ''}"><i data-lucide="chevron-down" style="width:16px;height:16px"></i></span>
+        </div>
+      </div>
+      <div class="act-metrics" style="margin-top:var(--sp2);cursor:pointer" onclick="togglePlayerDrawer('${p.id}')">
+        <div class="act-metric-item">
+          <span class="act-metric-lbl">${t('players.login_sort', 'Login')}</span>
+          <span class="act-metric-val">${p.lastLogin ? fmtDTS(p.lastLogin) : '–'}</span>
+        </div>
+        <div class="act-metric-item">
+          <span class="act-metric-lbl">${t('players.activity_sort', 'Aktivität')}</span>
+          <span class="act-metric-val">${p.lastInteraction ? fmtDTS(p.lastInteraction) : '–'}</span>
+        </div>
+        <div class="act-metric-item">
+          <span class="act-metric-lbl">${t('players.last_participation', 'Gespielt')}</span>
+          <span class="act-metric-val">${partDate ? fmtD(partDate) : '–'}</span>
+        </div>
+      </div>
+      ${drawerHtml}
+    </div>`;
+  }).join('');
+
+  if (inactivePlayers.length) {
+    html += `<hr style="margin:var(--sp5) 0;border:none;border-top:1px solid var(--b3);grid-column:1/-1"><div class="flex items-c just-b" style="margin-bottom:var(--sp3);grid-column:1/-1"><h3 style="margin:0;font-size:var(--text-sm);opacity:.6">${t('players.deleted')}</h3><span style="font-size:var(--text-xs);opacity:.4">${inactivePlayers.length} ${t('players.deleted_count')}</span></div>`;
+    html += inactivePlayers.map(p => {
+      const b = bal(p.id); const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
+      return `<div class="pc" style="opacity:.5;grid-column:1/-1">
+        <div class="pc-row">
+          <div class="av pc-av" style="opacity:.5"><i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i></div>
+          <div class="pc-info"><div class="pc-name">${esc(p.name)}</div><div class="pc-meta">${t('players.balance')}: <span class="${cls}">${fmtE(b)}</span></div></div>
+          <div class="pc-right">
+            <button class="btn btn-xs btn-ok" onclick="reactivatePlayer('${p.id}')" type="button"><i data-lucide="rotate-ccw"></i> ${t('players.reactivate')}</button>
+            <button class="btn btn-xs btn-dan" onclick="purgePlayer('${p.id}')" type="button"><i data-lucide="trash-2"></i> ${t('players.purge')}</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  g.innerHTML = html;
+}
+
+// TAB 2: GUTHABEN & TRANSAKTIONEN
+function renderPlayerBalances() {
+  const g = document.getElementById('players-balance-grid');
+  if (!g) return;
+
+  const searchInput = document.getElementById('player-balance-search');
+  if (searchInput) searchInput.value = playerBalanceSearchQuery;
+  const sortSelect = document.getElementById('player-balance-sort');
+  if (sortSelect) sortSelect.value = playerBalanceSortOption;
+
+  const allActive = (S.players || []).filter(p => p.active !== false);
+  let activePlayers = [...allActive];
 
   const pillsEl = document.getElementById('player-filter-pills');
   if (pillsEl) {
@@ -3152,8 +3809,9 @@ function renderPlayers() {
     `;
   }
 
-  if (!activePlayers.length && !inactivePlayers.length) {
+  if (!activePlayers.length) {
     g.innerHTML = `<div class="empty" style="grid-column:1/-1"><i data-lucide="users"></i><h3>${t('players.no_players')}</h3><p>${t('players.add_first')}</p><button class="btn btn-pri" onclick="openAddPlayer()"><i data-lucide="user-plus"></i> ${t('players.add')}</button></div>`;
+    if (window.lucide) lucide.createIcons();
     return;
   }
 
@@ -3163,8 +3821,8 @@ function renderPlayers() {
     activePlayers = activePlayers.filter(p => bal(p.id) > 0);
   }
 
-  if (playerSearchQuery) {
-    const query = playerSearchQuery.toLowerCase().trim();
+  if (playerBalanceSearchQuery) {
+    const query = playerBalanceSearchQuery.toLowerCase().trim();
     activePlayers = activePlayers.filter(p => 
       p.name.toLowerCase().includes(query) || 
       (p.contact && p.contact.toLowerCase().includes(query))
@@ -3173,15 +3831,15 @@ function renderPlayers() {
 
   activePlayers.sort((a, b) => {
     let valA, valB;
-    if (playerSortOption.startsWith('name')) {
+    if (playerBalanceSortOption.startsWith('name')) {
       valA = a.name.toLowerCase();
       valB = b.name.toLowerCase();
-      const asc = playerSortOption === 'name_asc';
+      const asc = playerBalanceSortOption === 'name_asc';
       return asc ? valA.localeCompare(valB) : valB.localeCompare(valA);
-    } else if (playerSortOption.startsWith('balance')) {
+    } else if (playerBalanceSortOption.startsWith('balance')) {
       valA = bal(a.id);
       valB = bal(b.id);
-      const asc = playerSortOption === 'balance_asc';
+      const asc = playerBalanceSortOption === 'balance_asc';
       return asc ? valA - valB : valB - valA;
     }
     return 0;
@@ -3190,12 +3848,10 @@ function renderPlayers() {
   let html = activePlayers.map(p => {
     const b = bal(p.id); 
     const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
-    const isExpanded = expandedPlayerId === p.id;
+    const isExpanded = expandedBalancePlayerId === p.id;
     const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
     const lastPart = getLastParticipationDate(p.id);
-    const metaStr = p.contact
-      ? esc(p.contact)
-      : (lastPart ? esc(t('players.last_played').replace('{date}', fmtD(lastPart))) : '');
+    const metaStr = lastPart ? esc(t('players.last_played').replace('{date}', fmtD(lastPart))) : '';
 
     let drawerHtml = '';
     if (isExpanded) {
@@ -3219,13 +3875,6 @@ function renderPlayers() {
         : `<div class="txxs txm">${t('transactions.no_transactions')}</div>`;
 
       drawerHtml = `<div class="pc-drawer" onclick="event.stopPropagation()">
-        <div class="pc-drawer-actions">
-          <button class="btn btn-xs btn-ok" onclick="openTx('${p.id}')" type="button"><i data-lucide="wallet"></i> ${t('players.charge')}</button>
-          <button class="btn btn-xs btn-sec" onclick="openEditPlayer('${p.id}')" type="button"><i data-lucide="pencil"></i> ${t('players.edit_short')}</button>
-          <button class="btn btn-xs btn-sec" onclick="openAdminSetPin('${p.id}')" type="button"><i data-lucide="key-round"></i> ${t('players.pin_short')}</button>
-          <button class="btn btn-xs btn-sec" onclick="openIconPickerModal('${p.id}')" type="button"><i data-lucide="smile"></i> ${t('players.icon_short')}</button>
-          <button class="btn btn-xs btn-dan" onclick="deletePlayer('${p.id}')" type="button"><i data-lucide="user-x"></i> ${t('players.deactivate')}</button>
-        </div>
         <div class="pc-drawer-history">
           <div class="pc-drawer-hist-head">
             <span class="label" style="font-size:10px">${t('players.recent_tx')}</span>
@@ -3237,8 +3886,8 @@ function renderPlayers() {
     }
 
     return `<div class="pc ${isExpanded ? 'expanded' : ''}">
-      <div class="pc-row" onclick="togglePlayerDrawer('${p.id}')">
-        <div class="av pc-av" onclick="event.stopPropagation();openIconPickerModal('${p.id}')" title="${esc(t('players.icon_short'))}">
+      <div class="pc-row" onclick="togglePlayerBalanceDrawer('${p.id}')">
+        <div class="av pc-av">
           <i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>
         </div>
         <div class="pc-info">
@@ -3247,7 +3896,7 @@ function renderPlayers() {
         </div>
         <div class="pc-right">
           <div class="pc-bal ${cls}">${fmtE(b)}</div>
-          <button class="btn btn-sm btn-ok pc-topup-btn" onclick="event.stopPropagation();openTx('${p.id}')" title="${esc(t('players.charge'))}" type="button">
+          <button class="btn btn-sm btn-sec pc-topup-btn" onclick="event.stopPropagation();openTx('${p.id}')" title="${esc(t('players.charge'))}" type="button">
             <i data-lucide="plus" style="width:15px;height:15px"></i>
           </button>
           <span class="pc-chev ${isExpanded ? 'open' : ''}"><i data-lucide="chevron-down" style="width:16px;height:16px"></i></span>
@@ -3256,23 +3905,6 @@ function renderPlayers() {
       ${drawerHtml}
     </div>`;
   }).join('');
-
-  if (inactivePlayers.length) {
-    html += `<hr style="margin:var(--sp5) 0;border:none;border-top:1px solid var(--b3);grid-column:1/-1"><div class="flex items-c just-b" style="margin-bottom:var(--sp3);grid-column:1/-1"><h3 style="margin:0;font-size:var(--text-sm);opacity:.6">${t('players.deleted')}</h3><span style="font-size:var(--text-xs);opacity:.4">${inactivePlayers.length} ${t('players.deleted_count')}</span></div>`;
-    html += inactivePlayers.map(p => {
-      const b = bal(p.id); const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
-      return `<div class="pc" style="opacity:.5;grid-column:1/-1">
-        <div class="pc-row">
-          <div class="av pc-av" style="opacity:.5"><i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i></div>
-          <div class="pc-info"><div class="pc-name">${esc(p.name)}</div><div class="pc-meta">${t('players.balance')}: <span class="${cls}">${fmtE(b)}</span></div></div>
-          <div class="pc-right">
-            <button class="btn btn-xs btn-pri" onclick="reactivatePlayer('${p.id}')" type="button"><i data-lucide="rotate-ccw"></i> ${t('players.reactivate')}</button>
-            <button class="btn btn-xs btn-dan" onclick="purgePlayer('${p.id}')" type="button"><i data-lucide="trash-2"></i> ${t('players.purge')}</button>
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-  }
 
   g.innerHTML = html;
 }
@@ -3740,17 +4372,18 @@ function calculateFutureRunway() {
 }
 
 function formatTxNotePlain(tx) {
-  if (!tx || !tx.note) return '';
+  if (!tx || !tx.note || tx.note === 'transactions.deposit') return '';
   const note = tx.note.trim();
-  const mPay = note.match(/^(?:Direct payment|Direktzahlung|Pago directo|Pagamento diretto|Paiement direct|Pagamento direto)\s+(\d{4}-\d{2}-\d{2})$/i);
+  const mPay = note.match(/^(?:Direct payment|Direktzahlung|Pago directo|Pagamento diretto|Paiement direct|Pagamento direto)\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]+\))?$/i);
   if (mPay) {
     const date = mPay[1];
     return t('transactions.direct_payment_for_session').replace('{session}', fmtD(date));
   }
-  const mSess = note.match(/^(?:Session|Spieltag|Sesión|Sessione|Sessão)\s+(\d{4}-\d{2}-\d{2})(?:\s*\(\+(\d+)\s+[a-zA-ZäöüßÄÖÜ]+\))?$/i);
+  const mSess = note.match(/^(?:Session|Spieltag|Sesión|Sessione|Sessão)\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]+\))*$/i);
   if (mSess) {
     const date = mSess[1];
-    const guests = mSess[2] ? parseInt(mSess[2], 10) : 0;
+    const guestMatch = note.match(/\(\+(\d+)\s+[a-zA-ZäöüßÄÖÜ]+\)/);
+    const guests = guestMatch ? parseInt(guestMatch[1], 10) : 0;
     let text = `${t('session.session')} ${fmtD(date)}`;
     if (guests > 0) {
       const label = guests > 1 ? t('my_history.guests') : t('session.guest');
@@ -3762,20 +4395,21 @@ function formatTxNotePlain(tx) {
 }
 
 function formatTxNoteHtml(tx) {
-  if (!tx || !tx.note) {
-    return esc(tx.credit ? t('transactions.credit_type') : t('session.session'));
+  if (!tx || !tx.note || tx.note === 'transactions.deposit') {
+    return esc(tx?.credit ? t('transactions.credit_type') : t('session.session'));
   }
   const note = tx.note.trim();
-  const mPay = note.match(/^(?:Direct payment|Direktzahlung|Pago directo|Pagamento diretto|Paiement direct|Pagamento direto)\s+(\d{4}-\d{2}-\d{2})$/i);
+  const mPay = note.match(/^(?:Direct payment|Direktzahlung|Pago directo|Pagamento diretto|Paiement direct|Pagamento direto)\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]+\))?$/i);
   if (mPay) {
     const date = mPay[1];
     const plainText = t('transactions.direct_payment_for_session').replace('{session}', fmtD(date));
     return esc(plainText);
   }
-  const mSess = note.match(/^(?:Session|Spieltag|Sesión|Sessione|Sessão)\s+(\d{4}-\d{2}-\d{2})(?:\s*\(\+(\d+)\s+[a-zA-ZäöüßÄÖÜ]+\))?$/i);
+  const mSess = note.match(/^(?:Session|Spieltag|Sesión|Sessione|Sessão)\s+(\d{4}-\d{2}-\d{2})(?:\s*\([^)]+\))*$/i);
   if (mSess) {
     const date = mSess[1];
-    const guests = mSess[2] ? parseInt(mSess[2], 10) : 0;
+    const guestMatch = note.match(/\(\+(\d+)\s+[a-zA-ZäöüßÄÖÜ]+\)/);
+    const guests = guestMatch ? parseInt(guestMatch[1], 10) : 0;
     let text = `${esc(t('session.session'))} ${esc(fmtD(date))}`;
     if (guests > 0) {
       const label = guests > 1 ? t('my_history.guests') : t('session.guest');
@@ -4326,9 +4960,79 @@ window.toggleSessionGroup = function(date) {
   }
 };
 
-let historyTypeFilter = 'all';
+let finDimension = 'team'; // 'team' | 'players'
+let teamFilter = 'all'; // 'all' | 'credits' | 'expenses'
+let historyTypeFilter = 'all'; // 'all' | 'credits' | 'debits'
+
+function syncFinDimensionUI() {
+  const isTeam = finDimension === 'team';
+
+  const tabTeam = document.getElementById('fin-tab-team');
+  const tabPlayers = document.getElementById('fin-tab-players');
+  if (tabTeam) {
+    tabTeam.classList.toggle('active', isTeam);
+    tabTeam.setAttribute('aria-selected', isTeam ? 'true' : 'false');
+  }
+  if (tabPlayers) {
+    tabPlayers.classList.toggle('active', !isTeam);
+    tabPlayers.setAttribute('aria-selected', !isTeam ? 'true' : 'false');
+  }
+
+  const subTitle = document.getElementById('fin-view-subtitle');
+  if (subTitle) {
+    subTitle.innerText = t(isTeam ? 'finances.subtitle_team' : 'finances.subtitle_players');
+  }
+
+  const teamTabs = document.getElementById('team-type-tabs');
+  const playerTabs = document.getElementById('history-type-tabs');
+  const rightControls = document.getElementById('fin-controls-right');
+  if (teamTabs) teamTabs.style.display = isTeam ? 'flex' : 'none';
+  if (playerTabs) playerTabs.style.display = !isTeam ? 'flex' : 'none';
+  if (rightControls) rightControls.style.display = !isTeam ? 'flex' : 'none';
+
+  const btnExp = document.getElementById('hist-btn-add-expense');
+  const btnTx = document.getElementById('hist-btn-add-tx');
+  if (btnExp) btnExp.style.display = '';
+  if (btnTx) btnTx.style.display = '';
+
+  const expContainer = document.getElementById('expenses-container');
+  const histList = document.getElementById('history-list');
+  if (expContainer) expContainer.style.display = isTeam ? 'flex' : 'none';
+  if (histList) histList.style.display = !isTeam ? 'flex' : 'none';
+}
+
+function setFinDimension(dim) {
+  finDimension = dim === 'players' ? 'players' : 'team';
+  syncFinDimensionUI();
+  renderKPIs();
+  renderHistory();
+  if (window.lucide) lucide.createIcons();
+}
+
+function setTeamFilter(filter) {
+  teamFilter = filter;
+  ['all', 'credits'].forEach(k => {
+    const btn = document.getElementById('hist-tab-team-' + k);
+    if (btn) {
+      const active = k === filter;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    }
+  });
+  const expBtn = document.getElementById('hist-tab-expenses');
+  if (expBtn) {
+    const active = filter === 'expenses';
+    expBtn.classList.toggle('active', active);
+    expBtn.setAttribute('aria-selected', active ? 'true' : 'false');
+  }
+  setFinDimension('team');
+}
 
 function setHistoryTypeFilter(type) {
+  if (type === 'expenses') {
+    setTeamFilter('expenses');
+    return;
+  }
   historyTypeFilter = type;
   ['all', 'credits', 'debits'].forEach(k => {
     const btn = document.getElementById('hist-tab-' + k);
@@ -4338,33 +5042,56 @@ function setHistoryTypeFilter(type) {
       btn.setAttribute('aria-selected', active ? 'true' : 'false');
     }
   });
-  renderHistory();
+  setFinDimension('players');
 }
 
 function renderHistory() {
+  syncFinDimensionUI();
+  const isTeam = finDimension === 'team';
+
   const sel = document.getElementById('hist-filter');
-  if (!sel) return; // Falls das Dropdown im HTML fehlt, brich hier sicher ab
+  const el = document.getElementById('history-list');
+  const expContainer = document.getElementById('expenses-container');
 
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">Alle Spieler</option>' + S.players.filter(p => p.active !== false).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
-  sel.value = cur;
+  // Always keep player filter options and counts up to date
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">${esc(t('players.csv_all'))}</option>` + S.players.filter(p => p.active !== false).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
+    sel.value = cur;
+  }
 
-  // KPIs passend zum aktuellen Filter aktualisieren
+  let baseTxs = [...(S.transactions || [])].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  if (sel && sel.value) baseTxs = baseTxs.filter(tx => tx.playerId === sel.value);
+
+  const cntHistAll = document.getElementById('fin-cnt-hist-all');
+  const cntHistCred = document.getElementById('fin-cnt-hist-credits');
+  const cntHistDeb = document.getElementById('fin-cnt-hist-debits');
+  const credCount = baseTxs.filter(tx => tx.credit).length;
+  const debCount = baseTxs.filter(tx => !tx.credit).length;
+  if (cntHistAll) cntHistAll.textContent = baseTxs.length;
+  if (cntHistCred) cntHistCred.textContent = credCount;
+  if (cntHistDeb) cntHistDeb.textContent = debCount;
+
+  if (isTeam) {
+    if (expContainer) renderExpenses();
+    renderKPIs();
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
   renderKPIs();
 
-  let txs = [...S.transactions].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  if (sel.value) txs = txs.filter(t => t.playerId === sel.value);
+  let txs = baseTxs;
   if (historyTypeFilter === 'credits') {
-    txs = txs.filter(t => t.credit);
+    txs = txs.filter(tx => tx.credit);
   } else if (historyTypeFilter === 'debits') {
-    txs = txs.filter(t => !t.credit);
+    txs = txs.filter(tx => !tx.credit);
   }
   
-  const el = document.getElementById('history-list');
   if (!el) return;
 
   if (!txs.length) { 
-    el.innerHTML = `<div class="empty"><i data-lucide="clock"></i><h3>Keine Transaktionen</h3><p>Noch keine Buchungen vorhanden.</p></div>`; 
+    el.innerHTML = `<div class="empty"><i data-lucide="clock"></i><h3>${esc(t('history.no_transactions'))}</h3></div>`; 
     lucide.createIcons();
     return; 
   }
@@ -4402,14 +5129,15 @@ function renderHistory() {
   // Combine and sort chronologically descending
   const combined = [
     ...Object.values(sessionGroups).map(g => ({ isGroup: true, date: g.date, data: g, timestamp: g.timestamp })),
-    ...manualTxs.map(t => ({ isGroup: false, date: t.date, data: t, timestamp: t.createdAt || (t.date + 'T00:00:00') }))
+    ...manualTxs.map(tx => ({ isGroup: false, date: tx.date, data: tx, timestamp: tx.createdAt || (tx.date + 'T00:00:00') }))
   ].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
+  const loc = getLocale();
   el.className = 'history-list';
   el.innerHTML = combined.map(item => {
     const dObj = new Date(item.date + 'T00:00:00');
-    const monthStr = dObj.toLocaleDateString('de-DE', { month: 'short' }).toUpperCase().replace('.', '');
-    const dayNum = dObj.toLocaleDateString('de-DE', { day: 'numeric' });
+    const monthStr = dObj.toLocaleDateString(loc, { month: 'short' }).toUpperCase().replace('.', '');
+    const dayNum = dObj.toLocaleDateString(loc, { day: 'numeric' });
 
     if (item.isGroup) {
       const group = item.data;
@@ -4418,51 +5146,53 @@ function renderHistory() {
       const hasCredits = group.totalCredits > 0;
       let groupAmtHtml = '';
       if (hasDebits && hasCredits) {
-        groupAmtHtml = `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
-          <div class="expense-card-amount db" style="color:var(--err)">– ${fmtE(group.totalAmount)}</div>
-          <div class="expense-card-amount cr" style="color:var(--suc);font-size:10px">+ ${fmtE(group.totalCredits)}</div>
+        groupAmtHtml = `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:1px">
+          <div class="expense-card-amount db">– ${fmtE(group.totalAmount)}</div>
+          <div class="expense-card-amount cr" style="font-size:10px">+ ${fmtE(group.totalCredits)}</div>
         </div>`;
       } else if (hasDebits) {
-        groupAmtHtml = `<div class="expense-card-amount db" style="color:var(--err)">– ${fmtE(group.totalAmount)}</div>`;
+        groupAmtHtml = `<div class="expense-card-amount db">– ${fmtE(group.totalAmount)}</div>`;
       } else {
-        groupAmtHtml = `<div class="expense-card-amount cr" style="color:var(--suc)">+ ${fmtE(group.totalCredits)}</div>`;
+        groupAmtHtml = `<div class="expense-card-amount cr">+ ${fmtE(group.totalCredits)}</div>`;
       }
       
+      const debitPlayersCount = group.transactions.filter(tx => !tx.credit).length;
+      const directCount = group.transactions.filter(tx => tx.credit).length;
+      const metaParts = [];
+      if (debitPlayersCount) metaParts.push(`${debitPlayersCount} ${t('view.players')}`);
+      if (directCount) metaParts.push(`${directCount} ${t('billing.direct_paid')}`);
+
       return `<div class="grouped-session-card ${isExpanded ? 'expanded' : ''}" id="group-card-${group.date}">
-        <div class="grouped-session-header" onclick="toggleSessionGroup('${group.date}')" style="padding: var(--sp4) var(--sp5); display: flex; align-items: center; gap: var(--sp4);">
-          <div class="expense-date-badge" style="background: var(--suroff); border: 1px solid oklch(from var(--tx) l c h / .10);">
-            <div class="month" style="background: var(--pri); color: #fff;">${esc(monthStr)}</div>
+        <div class="grouped-session-header" onclick="toggleSessionGroup('${group.date}')">
+          <div class="expense-date-badge">
+            <div class="month">${esc(monthStr)}</div>
             <div class="day">${esc(dayNum)}</div>
           </div>
-          <div class="expense-card-details" style="flex: 1; display: flex; flex-direction: column; gap: 3px; text-align: left;">
-            <div class="expense-card-note" style="display: flex; align-items: center; gap: var(--sp2);">
-              <i data-lucide="clipboard-list" style="width: 16px; height: 16px; color: var(--pri); flex-shrink: 0;"></i>
-              <span>Abrechnung Session ${fmtD(group.date)}</span>
+          <div class="expense-card-details">
+            <div class="expense-card-note">
+              <span>${esc(t('session.session'))} ${fmtD(group.date)}</span>
+              <span class="badge bg-neu" style="font-size:10px;padding:1px 6px">${esc(t('transactions.debit_type'))}</span>
             </div>
-            <div class="expense-card-meta">
-              ${group.transactions.filter(t => !t.credit).length ? `<span>${group.transactions.filter(t => !t.credit).length} Spieler</span>` : ''}
-              ${group.transactions.filter(t => !t.credit).length && group.transactions.filter(t => t.credit).length ? `<span>·</span>` : ''}
-              ${group.transactions.filter(t => t.credit).length ? `<span>${group.transactions.filter(t => t.credit).length} Barzahler</span>` : ''}
-            </div>
+            <div class="expense-card-meta">${esc(metaParts.join(' · '))}</div>
           </div>
-          <div class="expense-card-right" style="flex-direction: row; align-items: center; gap: var(--sp3);">
+          <div class="expense-card-right">
             ${groupAmtHtml}
-            <div class="grouped-session-toggle" style="color: var(--txm);"><i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i></div>
+            <div class="grouped-session-toggle"><i data-lucide="chevron-down" style="width:16px;height:16px"></i></div>
           </div>
         </div>
         <div class="grouped-session-details">
           <div class="grouped-session-list">
-            ${group.transactions.map(t => {
-              const tp = t.playerId === '_deleted_' ? null : S.players.find(x => x.id === t.playerId);
+            ${group.transactions.map(tx => {
+              const tp = tx.playerId === '_deleted_' ? null : S.players.find(x => x.id === tx.playerId);
               const tpname = tp ? esc(tp.name) : t('misc.deleted');
               return `<div class="grouped-session-row">
                 <div class="grouped-session-player">
-                  <i data-lucide="${t.credit ? 'arrow-up-right' : 'arrow-down-left'}" style="width: 14px; height: 14px; color: ${t.credit ? 'var(--pri)' : 'var(--txm)'}; flex-shrink: 0;"></i>
-                  <span>${tpname} <span style="font-size: 10px; color: var(--txm); font-weight: normal;">(${t.credit ? 'Barzahlung' : 'Abbuchung'})</span></span>
+                  <i data-lucide="${tx.credit ? 'arrow-up-right' : 'arrow-down-left'}" style="width:13px;height:13px;color:${tx.credit ? 'var(--suc)' : 'var(--txm)'};flex-shrink:0"></i>
+                  <span>${tpname} <span style="font-size:10px;color:var(--txm);font-weight:normal">(${esc(tx.credit ? t('billing.direct_paid') : t('transactions.debit_type'))})</span></span>
                 </div>
                 <div class="grouped-session-row-right">
-                  <span class="grouped-session-row-amount ${t.credit ? 'cr' : 'db'}">${t.credit ? '+' : '–'} ${fmtE(t.amount)}</span>
-                  ${isAdmin ? `<button class="btn btn-xs btn-sec" onclick="openEditTx('${t.id}')" style="padding: 2px 6px; min-height: 24px; display: flex; align-items: center; justify-content: center;"><i data-lucide="pencil" style="width: 10px; height: 10px;"></i></button>` : ''}
+                  <span class="grouped-session-row-amount ${tx.credit ? 'cr' : 'db'}">${tx.credit ? '+' : '–'} ${fmtE(tx.amount)}</span>
+                  ${isAdmin ? `<button class="btn btn-xs btn-sec" onclick="openEditTx('${tx.id}')" type="button" style="padding:2px 6px;min-height:24px"><i data-lucide="pencil" style="width:10px;height:10px"></i></button>` : ''}
                 </div>
               </div>`;
             }).join('')}
@@ -4474,6 +5204,9 @@ function renderHistory() {
       const p = tx.playerId === '_deleted_' ? null : S.players.find(x => x.id === tx.playerId);
       const pname = p ? esc(p.name) : t('misc.deleted');
       const textType = tx.credit ? t('transactions.credit_type') : t('transactions.debit_type');
+      const plainNote = formatTxNotePlain(tx);
+      const isDefaultNote = !plainNote || plainNote.toLowerCase() === textType.toLowerCase();
+      const metaStr = isDefaultNote ? fmtD(tx.date) : `${fmtD(tx.date)} · ${esc(plainNote)}`;
       
       return `<div class="history-card">
         <div class="expense-date-badge">
@@ -4481,16 +5214,19 @@ function renderHistory() {
           <div class="day">${esc(dayNum)}</div>
         </div>
         <div class="history-card-details">
-          <div class="history-card-note">${pname}</div>
-          <div class="history-card-meta">${tx.note ? esc(tx.note) : textType}</div>
+          <div class="history-card-note">
+            <span>${pname}</span>
+            <span class="badge ${tx.credit ? 'bg-ok' : 'bg-err'}" style="font-size:10px;padding:1px 6px">${esc(textType)}</span>
+          </div>
+          <div class="history-card-meta">${metaStr}</div>
         </div>
-        <div class="history-card-right" style="flex-direction: row; align-items: center; gap: var(--sp3);">
-          <div class="expense-card-amount ${tx.credit ? 'cr' : 'db'}" style="font-size: 1.1rem; font-weight: 750; color: var(${tx.credit ? '--suc' : '--err'}); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap;">
+        <div class="history-card-right">
+          <div class="expense-card-amount ${tx.credit ? 'cr' : 'db'}">
             ${tx.credit ? '+' : '–'} ${fmtE(tx.amount)}
           </div>
           ${isAdmin ? `
             <div class="history-card-actions">
-              <button class="btn btn-sec btn-sm" onclick="openEditTx('${tx.id}')" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
+              <button class="btn btn-sec btn-sm fin-act-btn" onclick="openEditTx('${tx.id}')" type="button" title="${esc(t('common.edit', 'Bearbeiten'))}"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
             </div>
           ` : ''}
         </div>
@@ -4503,11 +5239,46 @@ function renderHistory() {
 
 // ════════════════════════════════════════
 // SETTINGS
-// ══════════════════════════════════════
-function syncSettings() {
+// ════════════════════════════════════════
+let settingsTab = 'general';
+
+function setSettingsTab(tab) {
+  settingsTab = tab === 'sessions' ? 'sessions' : tab === 'backup' ? 'backup' : 'general';
+  const btnGen = document.getElementById('settings-tab-general');
+  const btnSess = document.getElementById('settings-tab-sessions');
+  const btnBack = document.getElementById('settings-tab-backup');
+  const pGen = document.getElementById('settings-panel-general');
+  const pSess = document.getElementById('settings-panel-sessions');
+  const pBack = document.getElementById('settings-panel-backup');
+
+  if (btnGen) {
+    btnGen.classList.toggle('active', settingsTab === 'general');
+    btnGen.setAttribute('aria-selected', settingsTab === 'general');
+  }
+  if (btnSess) {
+    btnSess.classList.toggle('active', settingsTab === 'sessions');
+    btnSess.setAttribute('aria-selected', settingsTab === 'sessions');
+  }
+  if (btnBack) {
+    btnBack.classList.toggle('active', settingsTab === 'backup');
+    btnBack.setAttribute('aria-selected', settingsTab === 'backup');
+  }
+  if (pGen) pGen.style.display = settingsTab === 'general' ? '' : 'none';
+  if (pSess) pSess.style.display = settingsTab === 'sessions' ? '' : 'none';
+  if (pBack) pBack.style.display = settingsTab === 'backup' ? '' : 'none';
+
+  if (window.lucide) lucide.createIcons();
+}
+
+function syncSettings(force = false) {
+    const settingsView = document.getElementById('view-settings');
+    const isSettingsActive = settingsView && settingsView.classList.contains('active');
+    if (!force && isSettingsActive && document.activeElement && settingsView.contains(document.activeElement)) {
+        return; // Don't disrupt active user editing
+    }
     const setVal = (id, val) => {
         const el = document.getElementById(id);
-        if (el) el.value = val;
+        if (el && (force || document.activeElement !== el)) el.value = val;
     };
     setVal('s-weeks',  S.cfg.weeks);
 
@@ -4521,11 +5292,16 @@ function syncSettings() {
     setVal('sr-currency',   S.cfg.currency       || '€');
     setVal('sr-courts',     S.cfg.courts         || 2);
     setVal('sr-location',   S.cfg.srlocation     || '');
+    const costCur = document.getElementById('settings-cost-currency');
+    if (costCur) costCur.textContent = S.cfg.currency || '€';
+
     const sysEnabled = document.getElementById('sys-series-enabled');
     if (sysEnabled) sysEnabled.checked = S.cfg.sr_enabled !== '0';
 
     const dispCourt = document.getElementById('disp-court-grouping');
     if (dispCourt) dispCourt.checked = S.cfg.display_court_grouping !== '0';
+    const sysRounding = document.getElementById('sys-billing-rounding');
+    if (sysRounding) sysRounding.value = S.cfg.billing_rounding || 'exact';
     const privMode = document.getElementById('disp-privacy-mode');
     if (privMode) privMode.checked = S.cfg.privacy_mode === '1';
     const totalPrivMode = document.getElementById('disp-total-privacy-mode');
@@ -4569,34 +5345,95 @@ function syncSettings() {
     }
 }
 
-async function saveSystemSettings() {
-    const hoursRaw = document.getElementById('sys-cancel-hours').value;
-    const minutesRaw = document.getElementById('sys-cancel-minutes').value;
+let _settingsSaveTimeout = null;
+let _settingsBadgeTimeout = null;
+
+function settingsAutoSaveDebounced() {
+  if (_settingsSaveTimeout) clearTimeout(_settingsSaveTimeout);
+  _settingsSaveTimeout = setTimeout(() => {
+    settingsAutoSave();
+  }, 450);
+}
+
+async function settingsAutoSave() {
+  if (_settingsSaveTimeout) {
+    clearTimeout(_settingsSaveTimeout);
+    _settingsSaveTimeout = null;
+  }
+  await saveSettings(true);
+}
+
+function stepNumber(id, delta, min = 1, max = 20) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  let val = parseInt(el.value, 10) || min;
+  val = Math.max(min, Math.min(max, val + delta));
+  el.value = val;
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function stepCost(delta) {
+  const el = document.getElementById('sr-cost');
+  if (!el) return;
+  let val = parseFloat(el.value) || 16;
+  val = Math.max(1, Math.min(999, Math.round((val + delta) * 2) / 2));
+  el.value = val;
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+async function saveSettings(silent = false) {
+    const hoursRaw = document.getElementById('sys-cancel-hours')?.value;
+    const minutesRaw = document.getElementById('sys-cancel-minutes')?.value;
     const h = parseInt(hoursRaw, 10) || 0;
     const m = parseInt(minutesRaw, 10) || 0;
     const cancelHours = Math.max(0, Math.min(240, h + m / 60));
     const costVal = parseFloat(document.getElementById('sr-cost')?.value);
     const courtsVal = parseInt(document.getElementById('sr-courts')?.value, 10);
     const settings = {
-        sr_enabled: document.getElementById('sys-series-enabled').checked ? '1' : '0',
+        sr_enabled: document.getElementById('sys-series-enabled')?.checked ? '1' : '0',
         cancel_hours: String(cancelHours),
-        team_name: document.getElementById('disp-team-name').value.trim(),
+        team_name: document.getElementById('disp-team-name')?.value.trim() || '',
         auto_compact_slots: document.getElementById('sys-auto-compact-slots')?.checked ? '1' : '0',
         cost: !isNaN(costVal) && costVal >= 0 ? costVal : 16,
         courts: !isNaN(courtsVal) && courtsVal >= 1 ? courtsVal : 2,
+        billing_rounding: document.getElementById('sys-billing-rounding')?.value || 'exact',
+        display_court_grouping: document.getElementById('disp-court-grouping')?.checked ? '1' : '0',
+        privacy_mode: document.getElementById('disp-privacy-mode')?.checked ? '1' : '0',
+        total_privacy_mode: document.getElementById('disp-total-privacy-mode')?.checked ? '1' : '0',
+        show_cancel_deadline: document.getElementById('disp-show-cancel-deadline')?.checked ? '1' : '0',
+        currency: document.getElementById('sr-currency')?.value.trim() || '€',
+        system_language: document.getElementById('sys-language')?.value || '',
+        time_format: document.getElementById('disp-time-format')?.value || '24h',
+        date_format: document.getElementById('disp-date-format')?.value || 'dmy',
     };
     try {
         await apiFetch('PUT', '/config', settings);
         await loadState();
         applyTeamName();
+        applyTranslations();
         applyRole();
         window._lastSessionHash = null;
         if (typeof renderSessions === 'function') renderSessions();
-        if (isAdmin && typeof renderAll === 'function') renderAll();
-        showToast('Einstellungen gespeichert.');
+        if (isAdmin && typeof renderBilling === 'function') renderBilling();
+
+        const badge = document.getElementById('settings-save-pill');
+        if (badge) {
+          badge.classList.add('show');
+          if (_settingsBadgeTimeout) clearTimeout(_settingsBadgeTimeout);
+          _settingsBadgeTimeout = setTimeout(() => {
+            badge.classList.remove('show');
+          }, 1800);
+        }
+        if (!silent) {
+          showToast(t('settings.saved', 'Einstellungen gespeichert.'));
+        }
     } catch(e) {
-        showToast(t('toast.series_save_error').replace('{msg}', e.message));
+        showToast('⚠️ ' + (e.message || t('misc.save_failed', 'Speichern fehlgeschlagen.')));
     }
+}
+
+async function saveSystemSettings() {
+    return saveSettings();
 }
 
 // ════════════════════════════════════════
@@ -4615,21 +5452,31 @@ function renderSeries() {
     const priceLabel = s.price !== null && s.price !== undefined ? `${fmtE(s.price)} ${t('session.per_slot')}` : t('session.default_price');
     const cancelLabel = s.cancelHours !== null && s.cancelHours !== undefined ? ` · Abmeldung bis ${formatCancelHours(s.cancelHours)} vorher` : '';
     const courtNamesLabel = s.courtNames && s.courtNames.length ? ` · Courts: ${s.courtNames.join(', ')}` : '';
-    return `<div class="card mb3">
-      <div class="flex items-c just-b">
-        <div class="flex items-c g2">
-          <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleSeriesEnabled(${s.id}, this.checked)" style="width:20px;height:20px;cursor:pointer">
-          <strong>${esc(s.name || 'Unbenannt')}</strong>
+    return `<div class="card mb3" style="position:relative">
+      <div class="flex items-c just-b g3" style="margin-bottom:var(--sp2)">
+        <div style="min-width:0;flex:1">
+          <div class="flex items-c g2" style="flex-wrap:wrap">
+            <strong style="font-size:var(--text-base)">${esc(s.name || 'Unbenannt')}</strong>
+            <span class="status-pill ${s.enabled ? 'st-open' : 'st-cancelled'}" style="font-size:11px;padding:2px 8px">
+              ${s.enabled ? t('series.auto_gen_active') : t('series.auto_gen_paused')}
+            </span>
+          </div>
+          <div class="txxs txm" style="margin-top:3px">
+            ${s.enabled ? t('series.auto_gen_active_desc') : t('series.auto_gen_paused_desc')}
+          </div>
         </div>
-        <span class="badge ${s.enabled ? 'bg-ok' : 'bg-m'}">${s.enabled ? t('series.active', 'Aktiv') : t('series.inactive', 'Inaktiv')}</span>
+        <label class="switch" style="flex-shrink:0" title="${s.enabled ? t('series.auto_gen_active') : t('series.auto_gen_paused')}">
+          <input type="checkbox" ${s.enabled ? 'checked' : ''} onchange="toggleSeriesEnabled(${s.id}, this.checked)">
+          <span class="switch-slider"></span>
+        </label>
       </div>
-      <div class="txsm txm" style="margin-top:8px">
+      <div class="txsm txm" style="margin-top:8px;padding-top:8px;border-top:1px solid oklch(from var(--tx) l c h / .07)">
         <div>${days} · ${s.timeStart}–${s.timeEnd} · ${s.courts} ${t('session.court_s', 'Court(s)')}${courtNamesLabel} · ${t('series.occurrences_count', '{count} Termine').replace('{count}', s.occurrences)}${cancelLabel}</div>
         <div>${priceLabel}${s.location ? ' · ' + esc(s.location) : ''}</div>
       </div>
       <div class="flex g2 items-c" style="margin-top:var(--sp3)">
         <button class="btn btn-sec btn-sm" onclick="openSeriesEdit(${s.id})"><i data-lucide="pencil" style="width:14px;height:14px"></i> ${t('series.edit')}</button>
-        <button class="btn btn-dan btn-sm" onclick="deleteSeries(${s.id})"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
+        <button class="btn btn-dan btn-sm fin-act-btn" onclick="deleteSeries(${s.id})"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
       </div>
     </div>`;
   }).join('');
@@ -4771,8 +5618,12 @@ const DD_LABELS = {'admin-plan':'nav.session_plan','players':'nav.players','expe
 function showView(name) {
   closeMobileAdminMenu();
   if (name === 'dashboard') name = 'history';
+  if (name === 'expenses') {
+    setHistoryTypeFilter('expenses');
+    name = 'history';
+  }
   // NEU: Sicherheits-Check
-  const adminViews = ['admin-plan', 'players', 'expenses', 'billing', 'history', 'series', 'settings', 'backup'];
+  const adminViews = ['admin-plan', 'players', 'billing', 'history', 'series', 'settings', 'backup'];
   if (adminViews.includes(name) && !isAdmin) {
     name = 'sessions'; // Falls kein Admin, leite um auf Spieltage
   } // <--- DIESE KLAMMER HAT GEFEHLT!
@@ -4785,6 +5636,8 @@ function showView(name) {
 
     if (inSwipe) {
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+      var targetView = document.getElementById('view-' + name);
+      if (targetView) targetView.classList.add('active');
       document.querySelectorAll('.nav-btn, .nav-dd-item, .nav-dropdown-trigger').forEach(function(b) { b.classList.remove('active'); });
       const idx = SWIPE_VIEWS.indexOf(name);
       if (idx >= 0) updateSwipePosition(idx, true);
@@ -4809,10 +5662,26 @@ function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.querySelectorAll('.nav-btn, .nav-dd-item, .nav-dropdown-trigger').forEach(b => b.classList.remove('active'));
 
+  if (name === 'backup') {
+    showView('settings');
+    setSettingsTab('backup');
+    return;
+  }
+  if (name === 'players') {
+    renderPlayers();
+  renderPlayerBalances();
+  }
   const v = document.getElementById('view-' + name);
   if (v) v.classList.add('active');
   
   window.scrollTo(0, 0);
+  document.documentElement.scrollTop = 0;
+  document.body.scrollTop = 0;
+  requestAnimationFrame(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  });
   
   const nb = document.getElementById('nav-' + name);
   if (nb) nb.classList.add('active');
@@ -4840,6 +5709,15 @@ function showView(name) {
   if (name === 'admin-plan') {
     _planStripAnimateNext = true;
     renderAdminPlan();
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    }, 50);
+  }
+  if (name === 'settings') {
+    syncSettings();
+    setSettingsTab(settingsTab);
   }
   
   lucide.createIcons();
@@ -5508,7 +6386,10 @@ checkIOSInstallBanner();
     controller: !!navigator.serviceWorker?.controller
   });
   checkFirstSetup();
-  window.addEventListener('scroll', closeMobileAdminMenu, { passive: true });
+  window.addEventListener('scroll', () => {
+    // Only close if user actually scrolled away from top
+    if (window.scrollY > 30) closeMobileAdminMenu();
+  }, { passive: true });
   if (!guestId) setTimeout(openWelcomeModal, 350);
 
   // Simple polling for live refresh
@@ -5574,59 +6455,6 @@ async function adminDoAddWl(date, pid) {
 }
 
 
-let _planDetailChanges = {};
-
-function planDetailChange(field, value) {
-  _planDetailChanges[field] = value;
-}
-
-async function savePlanDetails() {
-  if (Object.keys(_planDetailChanges).length === 0) {
-    showToast('Keine Änderungen.');
-    return;
-  }
-
-  try {
-    const updates = {};
-    if (_planDetailChanges.date) {
-      updates.newDate = _planDetailChanges.date;
-    }
-    if (_planDetailChanges.timeStart) updates.timeStart = _planDetailChanges.timeStart;
-    if (_planDetailChanges.timeEnd) updates.timeEnd = _planDetailChanges.timeEnd;
-    if (_planDetailChanges.note !== undefined) updates.note = _planDetailChanges.note;
-    if (_planDetailChanges.location !== undefined) updates.location = _planDetailChanges.location;
-    if (_planDetailChanges.price !== undefined) {
-      updates.price = _planDetailChanges.price === '' ? null : parseFloat(_planDetailChanges.price);
-    }
-    if (_planDetailChanges.cancelHours !== undefined) {
-      updates.cancelHours = _planDetailChanges.cancelHours === null ? null : _planDetailChanges.cancelHours;
-    }
-    if (_planDetailChanges.name !== undefined) {
-      updates.name = _planDetailChanges.name === '' ? null : _planDetailChanges.name;
-    }
-    if (_planDetailChanges.courtNames !== undefined) {
-      updates.courtNames = _planDetailChanges.courtNames;
-    }
-
-    const sess = getOrSess(planDate);
-    const targetId = sess?.id || planDate;
-    const res = await apiFetch('PUT', '/sessions/' + targetId, updates);
-    await loadState();
-    _planDetailChanges = {};
-
-    if (res && res.id) {
-      planDate = res.id;
-    }
-    renderAdminPlan();
-    renderSessions();
-    lucide.createIcons();
-    showToast('Änderungen gespeichert.');
-  } catch(e) {
-    showToast(e.message || t('misc.save_failed'));
-  }
-}
-
-
 // ════════════════════════════════════════
 // TEAM RANDOMIZER
 // ════════════════════════════════════════
@@ -5642,19 +6470,37 @@ function shuffleTeams() {
   const sess = S.sessions.find(s => s.id === _teamDate || s.date === _teamDate);
   if (!sess) return;
 
+  const body = document.getElementById('mo-teams-body');
+  if (!body) return;
+
   // Collect all players in session (including guests)
   const playerIds = sess.courts.flat().filter(Boolean);
+  if (playerIds.length === 0) {
+    body.innerHTML = `<p class="txsm txm" style="text-align:center;padding:var(--sp6) 0">${t('teams.no_players')}</p>`;
+    return;
+  }
+
   // Shuffle
   const shuffled = [...playerIds].sort(() => Math.random() - 0.5);
 
-  // Group into courts (4 players each = 2 teams of 2)
-  const courts = sess.courts.filter((_, i) => !sess.disabledCourts.includes(i));
-  const numCourts = Math.min(courts.length, Math.floor(shuffled.length / 2));
+  // Active courts (not disabled)
+  const activeCourtIndices = sess.courts
+    .map((_, i) => i)
+    .filter(i => !sess.disabledCourts.includes(i));
 
-  // Distribute players across courts evenly
-  const distributed = Array.from({length: numCourts}, () => []);
-  shuffled.forEach((pid, i) => {
-    if (i < numCourts * 4) distributed[i % numCourts].push(pid);
+  // Determine how many courts we can fill (up to 4 players per court)
+  let numCourts = 1;
+  if (shuffled.length >= 4) {
+    numCourts = Math.min(activeCourtIndices.length, Math.floor(shuffled.length / 4));
+  }
+  const playingCount = Math.min(shuffled.length, numCourts * 4);
+  const activePlayers = shuffled.slice(0, playingCount);
+  const benchPlayers = shuffled.slice(playingCount);
+
+  // Distribute playing players across courts
+  const distributed = Array.from({ length: numCourts }, () => []);
+  activePlayers.forEach((pid, i) => {
+    distributed[i % numCourts].push(pid);
   });
 
   function playerLabel(pid) {
@@ -5662,32 +6508,42 @@ function shuffleTeams() {
     const p = S.players.find(x => x.id === bid);
     const name = p ? esc(p.name) : '?';
     const isGuest = pid.includes('|');
-    return `<div style="background:var(--sur);border:1px solid var(--div);border-radius:var(--r-md);padding:var(--sp1) var(--sp3);font-size:var(--text-sm);white-space:nowrap">
-      ${name}${isGuest ? ` <span style="opacity:.55;font-size:var(--text-xs)">(${t('misc.guest')})</span>` : ''}
+    const isMe = guestId && (pid === guestId || (isGuest && pid.startsWith(guestId + '|')));
+    const youTag = isMe && !isGuest ? ` <span style="opacity:.6;font-size:var(--text-xs);font-weight:400">(${t('misc.you')})</span>` : '';
+    const guestTag = isGuest ? ` <span style="opacity:.6;font-size:var(--text-xs);font-weight:400">(${t('misc.guest')})</span>` : '';
+    const iconName = p ? playerIcon(p, isGuest) : 'user';
+
+    return `<div class="court-mixer-player ${isMe ? 'me' : ''}">
+      <div class="av"><i data-lucide="${iconName}" style="width:13px;height:13px"></i></div>
+      <span class="court-mixer-player-name">${name}${youTag}${guestTag}</span>
     </div>`;
   }
 
-  const courtColors = ['var(--pri)', 'var(--suc)', '#e07b39', '#9b59b6'];
-
-  const body = document.getElementById('mo-teams-body');
   body.innerHTML = distributed.map((players, ci) => {
+    const actualCourtIndex = activeCourtIndices[ci] ?? ci;
+    const courtName = getCourtLabel(sess, actualCourtIndex);
     const teamA = players.filter((_, i) => i % 2 === 0);
     const teamB = players.filter((_, i) => i % 2 === 1);
-    return `<div style="border:1px solid var(--div);border-radius:var(--r-lg);overflow:hidden">
-      <div style="background:${courtColors[ci % courtColors.length]};color:#fff;padding:var(--sp2) var(--sp4);font-weight:600;font-size:var(--text-sm)">
-        ${t('session.court')} ${ci + 1}
+    return `<div class="court-mixer-card">
+      <div class="court-mixer-head">
+        <span class="court-mixer-title"><i data-lucide="map-pin" style="width:12px;height:12px"></i> ${esc(courtName)}</span>
+        <span class="badge bg-neu" style="font-size:10px">${players.length} ${t('players.count', 'Spieler')}</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:start;gap:var(--sp3);padding:var(--sp4)">
-        <div style="display:flex;flex-direction:column;gap:var(--sp2)">${teamA.map(playerLabel).join('')}</div>
-        <div style="color:var(--txm);font-weight:700;padding-top:var(--sp2)">vs</div>
-        <div style="display:flex;flex-direction:column;gap:var(--sp2)">${teamB.map(playerLabel).join('')}</div>
+      <div class="court-mixer-match">
+        <div class="court-mixer-team">${teamA.map(playerLabel).join('')}</div>
+        <div class="court-mixer-vs-col">
+          <div class="court-mixer-vs">${t('teams.vs', 'VS')}</div>
+        </div>
+        <div class="court-mixer-team">${teamB.map(playerLabel).join('')}</div>
       </div>
     </div>`;
-  }).join('');
+  }).join('') + (benchPlayers.length > 0 ? `
+    <div class="court-mixer-bench">
+      <div class="court-mixer-bench-title"><i data-lucide="clock" style="width:14px;height:14px"></i> ${t('teams.bench', 'Pausiert / Nächste Runde')} (${benchPlayers.length})</div>
+      <div class="court-mixer-bench-list">${benchPlayers.map(playerLabel).join('')}</div>
+    </div>
+  ` : '');
 
-  if (distributed.length === 0) {
-    body.innerHTML = '<p style="color:var(--txm);text-align:center">' + t('teams.no_players') + '</p>';
-  }
   lucide.createIcons();
 }
 
@@ -5767,7 +6623,7 @@ async function saveEditTx() {
     await apiFetch('PUT', '/transactions/' + editTxId, { amount: amt, note, date });
     await loadState();
     closeMo('mo-edit-tx');
-    renderHistory();
+    renderAll();
     showToast(t('toast.tx_saved'));
   } catch(e) { 
     showToast(t('toast.save_error')); 
@@ -5817,30 +6673,7 @@ function applyTeamName() {
 
 // Display Settings
 async function saveDisplaySettings() {
-    const settings = {
-        display_court_grouping: document.getElementById('disp-court-grouping').checked ? '1' : '0',
-        privacy_mode: document.getElementById('disp-privacy-mode').checked ? '1' : '0',
-        total_privacy_mode: document.getElementById('disp-total-privacy-mode')?.checked ? '1' : '0',
-        show_cancel_deadline: document.getElementById('disp-show-cancel-deadline').checked ? '1' : '0',
-        currency:      document.getElementById('sr-currency').value.trim() || '€',
-        cost:          parseFloat(document.getElementById('sr-cost').value) || 16,
-        courts:        parseInt(document.getElementById('sr-courts')?.value, 10) || 2,
-        system_language: document.getElementById('sys-language').value || null,
-        time_format:   document.getElementById('disp-time-format').value || '24h',
-        date_format:   document.getElementById('disp-date-format').value || 'dmy',
-    };
-    try {
-        await apiFetch('PUT', '/config', settings);
-        showToast(t('toast.display_saved'));
-        await loadState();
-        applyTranslations();
-        // Null the session hash so the re-render actually runs (settings change affects layout)
-        window._lastSessionHash = null;
-        if (typeof renderSessions === 'function') renderSessions();
-        if (isAdmin && typeof renderAll === 'function') renderAll();
-    } catch(e) {
-        showToast(t('toast.save_error') + ' ' + e.message);
-    }
+    return saveSettings();
 }
 
 // Berechnet die zukünftigen Termine basierend auf dem Zeitplan.

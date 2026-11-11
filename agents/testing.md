@@ -28,12 +28,14 @@ Before any Git push is suggested or any feature is declared "done", the test sui
 > Running the full suite across all emulated viewports and browsers (Chromium, Firefox, WebKit, Galaxy S24) takes 6–7 minutes. For regular iterations or simple CSS/JS tweaks, always prefer fast targeted testing to minimize cycle times.
 
 ### Fast Iteration Commands (Targeted Testing)
-To get feedback in seconds, scope your test run to a single browser or a single test file:
+By default locally, `playwright.config.js` runs **only `chromium`** unless `--project=...`, `ALL_BROWSERS=1`, or `CI` is specified. In addition, `docker-compose.test.yml` bind-mounts the project root (`.:/var/www/html`) into `courtle_test_app` (port `8081`), so code edits take effect immediately without rebuilding the container.
+
+To get feedback in seconds, scope your test run to a single test file or browser:
 ```bash
-# 1. Run only a specific test file on a single browser (Fastest!)
+# 1. Run only a specific test file on Chromium (Fastest!)
 npx playwright test ui-flows.spec.js --project=chromium
 
-# 2. Run all tests on Chromium only
+# 2. Run all tests on Chromium only (now also the local default for `npx playwright test`)
 npx playwright test --project=chromium
 
 # 3. Run dedicated iOS / iPhone PWA mobile suite (iPhone 14 WebKit)
@@ -47,20 +49,12 @@ npx playwright test -g "Series CRUD" --project=chromium
 ```
 
 ### Full Verification Workflow (Run only before final delivery)
-Only run the full multi-browser suite when verifying critical API/database migrations or when preparing the final sign-off:
+Only run the full 5-browser suite (`chromium`, `firefox`, `webkit`, `ios`, `galaxy-s24`) when verifying critical cross-browser layout changes or preparing final release sign-off:
 
 ```bash
-# 1. Stop any leftover test container
-docker compose -f docker-compose.test.yml down 2>/dev/null
-
-# 2. Install dependencies (if changed or first run)
-cd tests && npm install
-
-# 3. Run full suite (All 4 browsers, all spec files)
-npx playwright test
+# Run full suite across all 5 browsers:
+cd tests && ALL_BROWSERS=1 npx playwright test
 ```
-
-The `reuseExistingServer: false` config ensures the container is always rebuilt (`docker compose up --build`) from scratch, with no cached files from previous runs.
 
 ### What the Test Suite Validates:
 1. **Clean DB Initialization**: Verifies the setup wizard triggers when no database is present.
