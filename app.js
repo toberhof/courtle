@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:466
-const CLIENT_BUILD = 466;
+// built:467
+const CLIENT_BUILD = 467;
 let S = {
   players: [],
   transactions: [],
@@ -4606,7 +4606,11 @@ function renderMyTransactions() {
   }
 
   const indicatorEl = document.getElementById('my-runway-indicator');
-  if (indicatorEl) {
+  if (indicatorEl && S.cfg.show_runway_banner === '0') {
+    indicatorEl.style.display = 'none';
+    indicatorEl.innerHTML = '';
+  } else if (indicatorEl) {
+    indicatorEl.style.display = '';
     const tier = getGamificationTier(currentBalance);
     let description = tier.description;
 
@@ -4670,7 +4674,11 @@ function renderMyTransactions() {
   const totalExpenses = (S.expenses || []).reduce((sum, e) => sum + parseFloat(e.amount || 0), 0);
   const teamKasse = totalDeposits - totalExpenses;
   const poolEl = document.getElementById('my-group-pool');
-  if (poolEl) {
+  if (poolEl && S.cfg.show_team_pool === '0') {
+    poolEl.style.display = 'none';
+    poolEl.innerHTML = '';
+  } else if (poolEl) {
+    poolEl.style.display = '';
     poolEl.innerHTML = `
       <div class="group-pool-text" style="width: 100%; text-align: center; font-size: var(--text-lg); font-weight: 800; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp1);">
         <div style="display: flex; align-items: center; justify-content: center; gap: var(--sp2);">
@@ -5308,6 +5316,10 @@ function syncSettings(force = false) {
     if (totalPrivMode) totalPrivMode.checked = S.cfg.total_privacy_mode === '1';
     const showDeadline = document.getElementById('disp-show-cancel-deadline');
     if (showDeadline) showDeadline.checked = S.cfg.show_cancel_deadline !== '0';
+    const showTeamPool = document.getElementById('disp-show-team-pool');
+    if (showTeamPool) showTeamPool.checked = S.cfg.show_team_pool !== '0';
+    const showRunwayBanner = document.getElementById('disp-show-runway-banner');
+    if (showRunwayBanner) showRunwayBanner.checked = S.cfg.show_runway_banner !== '0';
     const autoCompact = document.getElementById('sys-auto-compact-slots');
     if (autoCompact) autoCompact.checked = S.cfg.auto_compact_slots === '1';
     const teamName = document.getElementById('disp-team-name');
@@ -5401,6 +5413,8 @@ async function saveSettings(silent = false) {
         privacy_mode: document.getElementById('disp-privacy-mode')?.checked ? '1' : '0',
         total_privacy_mode: document.getElementById('disp-total-privacy-mode')?.checked ? '1' : '0',
         show_cancel_deadline: document.getElementById('disp-show-cancel-deadline')?.checked ? '1' : '0',
+        show_team_pool: document.getElementById('disp-show-team-pool')?.checked ? '1' : '0',
+        show_runway_banner: document.getElementById('disp-show-runway-banner')?.checked ? '1' : '0',
         currency: document.getElementById('sr-currency')?.value.trim() || '€',
         system_language: document.getElementById('sys-language')?.value || '',
         time_format: document.getElementById('disp-time-format')?.value || '24h',
@@ -5414,6 +5428,7 @@ async function saveSettings(silent = false) {
         applyRole();
         window._lastSessionHash = null;
         if (typeof renderSessions === 'function') renderSessions();
+        if (typeof renderMyTransactions === 'function') renderMyTransactions();
         if (isAdmin && typeof renderBilling === 'function') renderBilling();
 
         const badge = document.getElementById('settings-save-pill');

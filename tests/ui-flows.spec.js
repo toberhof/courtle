@@ -1009,6 +1009,43 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     // Verify CSV download link exists
     await expect(page.locator('.btn-csv-link')).toBeVisible();
 
+    // Switch to the admin session to control banner visibility in settings
+    await page.evaluate(({ tok, pid }) => {
+      localStorage.setItem('_tok', tok);
+      localStorage.setItem('_guestId', pid);
+    }, { tok: auth.token, pid: admin.id });
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Both display toggles default to enabled
+    await page.evaluate(() => showView('settings'));
+    await expect(page.locator('#disp-show-team-pool')).toBeChecked();
+    await expect(page.locator('#disp-show-runway-banner')).toBeChecked();
+
+    // Hide the team cash pool only
+    await page.locator('label.switch:has(#disp-show-team-pool)').click();
+    await expect(page.locator('#settings-save-pill')).toHaveClass(/show/);
+    await page.evaluate(() => showView('my-transactions'));
+    await expect(page.locator('#my-group-pool')).not.toBeVisible();
+    await expect(page.locator('#my-runway-indicator')).toBeVisible();
+
+    // Hide the motivational runway banner as well
+    await page.evaluate(() => showView('settings'));
+    await page.locator('label.switch:has(#disp-show-runway-banner)').click();
+    await expect(page.locator('#settings-save-pill')).toHaveClass(/show/);
+    await page.evaluate(() => showView('my-transactions'));
+    await expect(page.locator('#my-group-pool')).not.toBeVisible();
+    await expect(page.locator('#my-runway-indicator')).not.toBeVisible();
+
+    // Re-enable both banners
+    await page.evaluate(() => showView('settings'));
+    await page.locator('label.switch:has(#disp-show-team-pool)').click();
+    await expect(page.locator('#settings-save-pill')).toHaveClass(/show/);
+    await page.locator('label.switch:has(#disp-show-runway-banner)').click();
+    await expect(page.locator('#settings-save-pill')).toHaveClass(/show/);
+    await page.evaluate(() => showView('my-transactions'));
+    await expect(page.locator('#my-group-pool')).toBeVisible();
+    await expect(page.locator('#my-runway-indicator')).toBeVisible();
   });
 
   test('20 — Dark & Light Theme Toggle and Persistence', async ({ page }) => {

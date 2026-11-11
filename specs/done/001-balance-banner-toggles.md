@@ -3,7 +3,7 @@
 - **ID**: `001`
 - **Slug**: `balance-banner-toggles`
 - **Branch**: `feat/001-balance-banner-toggles`
-- **Status**: `backlog`
+- **Status**: `done`
 - **Ziel-Modell (Builder)**: `flash`
 - **Erstellt am**: 2026-11-11
 
@@ -16,25 +16,25 @@
 **damit** ich die Guthaben-Ansicht für mein Team flexibel entschlacken oder bei Bedarf nur die Timeline anzeigen lassen kann.
 
 ### Akzeptanzkriterien (AC)
-- [ ] AC 1: In `#view-settings` → Tab `Allgemein` (`#settings-panel-general`) → Sektion `Darstellung` (`settings.section_display`) existieren zwei neue Toggle-Switches im bestehenden `.settings-row`-Design mit `.switch` / `.switch-slider` und Auto-Save (`onchange="settingsAutoSave()"`):
+- [x] AC 1: In `#view-settings` → Tab `Allgemein` (`#settings-panel-general`) → Sektion `Darstellung` (`settings.section_display`) existieren zwei neue Toggle-Switches im bestehenden `.settings-row`-Design mit `.switch` / `.switch-slider` und Auto-Save (`onchange="settingsAutoSave()"`):
   1. `#disp-show-team-pool` („Teamkasse im Spieler-Guthaben anzeigen“)
   2. `#disp-show-runway-banner` („Motivations-Banner im Spieler-Guthaben anzeigen“)
-- [ ] AC 2: Beide Einstellungen sind standardmäßig aktiviert (`'1'` bzw. `!== '0'`), sodass bestehende Installationen und Tests ohne Konfigurationsänderung beide Banner wie gewohnt anzeigen.
-- [ ] AC 3: `PUT /api.php/config` akzeptiert und validiert `show_team_pool` und `show_runway_banner` (jeweils nur `'0'` oder `'1'`).
-- [ ] AC 4: Ist `show_team_pool === '0'`, wird `#my-group-pool` in `renderMyTransactions()` ausgeblendet (`style.display = 'none'`, `innerHTML = ''`). Ist die Einstellung aktiv (`!== '0'`), wird `#my-group-pool` normal gerendert (`style.display = ''`).
-- [ ] AC 5: Ist `show_runway_banner === '0'`, wird `#my-runway-indicator` in `renderMyTransactions()` ausgeblendet (`style.display = 'none'`, `innerHTML = ''`). Ist die Einstellung aktiv (`!== '0'`), wird `#my-runway-indicator` normal gerendert (`style.display = ''`).
-- [ ] AC 6: Alle neuen UI-Texte sind vollständig in `i18n.js` für alle 6 Sprachen (`de`, `en`, `es`, `it`, `fr`, `pt`) hinterlegt.
-- [ ] AC 7: Ein E2E-Test in `tests/ui-flows.spec.js` prüft das Aus- und Wiedereinblenden beider Banner über die Admin-Einstellungen.
+- [x] AC 2: Beide Einstellungen sind standardmäßig aktiviert (`'1'` bzw. `!== '0'`), sodass bestehende Installationen und Tests ohne Konfigurationsänderung beide Banner wie gewohnt anzeigen.
+- [x] AC 3: `PUT /api.php/config` akzeptiert und validiert `show_team_pool` und `show_runway_banner` (jeweils nur `'0'` oder `'1'`).
+- [x] AC 4: Ist `show_team_pool === '0'`, wird `#my-group-pool` in `renderMyTransactions()` ausgeblendet (`style.display = 'none'`, `innerHTML = ''`). Ist die Einstellung aktiv (`!== '0'`), wird `#my-group-pool` normal gerendert (`style.display = ''`).
+- [x] AC 5: Ist `show_runway_banner === '0'`, wird `#my-runway-indicator` in `renderMyTransactions()` ausgeblendet (`style.display = 'none'`, `innerHTML = ''`). Ist die Einstellung aktiv (`!== '0'`), wird `#my-runway-indicator` normal gerendert (`style.display = ''`).
+- [x] AC 6: Alle neuen UI-Texte sind vollständig in `i18n.js` für alle 6 Sprachen (`de`, `en`, `es`, `it`, `fr`, `pt`) hinterlegt.
+- [x] AC 7: Ein E2E-Test in `tests/ui-flows.spec.js` prüft das Aus- und Wiedereinblenden beider Banner über die Admin-Einstellungen.
 
 ---
 
 ## 2. Betroffene Dateien & Rollen-Guides
 
 Vor der Umsetzung müssen vom Builder folgende Rollen-Dateien gelesen werden:
-- [ ] `agents/backend.md` (für `api.php`)
-- [ ] `agents/frontend.md` (für `app.js` / `index.html`)
-- [ ] `agents/pwa_ux.md` & `agents/styleguide.md` (für Design-Einhaltung & Terminologie)
-- [ ] `agents/testing.md` (für E2E-Verifikation)
+- [x] `agents/backend.md` (für `api.php`)
+- [x] `agents/frontend.md` (für `app.js` / `index.html`)
+- [x] `agents/pwa_ux.md` & `agents/styleguide.md` (für Design-Einhaltung & Terminologie)
+- [x] `agents/testing.md` (für E2E-Verifikation)
 
 **Zu ändernde Dateien:**
 - `api.php` (`handle_config_set()`, Zeilen ca. 1698–1746)
@@ -246,9 +246,9 @@ Alle 4 neuen Keys **müssen** in allen 6 Sprachen (`de`, `en`, `es`, `it`, `fr`,
     6. Aktiviere beide Toggles in `#view-settings` wieder und prüfe in `#view-my-transactions`, dass beide Banner wieder `toBeVisible()` sind.
 
 ### 4.2 Abschluss-Checkliste für den Builder
-- [ ] Alle Akzeptanzkriterien aus Abschnitt 1 erfüllt?
-- [ ] `php -l api.php` ohne Syntaxfehler?
-- [ ] Keine `console.log` oder `var_dump` Debug-Reste im Code?
-- [ ] Alle neuen UI-Texte über `t('key')` bzw. `data-i18n` in allen 6 Sprachen vorhanden?
-- [ ] Gezielter Playwright-Test (`npx playwright test ui-flows.spec.js --project=chromium`) läuft grün ohne Console-Errors?
-- [ ] Spec-Status oben auf `done` gesetzt und Datei von `specs/backlog/001-balance-banner-toggles.md` nach `specs/done/001-balance-banner-toggles.md` verschoben?
+- [x] Alle Akzeptanzkriterien aus Abschnitt 1 erfüllt?
+- [x] `php -l api.php` ohne Syntaxfehler?
+- [x] Keine `console.log` oder `var_dump` Debug-Reste im Code?
+- [x] Alle neuen UI-Texte über `t('key')` bzw. `data-i18n` in allen 6 Sprachen vorhanden?
+- [x] Gezielter Playwright-Test (`npx playwright test ui-flows.spec.js --project=chromium`) läuft grün ohne Console-Errors?
+- [x] Spec-Status oben auf `done` gesetzt und Datei von `specs/backlog/001-balance-banner-toggles.md` nach `specs/done/001-balance-banner-toggles.md` verschoben?

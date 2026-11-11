@@ -1716,6 +1716,8 @@ function handle_config_set(): void {
         'team_name',
         'cancel_hours',
         'show_cancel_deadline',
+        'show_team_pool',
+        'show_runway_banner',
         'system_language',
         'time_format',
         'date_format',
@@ -1736,6 +1738,8 @@ function handle_config_set(): void {
         if ($k === 'sroccurrences' && ((int)$v < 1 || (int)$v > 52)) continue;
         if ($k === 'cancel_hours' && ((float)$v < 0 || (float)$v > 168)) continue;
         if ($k === 'show_cancel_deadline' && !in_array($v, ['0', '1'], true)) continue;
+        if ($k === 'show_team_pool' && !in_array($v, ['0', '1'], true)) continue;
+        if ($k === 'show_runway_banner' && !in_array($v, ['0', '1'], true)) continue;
         if ($k === 'currency' && (mb_strlen($v) < 1 || mb_strlen($v) > 5)) continue;
         if ($k === 'system_language' && $v !== '' && !in_array($v, ['de', 'en', 'es', 'it', 'fr', 'pt'], true)) continue;
         if ($k === 'time_format' && !in_array($v, ['24h', '12h'], true)) continue;
