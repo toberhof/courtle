@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:469
-const CLIENT_BUILD = 469;
+// built:470
+const CLIENT_BUILD = 470;
 let S = {
   players: [],
   transactions: [],
@@ -1979,7 +1979,7 @@ function renderPlayerActivityTable() {
     document.getElementById('players-activity-table')
   ].filter(Boolean);
   if (!targets.length) return;
-  const activePlayers = S.players.filter(p => p.active !== false);
+  const activePlayers = (S.players || []).filter(p => p.active !== false);
   if (!activePlayers.length) {
     targets.forEach(el => { el.innerHTML = `<div class="empty"><i data-lucide="users"></i><p>${t('players.no_players')}</p></div>`; });
     if (window.lucide) lucide.createIcons();
@@ -2021,25 +2021,27 @@ function renderPlayerActivityTable() {
   });
 
   const toolbarHtml = `
-    <div class="act-controls-row">
-      <div class="search-wrap" style="flex:1;min-width:160px;position:relative">
-        <i data-lucide="search" style="width:15px;height:15px;position:absolute;left:var(--sp3);top:50%;transform:translateY(-50%);color:var(--txm)"></i>
-        <input type="text" class="fi" style="padding-left:34px;font-size:var(--text-sm);height:38px" placeholder="${esc(t('players.search', 'Spieler suchen...'))}" value="${esc(activitySearchQuery)}" oninput="handleActivitySearch(this.value)">
-      </div>
-      <div class="sort-wrap flex items-c g2">
-        <span class="txxs txm hide-xs" style="white-space:nowrap">${t('players.sort', 'Sortierung:')}</span>
-        <div class="sort-select-wrap">
-          <select class="sort-select" onchange="handleActivitySort(this.value)">
-            <option value="interaction_desc" ${activitySortOption === 'interaction_desc' ? 'selected' : ''}>${t('players.activity_sort', 'Aktivität')} ↓</option>
-            <option value="interaction_asc" ${activitySortOption === 'interaction_asc' ? 'selected' : ''}>${t('players.activity_sort', 'Aktivität')} ↑</option>
-            <option value="login_desc" ${activitySortOption === 'login_desc' ? 'selected' : ''}>${t('players.login_sort', 'Login')} ↓</option>
-            <option value="login_asc" ${activitySortOption === 'login_asc' ? 'selected' : ''}>${t('players.login_sort', 'Login')} ↑</option>
-            <option value="participation_desc" ${activitySortOption === 'participation_desc' ? 'selected' : ''}>${t('players.last_participation', 'Gespielt')} ↓</option>
-            <option value="participation_asc" ${activitySortOption === 'participation_asc' ? 'selected' : ''}>${t('players.last_participation', 'Gespielt')} ↑</option>
-            <option value="name_asc" ${activitySortOption === 'name_asc' ? 'selected' : ''}>${t('players.name_sort', 'Name')} A–Z</option>
-            <option value="name_desc" ${activitySortOption === 'name_desc' ? 'selected' : ''}>${t('players.name_sort', 'Name')} Z–A</option>
-          </select>
-          <i data-lucide="chevron-down" class="sort-select-arrow"></i>
+    <div class="player-controls-compact mb4">
+      <div class="player-search-row">
+        <div class="search-wrap" style="flex:1;min-width:160px;position:relative">
+          <i data-lucide="search" style="width:15px;height:15px;position:absolute;left:var(--sp3);top:50%;transform:translateY(-50%);color:var(--txm)"></i>
+          <input type="text" class="fi" style="padding-left:34px;font-size:var(--text-sm)" placeholder="${esc(t('players.search', 'Spieler suchen...'))}" value="${esc(activitySearchQuery)}" oninput="handleActivitySearch(this.value)">
+        </div>
+        <div class="sort-wrap flex items-c g2">
+          <span class="txxs txm hide-xs" style="white-space:nowrap">${t('players.sort', 'Sortierung:')}</span>
+          <div class="sort-select-wrap">
+            <select class="sort-select" onchange="handleActivitySort(this.value)">
+              <option value="interaction_desc" ${activitySortOption === 'interaction_desc' ? 'selected' : ''}>${t('players.activity_sort', 'Aktivität')} ↓</option>
+              <option value="interaction_asc" ${activitySortOption === 'interaction_asc' ? 'selected' : ''}>${t('players.activity_sort', 'Aktivität')} ↑</option>
+              <option value="login_desc" ${activitySortOption === 'login_desc' ? 'selected' : ''}>${t('players.login_sort', 'Login')} ↓</option>
+              <option value="login_asc" ${activitySortOption === 'login_asc' ? 'selected' : ''}>${t('players.login_sort', 'Login')} ↑</option>
+              <option value="participation_desc" ${activitySortOption === 'participation_desc' ? 'selected' : ''}>${t('players.last_participation', 'Gespielt')} ↓</option>
+              <option value="participation_asc" ${activitySortOption === 'participation_asc' ? 'selected' : ''}>${t('players.last_participation', 'Gespielt')} ↑</option>
+              <option value="name_asc" ${activitySortOption === 'name_asc' ? 'selected' : ''}>${t('players.name_sort', 'Name')} A–Z</option>
+              <option value="name_desc" ${activitySortOption === 'name_desc' ? 'selected' : ''}>${t('players.name_sort', 'Name')} Z–A</option>
+            </select>
+            <i data-lucide="chevron-down" class="sort-select-arrow"></i>
+          </div>
         </div>
       </div>
     </div>
@@ -2051,37 +2053,81 @@ function renderPlayerActivityTable() {
     return;
   }
 
-  const cardsHtml = filtered.map(p => {
+  const getSortIcon = (col) => {
+    if (col === 'name') {
+      if (activitySortOption === 'name_asc') return ' ↑';
+      if (activitySortOption === 'name_desc') return ' ↓';
+    } else if (col === 'lastLogin') {
+      if (activitySortOption === 'login_asc') return ' ↑';
+      if (activitySortOption === 'login_desc') return ' ↓';
+    } else if (col === 'interaction') {
+      if (activitySortOption === 'interaction_asc') return ' ↑';
+      if (activitySortOption === 'interaction_desc') return ' ↓';
+    } else if (col === 'lastParticipation') {
+      if (activitySortOption === 'participation_asc') return ' ↑';
+      if (activitySortOption === 'participation_desc') return ' ↓';
+    }
+    return '';
+  };
+
+  const isSorted = (col) => {
+    if (col === 'name') return activitySortOption.startsWith('name');
+    if (col === 'lastLogin') return activitySortOption.startsWith('login');
+    if (col === 'interaction') return activitySortOption.startsWith('interaction');
+    if (col === 'lastParticipation') return activitySortOption.startsWith('participation');
+    return false;
+  };
+
+  const rowsHtml = filtered.map(p => {
     const partDate = getLastParticipationDate(p.id);
     const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
     return `
-      <div class="act-card">
-        <div class="act-card-head">
-          <div class="av pc-av">
-            <i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>
+      <tr>
+        <td>
+          <div class="flex items-c g2">
+            <div class="av pc-av" style="width:28px;height:28px;min-width:28px;cursor:pointer" onclick="openIconPickerModal('${p.id}')" title="${esc(t('players.icon_short'))}">
+              <i data-lucide="${playerIcon(p)}" style="width:14px;height:14px"></i>
+            </div>
+            <div>
+              <div style="font-weight:600;display:flex;align-items:center;gap:6px">${esc(p.name)}${adminBadge}</div>
+              ${p.contact ? `<div class="txxs txm">${esc(p.contact)}</div>` : ''}
+            </div>
           </div>
-          <div class="pc-name">${esc(p.name)}${adminBadge}</div>
-        </div>
-        <div class="act-metrics">
-          <div class="act-metric-item">
-            <span class="act-metric-lbl">${t('players.login_sort', 'Login')}</span>
-            <span class="act-metric-val">${p.lastLogin ? fmtDTS(p.lastLogin) : '–'}</span>
-          </div>
-          <div class="act-metric-item">
-            <span class="act-metric-lbl">${t('players.activity_sort', 'Aktivität')}</span>
-            <span class="act-metric-val">${p.lastInteraction ? fmtDTS(p.lastInteraction) : '–'}</span>
-          </div>
-          <div class="act-metric-item">
-            <span class="act-metric-lbl">${t('players.last_participation', 'Gespielt')}</span>
-            <span class="act-metric-val">${partDate ? fmtD(partDate) : '–'}</span>
-          </div>
-        </div>
-      </div>
+        </td>
+        <td><span class="act-tbl-val">${p.lastLogin ? fmtDTS(p.lastLogin) : '–'}</span></td>
+        <td><span class="act-tbl-val">${p.lastInteraction ? fmtDTS(p.lastInteraction) : '–'}</span></td>
+        <td><span class="act-tbl-val">${partDate ? fmtD(partDate) : '–'}</span></td>
+      </tr>
     `;
   }).join('');
 
-  const fullHtml = toolbarHtml + `<div class="act-list">${cardsHtml}</div>`;
-  targets.forEach(el => { el.innerHTML = fullHtml; });
+  const tableHtml = `
+    <div class="tw" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+      <table class="dt act-table">
+        <thead>
+          <tr>
+            <th class="${isSorted('name') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('name')" style="cursor:pointer;user-select:none">
+              ${t('transactions.player', 'Spieler')}${getSortIcon('name')}
+            </th>
+            <th class="${isSorted('lastLogin') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('lastLogin')" style="cursor:pointer;user-select:none">
+              ${t('players.last_login', 'Letzter Login')}${getSortIcon('lastLogin')}
+            </th>
+            <th class="${isSorted('interaction') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('interaction')" style="cursor:pointer;user-select:none">
+              ${t('players.last_activity', 'Letzte Aktivität')}${getSortIcon('interaction')}
+            </th>
+            <th class="${isSorted('lastParticipation') ? 'act-th-sorted' : ''}" onclick="sortActivityTable('lastParticipation')" style="cursor:pointer;user-select:none">
+              ${t('players.last_participation', 'Letzte Teilnahme')}${getSortIcon('lastParticipation')}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  targets.forEach(el => { el.innerHTML = toolbarHtml + tableHtml; });
   if (window.lucide) lucide.createIcons();
 }
 
@@ -3566,11 +3612,19 @@ let playerBalanceSearchQuery = '';
 let playerBalanceSortOption = 'name_asc';
 
 function setPlayersTab(tab) {
-  playersTab = (tab === 'balance' || tab === 'list') ? 'balance' : 'manage';
+  if (tab === 'balance' || tab === 'list') {
+    playersTab = 'balance';
+  } else if (tab === 'activity') {
+    playersTab = 'activity';
+  } else {
+    playersTab = 'manage';
+  }
   const btnManage = document.getElementById('players-tab-manage');
   const btnBalance = document.getElementById('players-tab-balance');
+  const btnActivity = document.getElementById('players-tab-activity');
   const pManage = document.getElementById('players-panel-manage');
   const pBalance = document.getElementById('players-panel-balance');
+  const pActivity = document.getElementById('players-panel-activity');
   const headerAction = document.getElementById('players-header-action');
 
   if (btnManage) {
@@ -3581,12 +3635,19 @@ function setPlayersTab(tab) {
     btnBalance.classList.toggle('active', playersTab === 'balance');
     btnBalance.setAttribute('aria-selected', playersTab === 'balance' ? 'true' : 'false');
   }
+  if (btnActivity) {
+    btnActivity.classList.toggle('active', playersTab === 'activity');
+    btnActivity.setAttribute('aria-selected', playersTab === 'activity' ? 'true' : 'false');
+  }
   if (pManage) pManage.style.display = playersTab === 'manage' ? '' : 'none';
   if (pBalance) pBalance.style.display = playersTab === 'balance' ? '' : 'none';
+  if (pActivity) pActivity.style.display = playersTab === 'activity' ? '' : 'none';
 
   if (headerAction) {
     if (playersTab === 'balance') {
       headerAction.innerHTML = `<button class="btn btn-ok btn-sm" onclick="openTx()" type="button"><i data-lucide="plus-circle"></i> <span>${t('nav.quick_topup')}</span></button>`;
+    } else if (playersTab === 'activity') {
+      headerAction.innerHTML = '';
     } else {
       headerAction.innerHTML = `<button class="btn btn-ok btn-sm" onclick="openAddPlayer()" type="button"><i data-lucide="user-plus"></i> <span>${t('players.add')}</span></button>`;
     }
@@ -3594,9 +3655,10 @@ function setPlayersTab(tab) {
 
   if (playersTab === 'balance') {
     renderPlayerBalances();
+  } else if (playersTab === 'activity') {
+    renderPlayerActivityTable();
   } else {
     renderPlayers();
-  renderPlayerBalances();
   }
   if (window.lucide) lucide.createIcons();
 }
@@ -3730,25 +3792,6 @@ function renderPlayers() {
           <button class="btn btn-xs btn-sec" onclick="openAdminSetPin('${p.id}')" type="button"><i data-lucide="key-round"></i> ${t('players.pin_short')}</button>
           <button class="btn btn-xs btn-sec" onclick="openIconPickerModal('${p.id}')" type="button"><i data-lucide="smile"></i> ${t('players.icon_short')}</button>
           <button class="btn btn-xs btn-dan" onclick="deletePlayer('${p.id}')" type="button"><i data-lucide="user-x"></i> ${t('players.deactivate')}</button>
-        </div>
-        <div class="pc-drawer-history">
-          <div class="pc-drawer-hist-head">
-            <span class="label" style="font-size:10px">${t('players.tab_activity', 'Aktivität')}</span>
-          </div>
-          <div class="pc-detail-list">
-            <div class="pc-detail-row">
-              <span class="pc-detail-lbl">${t('players.last_login', 'Letzter Login')}</span>
-              <span class="pc-detail-val">${p.lastLogin ? fmtDTS(p.lastLogin) : '–'}</span>
-            </div>
-            <div class="pc-detail-row">
-              <span class="pc-detail-lbl">${t('players.last_activity', 'Letzte Aktivität')}</span>
-              <span class="pc-detail-val">${p.lastInteraction ? fmtDTS(p.lastInteraction) : '–'}</span>
-            </div>
-            <div class="pc-detail-row">
-              <span class="pc-detail-lbl">${t('players.last_participation', 'Letzte Teilnahme')}</span>
-              <span class="pc-detail-val">${partDate ? fmtD(partDate) : '–'}</span>
-            </div>
-          </div>
         </div>
       </div>`;
     }
@@ -5689,7 +5732,8 @@ function showView(name) {
   }
   if (name === 'players') {
     renderPlayers();
-  renderPlayerBalances();
+    renderPlayerBalances();
+    renderPlayerActivityTable();
   }
   const v = document.getElementById('view-' + name);
   if (v) v.classList.add('active');

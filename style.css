@@ -467,6 +467,11 @@ select.fi{cursor:pointer}
 .pc-detail-row:first-child{border-top:none}
 .pc-detail-lbl{color:var(--txm);font-weight:500}
 .pc-detail-val{color:var(--tx);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0}
+.act-table th{white-space:nowrap;user-select:none;transition:color var(--tr)}
+.act-table th:hover{color:var(--pri)}
+.act-table th.act-th-sorted{color:var(--pri)}
+.act-table td{white-space:nowrap}
+.act-tbl-val{color:var(--tx);font-weight:500;font-variant-numeric:tabular-nums}
 .player-controls-compact{display:flex;flex-direction:column;gap:var(--sp2)}
 .player-search-row{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
 .player-filter-pills{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
