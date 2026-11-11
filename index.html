@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:448-->
+<!--built:449-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=448">
+<link rel="stylesheet" href="style.css?build=449">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=448" defer></script>
-<script src="app.js?build=448" defer></script>
+<script src="i18n.js?build=449" defer></script>
+<script src="app.js?build=449" defer></script>
 
 <div class="app-shell">
 
@@ -278,14 +278,13 @@ if ('serviceWorker' in navigator) {
     <!-- 2. Session Header, Status & Collapsible Details Card -->
     <div id="admin-plan-header-dynamic" class="card mb4"></div>
 
-    <!-- 3. Section Tabs (Belegung / Warteliste / Verlauf) -->
+    <!-- 3. Section Tabs (Belegung / Verlauf) -->
     <div class="seg-tabs mb4" id="plan-tabs" role="tablist">
       <button class="seg-tab active" id="plan-tab-slots" role="tab" aria-selected="true" onclick="setPlanTab('slots')"><span data-i18n="planner.tab_slots">Belegung</span></button>
-      <button class="seg-tab" id="plan-tab-waitlist" role="tab" aria-selected="false" onclick="setPlanTab('waitlist')"><span data-i18n="planner.tab_waitlist">Warteliste</span> <span id="plan-tab-wl-count"></span></button>
       <button class="seg-tab" id="plan-tab-history" role="tab" aria-selected="false" onclick="setPlanTab('history')"><span data-i18n="planner.tab_history">Verlauf</span></button>
     </div>
 
-    <!-- Tab 1: Slots / Courts -->
+    <!-- Slots / Courts -->
     <div class="card mb6" id="plan-card-slots">
       <div class="flex items-c just-b mb4">
         <h2 class="sec-title" style="margin-bottom:0" data-i18n="session.court">Court</h2>
@@ -297,10 +296,10 @@ if ('serviceWorker' in navigator) {
       <div id="plan-slots-editor"></div>
     </div>
 
-    <!-- Tab 2: Waitlist -->
-    <div class="card mb6" id="plan-waitlist-admin" style="display:none"></div>
+    <!-- Waitlist (under Belegung) -->
+    <div class="card mb6" id="plan-waitlist-admin"></div>
 
-    <!-- Tab 3: History -->
+    <!-- History -->
     <div class="card mb6" id="plan-history" style="display:none">
       <h3 class="sec-title" data-i18n="session.history_title">Verlauf</h3>
       <div id="plan-history-content">
@@ -594,7 +593,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 448)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 449)</span>
 
 </footer>
 

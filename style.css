@@ -660,7 +660,8 @@ select.fi{cursor:pointer}
 
 
 /* Translucent Pill Badges */
-.sc-head-actions .badge {
+.sc-head-actions .badge,
+.bk-head-actions .badge {
   font-size: 10px;
   font-weight: 700;
   border-radius: var(--r-full);
@@ -669,25 +670,39 @@ select.fi{cursor:pointer}
   white-space: nowrap;
   box-shadow: var(--sh-sm);
 }
-.sc-head-actions .badge.bg-neu {
+.sc-head-actions .badge.bg-neu,
+.bk-head-actions .badge.bg-neu {
   background: oklch(from var(--tx) l c h / .05);
   color: var(--txm);
   border: 1px solid oklch(from var(--tx) l c h / .08);
 }
-[data-theme="dark"] .sc-head-actions .badge.bg-neu {
+[data-theme="dark"] .sc-head-actions .badge.bg-neu,
+[data-theme="dark"] .bk-head-actions .badge.bg-neu {
   background: oklch(from var(--tx) l c h / .1);
   color: oklch(from var(--tx) l c h / .8);
   border-color: oklch(from var(--tx) l c h / .15);
 }
-.sc-head-actions .badge.bg-gld {
+.sc-head-actions .badge.bg-gld,
+.bk-head-actions .badge.bg-gld {
   background: oklch(from var(--gld) l c h / .08);
   color: var(--gld);
   border: 1px solid oklch(from var(--gld) l c h / .15);
 }
-[data-theme="dark"] .sc-head-actions .badge.bg-gld {
+[data-theme="dark"] .sc-head-actions .badge.bg-gld,
+[data-theme="dark"] .bk-head-actions .badge.bg-gld {
   background: oklch(from var(--gld) l c h / .15);
   color: var(--gld);
   border-color: oklch(from var(--gld) l c h / .25);
+}
+.bk-head-actions .badge.bg-war {
+  background: oklch(from var(--war) l c h / .08);
+  color: var(--war);
+  border: 1px solid oklch(from var(--war) l c h / .18);
+}
+[data-theme="dark"] .bk-head-actions .badge.bg-war {
+  background: oklch(from var(--war) l c h / .15);
+  color: var(--war);
+  border-color: oklch(from var(--war) l c h / .25);
 }
 
 .sc-body {
@@ -989,6 +1004,16 @@ select.fi{cursor:pointer}
   background: var(--gld);
   color: #000;
   border-color: var(--gld);
+}
+.bk-price-bubble.charged {
+  color: var(--txm);
+  background: oklch(from var(--tx) l c h / .04);
+  border-color: oklch(from var(--tx) l c h / .1);
+}
+[data-theme="dark"] .bk-price-bubble.charged {
+  background: oklch(from var(--tx) l c h / .08);
+  color: oklch(from var(--tx) l c h / .7);
+  border-color: oklch(from var(--tx) l c h / .14);
 }
 .bk-details {
   padding: var(--sp2) var(--sp5) var(--sp5);

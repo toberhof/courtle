@@ -91,8 +91,7 @@ The session planner focuses purely on session organization (dates, times, courts
    - Focused action bar: Context-aware primary action button ("Zur Abrechnung" / "In Abrechnung ansehen" / "Reaktivieren") and "Details bearbeiten" drawer toggle (`#plan-edit-toggle-btn`).
    - **Integrated Edit Drawer** (`#session-details-box.plan-edit-drawer`): Folds directly into the bottom of the header card with a responsive multi-column `.plan-edit-grid`, debounced auto-save with inline checkmark feedback (`.save-indicator`), and automatic locking when a session has already been charged.
 3. **Section Tabs** (`#plan-tabs`):
-   - **Belegung** (`#plan-card-slots`): Visual court cards with slot chips, court names, and "+ Court" button.
-   - **Warteliste** (`#plan-waitlist-admin`): Waitlist management with counter badge on the tab.
+   - **Belegung** (`#plan-card-slots` & `#plan-waitlist-admin`): Visual court cards with slot chips, court names, "+ Court" button, and waitlist management directly underneath.
    - **Verlauf** (`#plan-history`): Audit activity log loaded on demand.
 
 ### Centralized Admin Billing (`view-billing`)

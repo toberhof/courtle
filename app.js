@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:430
-const CLIENT_BUILD = 448;
+// built:449
+const CLIENT_BUILD = 449;
 let S = {
   players: [],
   transactions: [],
@@ -1922,8 +1922,9 @@ let planDetailsOpen = false;
 let _planSaveTimeout = null;
 
 function setPlanTab(tab) {
+  if (tab === 'waitlist') tab = 'slots';
   planTab = tab;
-  ['slots', 'waitlist', 'history'].forEach(tKey => {
+  ['slots', 'history'].forEach(tKey => {
     const btn = document.getElementById('plan-tab-' + tKey);
     if (btn) {
       btn.classList.toggle('active', tKey === tab);
@@ -1934,7 +1935,7 @@ function setPlanTab(tab) {
   const cWl = document.getElementById('plan-waitlist-admin');
   const cHist = document.getElementById('plan-history');
   if (cSlots) cSlots.style.display = tab === 'slots' ? '' : 'none';
-  if (cWl) cWl.style.display = tab === 'waitlist' ? '' : 'none';
+  if (cWl) cWl.style.display = tab === 'slots' ? '' : 'none';
   if (cHist) {
     cHist.style.display = tab === 'history' ? '' : 'none';
     if (tab === 'history' && planDate) renderSessionHistory(planDate);
@@ -2356,7 +2357,7 @@ function renderAdminPlan(keepDetailsOpen) {
   if (wlCountEl) wlCountEl.textContent = sess.waitlist.length > 0 ? `(${sess.waitlist.length})` : '';
   const adminWlBtn = `<button class="btn btn-sec btn-sm" style="margin-top:var(--sp3)" onclick="adminAddToWaitlist('${sessId}')"><i data-lucide="list-plus"></i> ${t('session.waitlist_add')}</button>`;
   if (sess.waitlist.length) {
-    wlEl.innerHTML = `<h3 class="sec-title">${t('session.waitlist')}</h3>
+    wlEl.innerHTML = `<h3 class="sec-title">${t('session.waitlist')} <span class="badge bg-gld" style="margin-left:4px;padding:1px 6px;font-size:10px">${sess.waitlist.length}</span></h3>
     <div class="wl-list">${sess.waitlist.map((pid, i) => {
       const displayName = getDisplayName(pid, playerMap);
       const rawPid = pid.includes('|') ? pid.split('|')[0] : pid;
@@ -3587,7 +3588,7 @@ function renderMyHistory() {
   });
 
   const upcoming = allKnownSessions.filter(s => s.date >= today).map(mySessionEntry).filter(Boolean);
-  const past     = allKnownSessions.filter(s => s.date < today).map(mySessionEntry).filter(Boolean).reverse();
+  const past     = allKnownSessions.filter(s => s.date < today).map(mySessionEntry).filter(Boolean).filter(e => e.mySlots.length > 0).reverse();
 
   // Transactions
   const txs = [...S.transactions].filter(t => t.playerId === guestId).sort((a,b) => b.createdAt.localeCompare(a.createdAt));
@@ -3598,11 +3599,15 @@ function sessionCard(entry) {
   const isPast = date < today;
   const guestCount = mySlots.filter(v => v.includes('|')).length;
   const selfIn = mySlots.some(v => !v.includes('|'));
-  const tags = [];
-  if (selfIn) tags.push(`<span class="badge bg-me">${isPast ? t('session.played') : t('session.you_play')}</span>`);
-  if (guestCount) tags.push(`<span class="badge bg-sec">${guestCount} ${t('misc.guest')}${guestCount > 1 ? (getLocale() === 'de' ? 'e' : '') : ''}</span>`);
-  if (onWl && !selfIn) tags.push(`<span class="badge bg-gld">${t('session.waitlist')}</span>`);
-  if (sess.charged) tags.push(`<span class="badge bg-neu">${t('session.charged')}</span>`);
+
+  let statusBadge = '';
+  if (sess.cancelled) {
+    statusBadge = `<span class="badge bg-err">${t('session.cancelled_badge')}</span>`;
+  } else if (sess.charged) {
+    statusBadge = `<span class="badge bg-neu"><i data-lucide="check" style="width:11px;height:11px"></i> ${t('session.charged')}</span>`;
+  } else if (isPast) {
+    statusBadge = `<span class="badge bg-war"><i data-lucide="clock" style="width:11px;height:11px"></i> ${t('planner.status_awaiting')}</span>`;
+  }
 
   const { start, end } = getSessionTime(sess);
   const eventName = getSessionName(sess);
@@ -3632,7 +3637,7 @@ function sessionCard(entry) {
   }
 
   const wlOnly = onWl && !selfIn;
-  return `<div class="bk">
+  return `<div class="bk${sess.charged ? ' charged' : ''}">
     <div class="bk-head-ticket">
       <div class="bk-cal-col">
         <div class="bk-cal-ticket">
@@ -3640,7 +3645,7 @@ function sessionCard(entry) {
           <div class="bk-day">${esc(dayNum)}</div>
           <div class="bk-month">${esc(monthStr)}</div>
         </div>
-        ${wlOnly ? `<div class="bk-price-bubble wl">${t('session.waitlist_short')}</div>` : `<div class="bk-price-bubble">${fmtE(totalPrice)}</div>`}
+        ${wlOnly ? `<div class="bk-price-bubble wl">${t('session.waitlist_short')}</div>` : `<div class="bk-price-bubble${sess.charged ? ' charged' : ''}">${fmtE(totalPrice)}</div>`}
       </div>
       <div class="bk-content-col">
         <div class="bk-content-top">
@@ -3648,6 +3653,8 @@ function sessionCard(entry) {
           <div class="bk-time">${start}–${end}</div>
         </div>
         <div class="bk-head-actions">
+          ${statusBadge}
+          ${guestCount ? `<span class="badge bg-sec">${guestCount} ${t('misc.guest')}${guestCount > 1 ? (getLocale() === 'de' ? 'e' : '') : ''}</span>` : ''}
           ${!isPast ? `<button class="btn btn-sec btn-sm" onclick="downloadSessionCalendar('${sessId}')"><i data-lucide="calendar-plus"></i> ${t('session.add_to_calendar')}</button>` : ''}
           ${!sess.charged && isWithinCancelWindow(sess) ? `<button class="btn btn-dan btn-sm" onclick="openLeaveConfirm('${sessId}')"><i data-lucide="log-out"></i> ${t('session.leave')}</button>` : ''}
         </div>
@@ -3673,6 +3680,7 @@ function sessionCard(entry) {
   } else {
     pastEl.innerHTML = '';
   }
+  lucide.createIcons();
   syncSwipeHeight();
 }
 // ════════════════════════════════════════
