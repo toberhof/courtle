@@ -47,7 +47,7 @@ export default defineConfig({
   webServer: {
     command: 'docker compose -f ../docker-compose.test.yml up --build',
     url: 'http://127.0.0.1:8081',
-    reuseExistingServer: false,
+    reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000, // 2 minutes to allow image build if needed
   },
 });

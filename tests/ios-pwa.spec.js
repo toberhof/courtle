@@ -90,7 +90,7 @@ test.describe('iOS & iPhone PWA Mobile Suite', () => {
     await expect(backdrop).toHaveClass(/open/);
 
     // Dismiss via backdrop
-    await backdrop.click({ force: true });
+    await page.evaluate(() => document.getElementById('bnav-backdrop').click());
     await expect(bnavAdminMenu).not.toHaveClass(/open/);
     await expect(backdrop).not.toHaveClass(/open/);
 
@@ -195,6 +195,13 @@ test.describe('iOS & iPhone PWA Mobile Suite', () => {
     await page.click('#bnav-admin-dd');
     await page.click('#bnav-admin-menu button:has-text("Session Planer")');
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
+
+    // Open session details drawer if collapsed
+    const editToggle = page.locator('#plan-edit-toggle-btn');
+    if (await editToggle.isVisible()) {
+      await editToggle.click();
+      await page.waitForTimeout(200);
+    }
 
     // Focus an input field
     const noteInput = page.locator('#plan-note-input');

@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 430;
+const CLIENT_BUILD = 445;
 let S = {
   players: [],
   transactions: [],
@@ -18,7 +18,8 @@ let S = {
     srdays: '2',
     sroccurrences: '6',
     srtimestart: '19:00',
-    srtimeend: '21:00'
+    srtimeend: '21:00',
+    total_privacy_mode: '0'
   }
 };
 window.S = S;
@@ -361,6 +362,9 @@ function getRecurringSessionDates() {
 }
 
 function getAllUpcomingSessions() {
+  if (S.cfg.total_privacy_mode === '1' && !guestId) {
+    return [];
+  }
   const today = toDS(new Date());
   const sessions = [];
   const coveredKeys = new Set();
@@ -964,6 +968,11 @@ function selectGuest(pid) {
   openUserPinModal(p);
 }
 
+function openLoginModal() {
+  openWelcomeModal();
+}
+window.openLoginModal = openLoginModal;
+
 // ── First-Setup (0 Spieler in DB) ──
 function checkFirstSetup() {
   try {
@@ -1199,6 +1208,22 @@ function renderSessions() {
   const container = document.getElementById('sessions-container');
   if (!container) return;
 
+  if (S.cfg.total_privacy_mode === '1' && !guestId) {
+    const hash = `total_privacy_${guestId || 'guest'}`;
+    if (window._lastSessionHash === hash) return;
+    window._lastSessionHash = hash;
+    container.innerHTML = `
+      <div class="card p8 txcenter" style="max-width:440px;margin:var(--sp6) auto">
+        <div style="font-size:2.5rem;margin-bottom:var(--sp3)"><i data-lucide="shield-alert" style="width:48px;height:48px;color:var(--txm)"></i></div>
+        <h3 class="mb2">${t('settings.total_privacy_title', 'Datenschutz aktiv')}</h3>
+        <p class="txsm txm mb5">${t('settings.total_privacy_desc', 'Termine sind nur für angemeldete Spieler sichtbar. Bitte melde dich an, um die Sessions zu sehen.')}</p>
+        <button class="btn btn-pri btn-sm" onclick="openWelcomeModal()"><i data-lucide="log-in"></i> <span>${t('nav.login', 'Anmelden')}</span></button>
+      </div>`;
+    if (window.lucide) lucide.createIcons();
+    syncSwipeHeight();
+    return;
+  }
+
   const upcomingSessions = getAllUpcomingSessions();
 
   if (upcomingSessions.length === 0) {
@@ -1220,7 +1245,7 @@ function renderSessions() {
   }).join('');
 
   const playerHash = S.players.map(p => p.emoji || '').join('');
-  const hash = JSON.stringify([guestId, playerHash, upcomingSessions.map(s => {
+  const hash = JSON.stringify([guestId, S.cfg.total_privacy_mode, playerHash, upcomingSessions.map(s => {
     return [s.id || s.date, s.date, s.timeStart, s.courts, s.waitlist, s.note, s.location, s.charged, s.disabledCourts, s.cancelled, s.courtNames];
   })]);
   if (window._lastSessionHash === hash) return;
@@ -1644,6 +1669,7 @@ function renderAll() {
   renderExpenses();
   renderPlayerActivityTable();
   renderAdminPlan();
+  renderBilling();
   renderPlayers();
   renderHistory();
   renderMyHistory();
@@ -1786,25 +1812,56 @@ function bal(pid) {
   return p && p.balance !== undefined ? parseFloat(p.balance) : 0;
 }
 function renderKPIs() {
-  const paid = S.transactions.filter(t => t.credit).reduce((s, t) => s + t.amount, 0);
-  const exp = (S.expenses || []).reduce((s, x) => s + x.amount, 0);
-  const cf = paid - exp;
-  const totalBal = S.transactions.reduce((s, t) => s + (t.credit ? t.amount : -t.amount), 0);
+  // 1. Transaktionen (interner Spieler-Geldkreislauf)
+  const kpiEl = document.getElementById('kpi-container');
+  if (kpiEl) {
+    const sel = document.getElementById('hist-filter');
+    const filterPid = sel ? sel.value : '';
+    const filteredPlayer = filterPid ? S.players.find(p => p.id === filterPid) : null;
+    const txSource = filterPid ? (S.transactions || []).filter(t => t.playerId === filterPid) : (S.transactions || []);
 
-   const kpis = [
-     { l: t('dashboard.kpi_expenses'), v: fmtE(exp), c: 'neg', s: t('dashboard.kpi_expenses_sub') },
-     { l: t('dashboard.kpi_payments'), v: fmtE(paid), c: 'pos', s: t('dashboard.kpi_payments_sub') },
-     { l: t('dashboard.kpi_cashflow'), v: fmtE(cf), c: cf < 0 ? 'neg' : cf === 0 ? '' : 'pos', s: cf < 0 ? t('dashboard.kpi_cashflow_advance') : t('dashboard.kpi_cashflow_covered') },
-     { l: t('dashboard.kpi_total_balance'), v: fmtE(totalBal), c: totalBal >= 0 ? 'pos' : 'neg', s: t('dashboard.kpi_total_balance_sub') },
-   ];
-  document.getElementById('kpi-container').innerHTML = kpis.map(k =>
-    `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
+    const paid = txSource.filter(t => t.credit).reduce((s, t) => s + t.amount, 0);
+    const debits = txSource.filter(t => !t.credit).reduce((s, t) => s + t.amount, 0);
+    const netBal = paid - debits;
+
+    const historyKpis = [
+      { l: t('dashboard.kpi_payments'), v: '+' + fmtE(paid), c: 'pos', s: filteredPlayer ? esc(filteredPlayer.name) : t('dashboard.kpi_payments_sub') },
+      { l: t('history.kpi_debits'), v: '–' + fmtE(debits), c: 'neg', s: t('history.kpi_debits_sub') },
+      { l: t('dashboard.kpi_total_balance'), v: fmtE(netBal), c: netBal >= 0 ? 'pos' : 'neg', s: filteredPlayer ? t('transactions.current_balance') : t('dashboard.kpi_total_balance_sub') },
+    ];
+
+    kpiEl.innerHTML = historyKpis.map(k =>
+      `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
+  }
+
+  // 2. Ausgaben (externer Team-Kassen-Geldkreislauf)
+  const expKpiEl = document.getElementById('expenses-kpi-container');
+  if (expKpiEl) {
+    const totalPaid = (S.transactions || []).filter(t => t.credit).reduce((s, t) => s + t.amount, 0);
+    const exp = (S.expenses || []).reduce((s, x) => s + x.amount, 0);
+    const cf = totalPaid - exp;
+
+    const expensesKpis = [
+      { l: t('dashboard.kpi_expenses'), v: fmtE(exp), c: 'neg', s: t('expenses.kpi_sub') },
+      { l: t('dashboard.kpi_payments'), v: fmtE(totalPaid), c: 'pos', s: t('dashboard.kpi_payments_sub') },
+      { l: t('dashboard.kpi_cashflow'), v: fmtE(cf), c: cf < 0 ? 'neg' : cf === 0 ? '' : 'pos', s: cf < 0 ? t('dashboard.kpi_cashflow_advance') : t('dashboard.kpi_cashflow_covered') },
+    ];
+
+    expKpiEl.innerHTML = expensesKpis.map(k =>
+      `<div class="kpi"><div class="kpi-lbl">${k.l}</div><div class="kpi-val ${k.c}">${k.v}</div><div class="kpi-sub">${k.s}</div></div>`).join('');
+  }
 }
 function renderPlayerActivityTable() {
-  const el = document.getElementById('balance-table');
-  if (!el) return;
+  const targets = [
+    document.getElementById('balance-table'),
+    document.getElementById('players-activity-table')
+  ].filter(Boolean);
+  if (!targets.length) return;
   const activePlayers = S.players.filter(p => p.active !== false);
-  if (!activePlayers.length) { el.innerHTML = ''; return; }
+  if (!activePlayers.length) {
+    targets.forEach(el => { el.innerHTML = ''; });
+    return;
+  }
 
   const sorted = [...activePlayers].sort((a, b) => {
     let valA, valB;
@@ -1828,7 +1885,7 @@ function renderPlayerActivityTable() {
 
   const arrow = activitySortAsc ? '↑' : '↓';
 
-  el.innerHTML = `<div class="tw"><table class="dt"><thead><tr>
+  const html = `<div class="tw"><table class="dt"><thead><tr>
        <th onclick="sortActivityTable('name')">${t('players.name_sort')} ${activitySortColumn === 'name' ? arrow : ''}</th>
        <th onclick="sortActivityTable('lastLogin')">${t('players.login_sort')} ${activitySortColumn === 'lastLogin' ? arrow : ''}</th>
        <th onclick="sortActivityTable('lastInteraction')">${t('players.activity_sort')} ${activitySortColumn === 'lastInteraction' ? arrow : ''}</th>
@@ -1843,6 +1900,7 @@ function renderPlayerActivityTable() {
         <td class="txm txxs">${partDate ? fmtD(partDate) : '–'}</td>
       </tr>`;}).join('')}
   </tbody></table></div>`;
+  targets.forEach(el => { el.innerHTML = html; });
 }
 
 function sortActivityTable(column) {
@@ -1857,12 +1915,138 @@ function sortActivityTable(column) {
 }
 
 // ════════════════════════════════════════
-// ADMIN – SESSION PLANNER
+// ADMIN – SESSION PLANNER (MODERN)
 // ════════════════════════════════════════
-function renderAdminPlan() {
+let planTab = 'slots';
+let planDetailsOpen = false;
+let _planSaveTimeout = null;
+
+function setPlanTab(tab) {
+  planTab = tab;
+  ['slots', 'waitlist', 'history'].forEach(tKey => {
+    const btn = document.getElementById('plan-tab-' + tKey);
+    if (btn) {
+      btn.classList.toggle('active', tKey === tab);
+      btn.setAttribute('aria-selected', tKey === tab ? 'true' : 'false');
+    }
+  });
+  const cSlots = document.getElementById('plan-card-slots');
+  const cWl = document.getElementById('plan-waitlist-admin');
+  const cHist = document.getElementById('plan-history');
+  if (cSlots) cSlots.style.display = tab === 'slots' ? '' : 'none';
+  if (cWl) cWl.style.display = tab === 'waitlist' ? '' : 'none';
+  if (cHist) {
+    cHist.style.display = tab === 'history' ? '' : 'none';
+    if (tab === 'history' && planDate) renderSessionHistory(planDate);
+  }
+}
+
+function scrollPlanStrip(delta) {
+  const el = document.getElementById('plan-strip');
+  if (el) el.scrollBy({ left: delta * 240, behavior: 'smooth' });
+}
+
+function planGoToDateClosest(dateStr) {
+  if (!dateStr) return;
+  const all = getAllSessionsAdmin();
+  if (!all.length) return;
+  let target = all.find(s => s.date === dateStr);
+  if (!target) {
+    target = all.find(s => s.date >= dateStr) || all[all.length - 1];
+  }
+  if (target) {
+    planDate = target.id || target.date;
+    renderAdminPlan();
+  }
+}
+
+function togglePlanDetails() {
+  planDetailsOpen = !planDetailsOpen;
+  const box = document.getElementById('session-details-box');
+  const btn = document.getElementById('plan-edit-toggle-btn');
+  if (box) box.hidden = !planDetailsOpen;
+  if (btn) btn.classList.toggle('active-toggle', planDetailsOpen);
+}
+
+function planDetailAutoSave(field, value) {
+  planDetailChange(field, value);
+  if (_planSaveTimeout) clearTimeout(_planSaveTimeout);
+  _planSaveTimeout = setTimeout(() => {
+    savePlanDetailsSilent();
+  }, 400);
+}
+
+async function savePlanDetailsSilent() {
+  if (Object.keys(_planDetailChanges).length === 0) return;
+  const ind = document.getElementById('plan-save-indicator');
+  try {
+    const updates = {};
+    if (_planDetailChanges.date) updates.newDate = _planDetailChanges.date;
+    if (_planDetailChanges.timeStart) updates.timeStart = _planDetailChanges.timeStart;
+    if (_planDetailChanges.timeEnd) updates.timeEnd = _planDetailChanges.timeEnd;
+    if (_planDetailChanges.note !== undefined) updates.note = _planDetailChanges.note;
+    if (_planDetailChanges.location !== undefined) updates.location = _planDetailChanges.location;
+    if (_planDetailChanges.price !== undefined) updates.price = _planDetailChanges.price === '' ? null : parseFloat(_planDetailChanges.price);
+    if (_planDetailChanges.cancelHours !== undefined) updates.cancelHours = _planDetailChanges.cancelHours === null ? null : _planDetailChanges.cancelHours;
+    if (_planDetailChanges.name !== undefined) updates.name = _planDetailChanges.name === '' ? null : _planDetailChanges.name;
+    if (_planDetailChanges.courtNames !== undefined) updates.courtNames = _planDetailChanges.courtNames;
+
+    const sess = getOrSess(planDate);
+    const targetId = sess?.id || planDate;
+    const res = await apiFetch('PUT', '/sessions/' + targetId, updates);
+    await loadState();
+    _planDetailChanges = {};
+    if (res && res.id) planDate = res.id;
+
+    renderAdminPlan(true);
+    renderSessions();
+    lucide.createIcons();
+    const newInd = document.getElementById('plan-save-indicator');
+    if (newInd) {
+      newInd.classList.add('show');
+      setTimeout(() => newInd.classList.remove('show'), 2000);
+    }
+  } catch (e) {
+    showToast('⚠️ ' + (e.message || t('misc.save_failed')));
+  }
+}
+
+let _planStripAnimateNext = true;
+
+function renderAdminPlan(keepDetailsOpen) {
   if (!S.sessions) return;
   const allSessions = getAllSessionsAdmin();
-  if (allSessions.length === 0) return;
+  const selBox = document.getElementById('session-selector-box');
+  const headBox = document.getElementById('admin-plan-header-dynamic');
+
+  if (allSessions.length === 0) {
+    if (selBox) selBox.innerHTML = '<div class="plan-strip" id="plan-strip" role="listbox"></div>';
+    if (headBox) {
+      headBox.innerHTML = `
+        <div style="padding:var(--sp8) var(--sp4);text-align:center">
+          <i data-lucide="calendar" style="width:48px;height:48px;color:var(--txm);margin-bottom:var(--sp3)"></i>
+          <h2 class="sec-title">${t('planner.empty_title')}</h2>
+          <p class="txsm txm mb4">${t('planner.empty_text')}</p>
+          <div class="flex just-c g2">
+            <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()"><i data-lucide="plus"></i> ${t('session.new')}</button>
+            <button class="btn btn-sec btn-sm" onclick="showView('series')"><i data-lucide="repeat"></i> ${t('planner.setup_series')}</button>
+          </div>
+        </div>`;
+    }
+    const cSlots = document.getElementById('plan-card-slots');
+    const cWl = document.getElementById('plan-waitlist-admin');
+    const cHist = document.getElementById('plan-history');
+    const tabs = document.getElementById('plan-tabs');
+    if (cSlots) cSlots.style.display = 'none';
+    if (cWl) cWl.style.display = 'none';
+    if (cHist) cHist.style.display = 'none';
+    if (tabs) tabs.style.display = 'none';
+    lucide.createIcons();
+    return;
+  }
+
+  const tabs = document.getElementById('plan-tabs');
+  if (tabs) tabs.style.display = '';
 
   const today = toDS(new Date());
   if (!planDate) {
@@ -1882,148 +2066,232 @@ function renderAdminPlan() {
   const isCancelled = rawSess?.cancelled ?? sess?.cancelled ?? false;
   if (!sess.disabledCourts) sess.disabledCourts = [];
   const sessTime = getSessionTime(sess);
-  const cancelBtn = !sess.charged
-    ? (isCancelled
-        ? '<button class="btn btn-ok btn-sm" onclick="toggleSessionCancel()"><i data-lucide="rotate-ccw"></i> ' + t('session.reactivate') + '</button>'
-        : '<button class="btn btn-dan btn-sm" onclick="toggleSessionCancel()"><i data-lucide="x-circle"></i> ' + t('session.cancel') + '</button>')
-    : '';
-
-  // Build session selector dropdown
-  const upcomingSessions = allSessions.filter(s => s.date >= today);
-  const pastSessions = allSessions.filter(s => s.date < today);
-
-  const dateCounts = {};
-  allSessions.forEach(s => {
-    dateCounts[s.date] = (dateCounts[s.date] || 0) + 1;
-  });
-
-  function makeOpt(s) {
-    const sId = (dateCounts[s.date] === 1) ? s.date : (s.id || s.date);
-    const selected = (s.id === planDate || s.date === planDate) ? ' selected' : '';
-    const { start, end } = getSessionTime(s);
-    const timeStr = start && end ? ` ${fmtTime(start)}–${fmtTime(end)}` : '';
-    const label = `${fmtDL(s.date)}${timeStr} (${getSessionName(s)})`;
-    const badge = s.charged ? ' ✓' : (s.cancelled ? ' ✕' : '');
-    return `<option value="${sId}" data-id="${s.id || ''}" data-date="${s.date}"${selected}>${label}${badge}</option>`;
-  }
-
-  let sessionOptions = upcomingSessions.map(makeOpt).join('');
-  if (pastSessions.length > 0) {
-    if (upcomingSessions.length > 0) sessionOptions += `<optgroup label="${t('session.past_sessions')}">`;
-    sessionOptions += pastSessions.map(makeOpt).join('');
-    if (upcomingSessions.length > 0) sessionOptions += '</optgroup>';
-  }
-
-  document.getElementById('admin-plan-header-dynamic').innerHTML = '';
-
-  // Session selector card
-  let selectorBox = document.getElementById('session-selector-box');
-  if (!selectorBox) {
-    selectorBox = document.createElement('div');
-    selectorBox.id = 'session-selector-box';
-    selectorBox.className = 'card mb4';
-    document.getElementById('admin-plan-header-dynamic').parentNode.insertBefore(selectorBox, document.getElementById('admin-plan-header-dynamic').nextSibling);
-  }
-  selectorBox.innerHTML = `
-    <div class="flex items-c just-b mb4">
-      <h3 class="sec-title" style="margin-bottom:0">${t('session.select')}</h3>
-      <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()"><i data-lucide="calendar-plus"></i> ${t('session.new')}</button>
-    </div>
-    <p class="txxs tx-m" style="margin-top:var(--sp2)">${t('session.edit_info')}</p>
-    <div class="session-selector-bar" style="margin-top:var(--sp3)">
-      <select id="session-selector" class="fi" style="flex:1;font-size:var(--text-sm)" onchange="planGoToDate(this.value)">
-        ${sessionOptions}
-      </select>
-    </div>
-    <div class="flex items-c just-b" style="margin-top:var(--sp3)">
-      <div class="flex g2">
-        <button class="btn btn-sec btn-sm" onclick="planPrev()"><i data-lucide="chevron-left"></i></button>
-        <button class="btn btn-sec btn-sm" onclick="planGoToUpcoming()" title="${t('session.next')}"><i data-lucide="clock"></i></button>
-        <button class="btn btn-sec btn-sm" onclick="planNext()"><i data-lucide="chevron-right"></i></button>
-      </div>
-    </div>
-    `;
-
-  // Session Details card (inserted after selector box)
-  let detailsBox = document.getElementById('session-details-box');
-  if (!detailsBox) {
-    detailsBox = document.createElement('div');
-    detailsBox.id = 'session-details-box';
-    detailsBox.className = 'card mb4';
-    selectorBox.parentNode.insertBefore(detailsBox, selectorBox.nextSibling);
-  }
-  detailsBox.innerHTML = `
-    <h3 class="sec-title">${t('session.edit')}</h3>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp3);flex-wrap:nowrap;">
-      <span class="tx-sm tx-m">${t('session.date')}:</span>
-      <input type="date" class="fi" style="font-size:var(--text-sm)"
-             value="${sess.date}"
-             onchange="planDetailChange('date', this.value)">
-    </div>
-    <p class="txxs tx-m" style="margin:2px 0 0 0">${t('session.date_hint')}</p>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
-      <span class="tx-sm tx-m">${t('session.time')}:</span>
-      <input type="time" class="fi" style="max-width:110px;font-size:var(--text-sm);"
-             value="${sessTime.start}"
-             onchange="planDetailChange('timeStart', this.value)">
-      <span class="tx-sm tx-m">–</span>
-      <input type="time" class="fi" style="max-width:110px;font-size:var(--text-sm);"
-             value="${sessTime.end}"
-             onchange="planDetailChange('timeEnd', this.value)">
-    </div>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
-      <span class="tx-sm tx-m">${t('session.name')}:</span>
-      <input type="text" id="plan-name-input" class="fi" placeholder="${esc(getSessionName(sess))}"
-         style="flex:1;min-width:200px;font-size:var(--text-sm)"
-         value="${esc(sess.name || '')}"
-         onchange="planDetailChange('name', this.value)">
-    </div>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap">
-      <span class="tx-sm tx-m">${t('session.address')}</span>
-      <input type="text" class="fi" placeholder="${esc(S.cfg.srlocation || t('session.address_placeholder'))}"
-         style="flex:1;min-width:200px;font-size:var(--text-sm)"
-         value="${esc(sess.location || '')}"
-         onchange="planDetailChange('location', this.value)">
-    </div>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:wrap;">
-      <span class="tx-sm tx-m">${t('session.comment')}:</span>
-      <input type="text" id="plan-note-input" class="fi" placeholder="${t('session.comment_placeholder')}"
-         style="flex:1;min-width:200px;font-size:var(--text-sm)"
-         value="${esc(sess.note || '')}"
-         onchange="planDetailChange('note', this.value)">
-    </div>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
-      <span class="tx-sm tx-m">${t('session.price')}:</span>
-      <input type="number" id="plan-price-input" class="fi" placeholder="${S.cfg.sr_cost || S.cfg.cost || 16}"
-         style="max-width:120px;font-size:var(--text-sm)"
-         value="${sess.price !== null && sess.price !== undefined ? sess.price : ''}"
-         onchange="planDetailChange('price', this.value)">
-    </div>
-    <p class="txxs tx-m" style="margin:2px 0 0 var(--sp2)">${t('session.per_slot')}</p>
-    <div style="display:flex;align-items:center;gap:var(--sp2);margin-top:var(--sp2);flex-wrap:nowrap;">
-      <span class="tx-sm tx-m">${t('session.cancel_deadline')}:</span>
-      <input type="text" id="plan-cancel-hours" class="fi" placeholder="7:00"
-         style="max-width:100px;font-size:var(--text-sm)"
-         value="${sess.cancelHours !== null && sess.cancelHours !== undefined ? formatCancelHours(sess.cancelHours) : ''}"
-         onchange="planDetailChange('cancelHours', parseCancelHours(this.value))">
-    </div>
-    <p class="txxs tx-m" style="margin:2px 0 0 var(--sp2)">${t('session.cancel_deadline_hint')}</p>
-    <div class="flex g2 wrap" style="margin-top:var(--sp3)">
-      <button class="btn btn-pri btn-sm" onclick="savePlanDetails()"><i data-lucide="save"></i> ${t('misc.save')}</button>
-      ${cancelBtn}
-      ${isCancelled && !sess.charged ? '<button class="btn btn-dan btn-sm" onclick="deleteSession()"><i data-lucide="trash-2"></i> ' + t('misc.delete') + '</button>' : ''}
-    </div>
-  `;
+  const sessCost = getSessionCost(sess);
+  const sessId = sess.id || sess.date;
 
   const activeCourts = sess.courts.filter((_, i) => !sess.disabledCourts.includes(i));
   const allPids = [...new Set(activeCourts.flat().filter(Boolean))];
   const total = activeCourts.length * 4;
   const filled = allPids.length;
+  const isEnded = sessionEndDate(sess) < new Date();
+  const isAwaiting = !sess.charged && !isCancelled && isEnded && filled > 0;
+
+  let statusClass = 'st-open';
+  let statusLabel = t('planner.status_open');
+  if (isCancelled) {
+    statusClass = 'st-cancelled';
+    statusLabel = t('planner.status_cancelled');
+  } else if (sess.charged) {
+    statusClass = 'st-charged';
+    statusLabel = t('planner.status_charged');
+  } else if (isAwaiting) {
+    statusClass = 'st-awaiting';
+    statusLabel = t('planner.status_awaiting');
+  }
+
+  // 1. Horizontal Date Strip (with start time on each chip for multi-session days)
+  const upcomingSessions = allSessions.filter(s => s.date >= today);
+  const pastSessions = allSessions.filter(s => s.date < today);
+  const locale = I18N.current === 'de' ? 'de-DE' : 'en-US';
+
+  function makeChip(s) {
+    const sId = s.id || s.date;
+    const isSel = (s.id === planDate || s.date === planDate);
+    const sCounts = sessionChargeMap(s);
+    const sActiveCourts = (s.courts || []).filter((_, i) => !(s.disabledCourts || []).includes(i));
+    const sTotalSlots = (sActiveCourts.length || (s.courts ? s.courts.length : 2)) * 4;
+    const sFilled = Object.values(sCounts).reduce((a, b) => a + b, 0);
+    const sEnded = sessionEndDate(s) < new Date();
+    const sAwaiting = !s.charged && !s.cancelled && sEnded && sFilled > 0;
+
+    let chipClass = 'st-open';
+    let bText = `${sFilled}/${sTotalSlots}`;
+    if (s.cancelled) { chipClass = 'st-cancelled'; bText = '✕'; }
+    else if (s.charged) { chipClass = 'st-charged'; bText = '✓'; }
+    else if (sAwaiting) { chipClass = 'st-awaiting'; bText = '€'; }
+
+    const dObj = new Date(s.date + 'T00:00:00');
+    const wkdy = dObj.toLocaleDateString(locale, { weekday: 'short' }).replace('.', '');
+    const dayNum = dObj.getDate();
+    const mStr = dObj.toLocaleDateString(locale, { month: 'short' }).replace('.', '');
+    const { start } = getSessionTime(s);
+    const timeLabel = start ? fmtTime(start) : '';
+
+    return `<button class="plan-chip ${chipClass} ${isSel ? 'active' : ''}" data-date="${s.date}" data-id="${sId}" onclick="planGoToDate('${sId}')" type="button" role="option" aria-selected="${isSel ? 'true' : 'false'}">
+      <span class="pc-top">${wkdy} · ${mStr}</span>
+      <span class="pc-day">${dayNum}</span>
+      ${timeLabel ? `<span class="pc-time">${timeLabel}</span>` : ''}
+      <span class="pc-badge">${bText}</span>
+    </button>`;
+  }
+
+  let chipsHtml = '';
+  if (pastSessions.length > 0) {
+    chipsHtml += pastSessions.map(makeChip).join('');
+  }
+  if (pastSessions.length > 0 && upcomingSessions.length > 0) {
+    chipsHtml += `<button type="button" class="plan-today-marker" onclick="planGoToUpcoming()" title="${esc(t('session.next'))}">HEUTE</button>`;
+  }
+  if (upcomingSessions.length > 0) {
+    chipsHtml += upcomingSessions.map(makeChip).join('');
+  }
+
+  const nextUpcoming = upcomingSessions[0] || allSessions[allSessions.length - 1];
+  const nextUpcomingId = nextUpcoming ? (nextUpcoming.id || nextUpcoming.date) : null;
+  const isAtUpcoming = nextUpcomingId && (planDate === nextUpcomingId || planDate === nextUpcoming.date);
+
+  if (selBox) {
+    selBox.innerHTML = `
+      <div class="plan-nav-box">
+        <div class="plan-top-bar">
+          <span class="plan-top-label"><i data-lucide="calendar-days"></i> ${t('planner.select_session_label')}</span>
+          <div class="plan-top-actions">
+            <button class="btn ${isAtUpcoming ? 'btn-sec active-toggle' : 'btn-sec'} btn-sm" id="plan-jump-upcoming-btn" onclick="planGoToUpcoming()" title="${esc(t('planner.jump_upcoming_title'))}" type="button">
+              <i data-lucide="calendar-arrow-up"></i> <span>${t('planner.jump_upcoming')}</span>
+            </button>
+            <button class="btn btn-sec btn-sm" onclick="document.getElementById('plan-date-picker').showPicker ? document.getElementById('plan-date-picker').showPicker() : document.getElementById('plan-date-picker').click()" title="${esc(t('planner.jump_to_date'))}" type="button"><i data-lucide="calendar-search"></i></button>
+            <input type="date" id="plan-date-picker" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="planGoToDateClosest(this.value)">
+            <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()" type="button"><i data-lucide="plus"></i> <span data-i18n="session.new">${t('session.new')}</span></button>
+          </div>
+        </div>
+        <div class="plan-strip-wrap">
+          <button class="plan-strip-nav" onclick="scrollPlanStrip(-1)" type="button" aria-label="Links scrollen">‹</button>
+          <div class="plan-strip" id="plan-strip" role="listbox">
+            ${chipsHtml}
+          </div>
+          <button class="plan-strip-nav" onclick="scrollPlanStrip(1)" type="button" aria-label="Rechts scrollen">›</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // 2. Primary action button in header
+  let primaryActionBtn = '';
+  if (isCancelled) {
+    primaryActionBtn = `<button class="btn btn-ok btn-sm" onclick="toggleSessionCancel()"><i data-lucide="rotate-ccw"></i> ${t('session.reactivate')}</button>`;
+  } else if (sess.charged) {
+    primaryActionBtn = `<button class="btn btn-sec btn-sm" onclick="setBillingTab('charged');showView('billing')"><i data-lucide="receipt"></i> ${t('planner.view_in_billing')}</button>`;
+  } else if (isAwaiting) {
+    primaryActionBtn = `<button class="btn btn-gld btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="receipt"></i> ${t('planner.to_billing')}</button>`;
+  } else if (filled > 0) {
+    primaryActionBtn = `<button class="btn btn-pri btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="credit-card"></i> ${t('session.billing_charge')}</button>`;
+  }
+
+  if (keepDetailsOpen) planDetailsOpen = true;
+  const showDetails = planDetailsOpen || isCancelled;
+  const effectiveLoc = (sess.location || S.cfg.srlocation || '').trim();
+  const cancelActionLabel = isCancelled ? t('session.reactivate') : t('session.cancel');
+
+  // 3. Unified Header + Metadata + Collapsible Edit Drawer Card
+  if (headBox) {
+    headBox.innerHTML = `
+      <div class="flex items-c just-b wrap g2">
+        <div class="flex items-c g2 wrap">
+          <h2 class="sec-title" style="margin-bottom:0">${esc(getSessionName(sess))}</h2>
+          ${sess.seriesId ? `<span class="badge bg-sec" title="${esc(t('planner.from_series'))}"><i data-lucide="repeat" style="width:12px;height:12px"></i></span>` : ''}
+          <span class="status-pill ${statusClass}">${statusLabel}</span>
+          <span class="save-indicator" id="plan-save-indicator"><i data-lucide="check"></i> ${t('planner.saved')}</span>
+        </div>
+        <div class="flex items-c g2 wrap">
+          ${primaryActionBtn}
+          <button class="btn btn-sec btn-sm ${showDetails ? 'active-toggle' : ''}" id="plan-edit-toggle-btn" onclick="togglePlanDetails()"><i data-lucide="sliders-horizontal"></i> <span>${t('planner.edit_details')}</span></button>
+        </div>
+      </div>
+
+      <div class="plan-meta-row">
+        <span class="plan-meta-item"><i data-lucide="calendar"></i> <span>${esc(fmtDL(sess.date))}</span></span>
+        <span class="plan-meta-item"><i data-lucide="clock"></i> <span>${sessTime.start}–${sessTime.end}</span></span>
+        ${effectiveLoc ? `<span class="plan-meta-item"><i data-lucide="map-pin"></i> <span>${esc(effectiveLoc)}</span></span>` : ''}
+        <span class="plan-meta-item"><i data-lucide="tag"></i> <span>${fmtE(sessCost)} / Slot</span></span>
+        <span class="plan-meta-item"><i data-lucide="users"></i> <span>${filled} / ${total} ${t('session.slots_meta')}</span></span>
+        ${sess.note ? `<span class="plan-meta-item"><i data-lucide="message-square"></i> <span>${esc(sess.note)}</span></span>` : ''}
+      </div>
+
+      <div class="plan-edit-drawer" id="session-details-box" ${showDetails ? '' : 'hidden'}>
+        ${sess.charged ? `<p class="txxs txm mb3">${t('planner.locked_charged')}</p>` : ''}
+        <div class="plan-edit-grid">
+          <div class="fg">
+            <label class="fl">${t('session.date')}</label>
+            <input type="date" class="fi" style="font-size:var(--text-sm)"
+                   value="${sess.date}"
+                   ${sess.charged ? 'disabled' : ''}
+                   onchange="planDetailAutoSave('date', this.value)">
+          </div>
+          <div class="fg">
+            <label class="fl">${t('session.time')}</label>
+            <div class="flex items-c g2">
+              <input type="time" class="fi" style="flex:1;font-size:var(--text-sm)"
+                     value="${sessTime.start}"
+                     ${sess.charged ? 'disabled' : ''}
+                     onchange="planDetailAutoSave('timeStart', this.value)">
+              <span class="tx-sm tx-m">–</span>
+              <input type="time" class="fi" style="flex:1;font-size:var(--text-sm)"
+                     value="${sessTime.end}"
+                     ${sess.charged ? 'disabled' : ''}
+                     onchange="planDetailAutoSave('timeEnd', this.value)">
+            </div>
+          </div>
+          <div class="fg">
+            <label class="fl">${t('session.name')}</label>
+            <input type="text" id="plan-name-input" class="fi" placeholder="${esc(getSessionName(sess))}"
+                   style="font-size:var(--text-sm)"
+                   value="${esc(sess.name || '')}"
+                   ${sess.charged ? 'disabled' : ''}
+                   oninput="planDetailAutoSave('name', this.value)"
+                   onchange="planDetailAutoSave('name', this.value)">
+          </div>
+          <div class="fg">
+            <label class="fl">${t('session.address')}</label>
+            <input type="text" class="fi" placeholder="${esc(S.cfg.srlocation || t('session.address_placeholder'))}"
+                   style="font-size:var(--text-sm)"
+                   value="${esc(sess.location || '')}"
+                   ${sess.charged ? 'disabled' : ''}
+                   oninput="planDetailAutoSave('location', this.value)"
+                   onchange="planDetailAutoSave('location', this.value)">
+          </div>
+          <div class="fg">
+            <label class="fl">${t('session.price')} (${t('session.per_slot')})</label>
+            <input type="number" id="plan-price-input" class="fi" placeholder="${S.cfg.sr_cost || S.cfg.cost || 16}"
+                   style="font-size:var(--text-sm)"
+                   value="${sess.price !== null && sess.price !== undefined ? sess.price : ''}"
+                   ${sess.charged ? 'disabled' : ''}
+                   oninput="planDetailAutoSave('price', this.value)"
+                   onchange="planDetailAutoSave('price', this.value)">
+          </div>
+          <div class="fg">
+            <label class="fl">${t('session.cancel_deadline')}</label>
+            <input type="text" id="plan-cancel-hours" class="fi" placeholder="7:00"
+                   style="font-size:var(--text-sm)"
+                   value="${sess.cancelHours !== null && sess.cancelHours !== undefined ? formatCancelHours(sess.cancelHours) : ''}"
+                   ${sess.charged ? 'disabled' : ''}
+                   onchange="planDetailAutoSave('cancelHours', parseCancelHours(this.value))">
+          </div>
+          <div class="fg fg-full">
+            <label class="fl">${t('session.comment')}</label>
+            <input type="text" id="plan-note-input" class="fi" placeholder="${t('session.comment_placeholder')}"
+                   style="font-size:var(--text-sm)"
+                   value="${esc(sess.note || '')}"
+                   ${sess.charged ? 'disabled' : ''}
+                   oninput="planDetailAutoSave('note', this.value)"
+                   onchange="planDetailAutoSave('note', this.value)">
+          </div>
+        </div>
+        ${!sess.charged ? `
+        <div class="flex items-c just-b wrap g2 mt4" style="padding-top:var(--sp3);border-top:1px dashed var(--bor)">
+          <div class="flex g2 wrap">
+            ${!isCancelled ? `<button class="btn btn-dan btn-sm" onclick="toggleSessionCancel()"><i data-lucide="x-circle"></i> ${t('session.cancel')}</button>` : ''}
+            ${isCancelled ? `<button class="btn btn-dan btn-sm" onclick="deleteSession()"><i data-lucide="trash-2"></i> ${t('misc.delete')}</button>` : ''}
+          </div>
+          <button class="btn btn-pri btn-sm" onclick="savePlanDetails()"><i data-lucide="save"></i> ${t('misc.save')}</button>
+        </div>` : ''}
+      </div>
+    `;
+  }
+
+  // 4. Slot Editor
   document.getElementById('plan-slots-meta').textContent = `${filled} / ${total} ${t('session.slots_meta')} · ${activeCourts.length} ${t('session.court_s')} ${sess.disabledCourts.length > 0 ? `(${sess.disabledCourts.length} ${t('session.disabled')})` : ''}`;
   const playerMap = new Map(S.players.map(p => [p.id, p]));
-  const sessId = sess.id || sess.date;
 
-  // Unified slot editor grouped visually by court
   let html = '';
   sess.courts.forEach((slots, ci) => {
     const isDisabled = sess.disabledCourts.includes(ci);
@@ -2053,29 +2321,31 @@ function renderAdminPlan() {
       html += `<div class="txsm txm mb4">${t('session.court_cancelled_info')}</div>`;
     } else {
       html += `<div class="admin-slots-grid">`;
-    slots.forEach((pid, si) => {
-      const rawId = pid ? pid.split('|')[0] : null;
-      const p = rawId ? playerMap.get(rawId) : null;
-      const guestLabel = pid && pid.includes('|') ? ` (${t('misc.guest')})` : '';
-      if (p) {
-        html += `<div class="admin-slot filled" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
-          <div class="av" style="width:32px;height:32px;font-size:var(--text-sm)"><i data-lucide="${playerIcon(p)}" style="width:16px;height:16px"></i></div>
-          <span class="slot-name">${esc(p.name)}${guestLabel}</span>
-        </div>`;
-      } else {
-        html += `<div class="admin-slot" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
-          <i data-lucide="user-plus" style="width:16px;height:16px;color:var(--txf)"></i>
-          <span class="slot-ph">${t('session.choose_player')}</span>
-        </div>`;
-      }
-    });
-    html += `</div>`;
-    } // end else
+      slots.forEach((pid, si) => {
+        const rawId = pid ? pid.split('|')[0] : null;
+        const p = rawId ? playerMap.get(rawId) : null;
+        const guestLabel = pid && pid.includes('|') ? ` (${t('misc.guest')})` : '';
+        if (p) {
+          html += `<div class="admin-slot filled" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
+            <div class="av" style="width:32px;height:32px;font-size:var(--text-sm)"><i data-lucide="${playerIcon(p)}" style="width:16px;height:16px"></i></div>
+            <span class="slot-name">${esc(p.name)}${guestLabel}</span>
+          </div>`;
+        } else {
+          html += `<div class="admin-slot" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
+            <i data-lucide="user-plus" style="width:16px;height:16px;color:var(--txf)"></i>
+            <span class="slot-ph">${t('session.choose_player')}</span>
+          </div>`;
+        }
+      });
+      html += `</div>`;
+    }
   });
   document.getElementById('plan-slots-editor').innerHTML = html;
 
-  // Waitlist admin panel
+  // 5. Waitlist panel
   const wlEl = document.getElementById('plan-waitlist-admin');
+  const wlCountEl = document.getElementById('plan-tab-wl-count');
+  if (wlCountEl) wlCountEl.textContent = sess.waitlist.length > 0 ? `(${sess.waitlist.length})` : '';
   const adminWlBtn = `<button class="btn btn-sec btn-sm" style="margin-top:var(--sp3)" onclick="adminAddToWaitlist('${sessId}')"><i data-lucide="list-plus"></i> ${t('session.waitlist_add')}</button>`;
   if (sess.waitlist.length) {
     wlEl.innerHTML = `<h3 class="sec-title">${t('session.waitlist')}</h3>
@@ -2095,34 +2365,30 @@ function renderAdminPlan() {
     wlEl.innerHTML = `<h3 class="sec-title" style="margin-bottom:var(--sp2)">${t('session.waitlist')}</h3><p class="txsm txm">${t('session.no_entries')}</p>${adminWlBtn}`;
   }
 
-  // Summary
-  const sumEl = document.getElementById('plan-summary');
-  const chargeBtn = !sess.charged && allPids.length > 0
-    ? '<button class="btn btn-pri btn-sm" style="margin-top:var(--sp3)" onclick="openChargeModal()"><i data-lucide="credit-card"></i> ' + t('session.billing_charge') + '</button>'
-    : '';
-   if (!allPids.length) { sumEl.innerHTML = `<h3 class="sec-title">${t('session.billing_preview')}</h3><p class="txsm txm">${t('session.billing_no_players')}</p>${chargeBtn}`; }
-   else {
-     const chargeMap = getChargeMap(sess);
-     sumEl.innerHTML = `<h3 class="sec-title">${t('session.billing_preview')}</h3>
-     <div class="tw"><table class="dt"><thead><tr><th>${t('session.billing_player')}</th><th>${t('session.billing_balance')}</th><th>${t('session.billing_after')}</th></tr></thead><tbody>
-    ${Object.entries(chargeMap).map(([pid, n]) => {
-      const name = getDisplayName(pid, playerMap);
-      const b = bal(pid);
-      const sessCost = (sess.price !== null && sess.price !== undefined) ? sess.price : S.cfg.cost;
-      const amt = sessCost * n;
-      const after = b - amt;
-      const guestInfo = n > 1 ? `<span style="opacity:.6;font-size:var(--text-xs)"> +${n-1} ${t('misc.guest')}</span>` : '';
-      return `<tr><td class="fw6">${esc(name)}${guestInfo}</td>
-        <td style="color:${b<0?'var(--err)':b===0?'var(--txm)':'var(--suc)'}">${fmtE(b)}</td>
-        <td style="color:${after<0?'var(--err)':after===0?'var(--txm)':'var(--suc)'}">${fmtE(after)}</td>
-      </tr>`;}).join('')}
-    </tbody></table></div>
-    ${chargeBtn}`;
-  }
-  renderSessionHistory(sessId);
+  // 6. Update active tab views
+  setPlanTab(planTab);
+
+  // Auto-scroll active chip into view
+  const animateScroll = _planStripAnimateNext;
+  _planStripAnimateNext = false;
+
+  setTimeout(() => {
+    const activeChip = document.querySelector('.plan-chip.active');
+    if (activeChip) {
+      if (animateScroll) {
+        const strip = document.getElementById('plan-strip');
+        if (strip && strip.scrollLeft !== 0) {
+          strip.scrollLeft = 0;
+        }
+        activeChip.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+      } else {
+        activeChip.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+      }
+    }
+  }, animateScroll ? 100 : 20);
+
   lucide.createIcons();
 }
-
 
 async function renderSessionHistory(dateOrId) {
   const el = document.getElementById('plan-history-content');
@@ -2146,6 +2412,8 @@ async function renderSessionHistory(dateOrId) {
       waitlist_leave:  { label: t('history.waitlist_leave'),   cls: 'bg-err' },
       promoted:        { label: t('history.promoted'),  cls: 'bg-ok'  },
       court_cancelled:{ label: t('session.court_cancelled'),cls: 'bg-neu' },
+      charged:         { label: t('billing.history_charged'),  cls: 'bg-neu' },
+      charge_reverted: { label: t('billing.history_reverted'), cls: 'bg-gld' },
     };
 
     el.innerHTML = data.map(h => {
@@ -2341,7 +2609,7 @@ async function saveAddSession() {
   try {
       const res = await apiFetch('PUT', '/sessions/new', {
           date:           date,
-          courts:         Array(S.cfg.courts).fill([null,null,null,null]),
+          courts:         Array(parseInt(S.cfg.courts, 10) || 2).fill(null).map(() => [null, null, null, null]),
           disabledCourts: [],
           waitlist:       [],
           note:           '',
@@ -2386,6 +2654,7 @@ function planGoToUpcoming() {
   const upcoming = all.find(s => s.date >= today);
   const target = upcoming || all[all.length - 1];
   if (target) planDate = target.id || target.date;
+  _planStripAnimateNext = true;
   renderAdminPlan();
 }
 
@@ -2475,67 +2744,369 @@ function getChargeMap(sess) {
   });
   return counts;
 }
+// ════════════════════════════════════════
+// BILLING (ABRECHNUNG)
+// ════════════════════════════════════════
+let billingTab = 'open';
+let billingDeselected = new Set();
+let billingChargedLimit = 20;
+let isCharging = false;
+let billingModal = { ids: [], paid: {}, step: 1 };
+
+function getSessionCost(sess) {
+  const v = (sess.price !== null && sess.price !== undefined) ? parseFloat(sess.price) : parseFloat(S.cfg.cost);
+  return isNaN(v) ? 0 : v;
+}
+
+function sessionChargeMap(sess) {
+  return getChargeMap({ courts: sess.courts || [], disabledCourts: sess.disabledCourts || [] });
+}
+
+function sessionEndDate(s) {
+  const { start, end } = getSessionTime(s);
+  const toMin = x => { const [h, m] = (x || '').split(':').map(Number); return (h || 0) * 60 + (m || 0); };
+  const d = new Date(s.date + 'T00:00:00');
+  let endMin = end ? toMin(end) : 23 * 60 + 59;
+  if (start && end && endMin <= toMin(start)) endMin += 24 * 60; // overnight session
+  d.setMinutes(endMin);
+  return d;
+}
+
+function getOpenBillingSessions() {
+  const now = new Date();
+  return (S.sessions || [])
+    .filter(s => !s.charged && !s.cancelled && sessionEndDate(s) < now && Object.keys(sessionChargeMap(s)).length > 0)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.timeStart || '').localeCompare(b.timeStart || ''));
+}
+
+function getChargedSessions() {
+  return (S.sessions || [])
+    .filter(s => s.charged)
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.timeStart || '').localeCompare(a.timeStart || ''));
+}
+
+function billingSessionTotals(sess) {
+  const counts = sessionChargeMap(sess);
+  const slots = Object.values(counts).reduce((a, b) => a + b, 0);
+  return { counts, slots, players: Object.keys(counts).length, sum: slots * getSessionCost(sess) };
+}
+
+function updateBillingBadge() {
+  const n = isAdmin ? getOpenBillingSessions().length : 0;
+  ['nav-billing-count', 'bnav-billing-count'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = n;
+    el.hidden = n === 0;
+  });
+  return n;
+}
+
+function setBillingTab(tab) {
+  billingTab = tab;
+  renderBilling();
+}
+
+function billingSessionHeader(s) {
+  const { start, end } = getSessionTime(s);
+  const time = start && end ? ` · ${fmtTime(start)}–${fmtTime(end)}` : '';
+  return `${esc(fmtDL(s.date))}${time}`;
+}
+
+function renderBilling() {
+  const open = updateBillingBadge();
+  const root = document.getElementById('billing-content');
+  if (!root) return;
+  const openList = getOpenBillingSessions();
+  const chargedList = getChargedSessions();
+  const tabOpen = document.getElementById('billing-tab-open');
+  const tabCh = document.getElementById('billing-tab-charged');
+  tabOpen.textContent = `${t('billing.tab_open')} (${openList.length})`;
+  tabCh.textContent = t('billing.tab_charged');
+  tabOpen.classList.toggle('active', billingTab === 'open');
+  tabCh.classList.toggle('active', billingTab === 'charged');
+  tabOpen.setAttribute('aria-selected', billingTab === 'open');
+  tabCh.setAttribute('aria-selected', billingTab === 'charged');
+
+  const intro = document.getElementById('billing-intro');
+  if (intro) {
+    intro.innerHTML = localStorage.getItem('courtle_billing_intro_seen') ? '' : `
+      <div class="card mb4">
+        <h3 class="sec-title" style="margin-bottom:var(--sp2)">${t('billing.intro_title')}</h3>
+        <p class="txsm txm mb4">${t('billing.intro_text')}</p>
+        <button class="btn btn-sec btn-sm" onclick="dismissBillingIntro()">${t('billing.intro_dismiss')}</button>
+      </div>`;
+  }
+
+  const footer = document.getElementById('billing-footer');
+  if (billingTab === 'open') {
+    if (!openList.length) {
+      root.innerHTML = `<div class="empty"><i data-lucide="party-popper"></i><h3>${t('billing.empty_title')}</h3><p class="txsm">${t('billing.empty_text')}</p></div>`;
+      footer.hidden = true;
+    } else {
+      const selected = openList.filter(s => !billingDeselected.has(s.id));
+      const allSel = selected.length === openList.length;
+      root.innerHTML = `<div class="billing-list">
+        <label class="flex items-c g2 txsm fw6" style="cursor:pointer"><input type="checkbox" style="width:20px;height:20px" ${allSel ? 'checked' : ''} onchange="toggleBillingAll(this.checked)"> ${t('billing.select_all')}</label>
+        ${openList.map(s => {
+          const tot = billingSessionTotals(s);
+          const sel = !billingDeselected.has(s.id);
+          return `<div class="billing-item ${sel ? 'sel' : ''}">
+            <input type="checkbox" ${sel ? 'checked' : ''} onchange="toggleBillingItem('${s.id}', this.checked)" aria-label="${esc(getSessionName(s))}">
+            <div class="bi-main">
+              <div class="bi-title">${esc(getSessionName(s))}</div>
+              <div class="bi-meta">${billingSessionHeader(s)}</div>
+              <div class="bi-meta">${t('billing.session_meta').replace('{slots}', tot.slots).replace('{players}', tot.players)}</div>
+              <div class="bi-actions">
+                <button class="btn btn-sec btn-sm" onclick="openBillingModal(['${s.id}'])">${t('billing.review')}</button>
+                <button class="btn btn-sec btn-sm" onclick="openBillingInPlanner('${s.id}')">${t('billing.open_in_planner')}</button>
+              </div>
+            </div>
+            <div class="bi-sum">${fmtE(tot.sum)}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+      const sum = selected.reduce((a, s) => a + billingSessionTotals(s).sum, 0);
+      document.getElementById('billing-footer-sum').textContent = t('billing.selected_summary').replace('{n}', selected.length).replace('{sum}', fmtE(sum));
+      document.getElementById('billing-footer-btn').disabled = selected.length === 0;
+      footer.hidden = false;
+    }
+  } else {
+    footer.hidden = true;
+    if (!chargedList.length) {
+      root.innerHTML = `<div class="empty"><i data-lucide="receipt"></i><p class="txsm">${t('billing.charged_empty')}</p></div>`;
+    } else {
+      const shown = chargedList.slice(0, billingChargedLimit);
+      root.innerHTML = `<div class="billing-list">${shown.map(s => {
+        const txs = (S.transactions || []).filter(x => x.sessionId === s.id);
+        const legacy = txs.length === 0;
+        const sum = legacy ? billingSessionTotals(s).sum : txs.filter(x => !x.credit).reduce((a, x) => a + x.amount, 0);
+        return `<div class="billing-item">
+          <div class="bi-main">
+            <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('session.charged')}</span></div>
+            <div class="bi-meta">${billingSessionHeader(s)}</div>
+            <div class="bi-actions">
+              <button class="btn btn-dan btn-sm" ${legacy ? `disabled title="${esc(t('billing.legacy_no_revert'))}"` : ''} onclick="revertBilling('${s.id}')"><i data-lucide="undo-2"></i> ${t('billing.revert')}</button>
+            </div>
+            ${legacy ? `<div class="bi-meta" style="margin-top:var(--sp1)">${t('billing.legacy_no_revert')}</div>` : ''}
+          </div>
+          <div class="bi-sum">${fmtE(sum)}</div>
+        </div>`;
+      }).join('')}
+      ${chargedList.length > shown.length ? `<button class="btn btn-sec btn-sm" onclick="billingChargedLimit+=20;renderBilling()">…</button>` : ''}
+      </div>`;
+    }
+  }
+  lucide.createIcons();
+}
+
+function dismissBillingIntro() {
+  localStorage.setItem('courtle_billing_intro_seen', '1');
+  renderBilling();
+}
+
+function toggleBillingItem(id, checked) {
+  if (checked) billingDeselected.delete(id); else billingDeselected.add(id);
+  renderBilling();
+}
+function toggleBillingAll(checked) {
+  const ids = getOpenBillingSessions().map(s => s.id);
+  billingDeselected = checked ? new Set() : new Set(ids);
+  renderBilling();
+}
+function openBillingInPlanner(id) {
+  planDate = id;
+  showView('admin-plan');
+  renderAdminPlan();
+}
+function openBillingModalForSelection() {
+  const ids = getOpenBillingSessions().filter(s => !billingDeselected.has(s.id)).map(s => s.id);
+  if (ids.length) openBillingModal(ids);
+}
+
+// Legacy entry point (planner): charge the currently selected session
 function openChargeModal() {
   const sess = getOrSess(planDate);
-  if (sess.charged) { showToast('Bereits abgerechnet.'); return; }
-  const counts = getChargeMap(sess);
-  const baseIds = Object.keys(counts);
-  if (!baseIds.length) { showToast(t('session.billing_no_players')); return; }
-  const totalSlots = Object.values(counts).reduce((a, b) => a + b, 0);
-  const sessionCost = (sess.price !== null && sess.price !== undefined) ? sess.price : S.cfg.cost;
-  document.getElementById('mo-charge-desc').textContent = `${baseIds.length} ${t('players.title').toLowerCase()} (${totalSlots} ${t('session.slots').toLowerCase()}) am ${fmtDL(sess.date)} · ${fmtE(sessionCost)} ${t('session.per_slot')}`;
-
-  document.getElementById('mo-charge-list').innerHTML = `<div class="tw"><table class="dt"><thead><tr><th>${t('players.title')}</th><th>${t('session.slots')}</th><th>${t('session.amount')}</th><th style="text-align:center">${t('session.paid')}</th></tr></thead><tbody>
-    ${baseIds.map(pid => {
-      const p = S.players.find(x => x.id === pid);
-      const n = counts[pid];
-      const amt = sessionCost * n;
-      const guestInfo = n > 1 ? ` <span style="opacity:.6;font-size:var(--text-xs)">(+${n-1} ${t('misc.guest')})</span>` : '';
-      return `<tr>
-                <td>${esc(p ? p.name : '?')}${guestInfo}</td>
-                <td style="text-align:center">${n}</td>
-                <td>– ${fmtE(amt)}</td>
-                <td style="text-align:center">
-                  <input type="checkbox" class="paid-check" data-pid="${pid}" style="width:18px;height:18px;cursor:pointer;">
-                </td>
-              </tr>`;
-    }).join('')}
-  </tbody></table></div>`;
-  openMo('mo-charge');
+  if (sess.charged) { showToast(t('misc.already_charged')); return; }
+  openBillingModal([sess.id || planDate]);
 }
-let isCharging = false; // Unsere unsichtbare Schranke für die Abrechnung
+
+function openBillingModal(ids) {
+  const sessions = ids.map(id => (S.sessions || []).find(s => s.id === id)).filter(Boolean);
+  if (!sessions.length) return;
+  if (!sessions.some(s => Object.keys(sessionChargeMap(s)).length)) { showToast(t('session.billing_no_players')); return; }
+  billingModal = { ids: sessions.map(s => s.id), paid: {}, step: 1 };
+  renderBillingModal();
+  openMo('mo-billing');
+}
+
+function billingPlayerName(pid, n) {
+  const p = S.players.find(x => x.id === pid);
+  const guests = n > 1 ? ` <span style="opacity:.6;font-size:var(--text-xs)">(+${n - 1} ${t('misc.guest')})</span>` : '';
+  return esc(p ? p.name : '?') + guests;
+}
+
+function renderBillingModal() {
+  const sessions = billingModal.ids.map(id => S.sessions.find(s => s.id === id)).filter(Boolean);
+  const body = document.getElementById('mo-billing-body');
+  const foot = document.getElementById('mo-billing-foot');
+  document.getElementById('mo-billing-title').textContent = `${t('billing.title')} · ${billingModal.step}/2 ${billingModal.step === 1 ? t('billing.step_review') : t('billing.step_confirm')}`;
+
+  if (billingModal.step === 1) {
+    body.innerHTML = sessions.map(s => {
+      const tot = billingSessionTotals(s);
+      const cost = getSessionCost(s);
+      const rows = Object.entries(tot.counts).map(([pid, n]) => `<tr>
+        <td>${billingPlayerName(pid, n)}</td>
+        <td style="text-align:center">${n}</td>
+        <td>${fmtE(cost * n)}</td>
+        <td style="text-align:center"><input type="checkbox" style="width:18px;height:18px;cursor:pointer" ${billingModal.paid[s.id + ':' + pid] ? 'checked' : ''} onchange="billingModal.paid['${s.id}:${pid}']=this.checked" aria-label="${esc(t('billing.direct_paid'))}"></td>
+      </tr>`).join('');
+      return `<details class="billing-block" ${sessions.length === 1 ? 'open' : ''}>
+        <summary><span>${esc(getSessionName(s))} · ${billingSessionHeader(s)}</span><span>${fmtE(tot.sum)}</span></summary>
+        <div class="tw"><table class="dt"><thead><tr><th>${t('billing.player')}</th><th style="text-align:center">${t('billing.slots')}</th><th>${t('billing.amount')}</th>
+          <th style="text-align:center" title="${esc(t('billing.direct_paid_hint'))}">${t('billing.direct_paid')} ⓘ</th></tr></thead><tbody>${rows}</tbody></table>
+        <button class="btn btn-sec btn-xs" style="margin:var(--sp2)" onclick="billingMarkAllPaid('${s.id}')">${t('billing.all_direct_paid')}</button></div>
+      </details>`;
+    }).join('') + `<p class="txxs txm">ⓘ ${t('billing.direct_paid_hint')}</p>`;
+    foot.innerHTML = `<button class="btn btn-sec" onclick="closeMo('mo-billing')">${t('modal.cancel')}</button>
+      <button class="btn btn-pri" onclick="billingModal.step=2;renderBillingModal()">${t('billing.next')}</button>`;
+  } else {
+    const per = {};
+    let totalSlots = 0, totalDebit = 0, totalDirect = 0;
+    sessions.forEach(s => {
+      const cost = getSessionCost(s);
+      Object.entries(sessionChargeMap(s)).forEach(([pid, n]) => {
+        per[pid] = per[pid] || { debit: 0, direct: 0 };
+        per[pid].debit += cost * n;
+        totalSlots += n; totalDebit += cost * n;
+        if (billingModal.paid[s.id + ':' + pid]) { per[pid].direct += cost * n; totalDirect += cost * n; }
+      });
+    });
+    const rows = Object.entries(per).map(([pid, v]) => {
+      const now = bal(pid);
+      const after = now - v.debit + v.direct;
+      return `<tr><td>${billingPlayerName(pid, 1)}</td>
+        <td>${fmtE(now)}</td>
+        <td>– ${fmtE(v.debit)}</td>
+        <td>${v.direct ? '+ ' + fmtE(v.direct) : '–'}</td>
+        <td class="${after < 0 ? 'billing-neg' : ''}" style="font-weight:700">${fmtE(after)}${after < 0 ? ` <span title="${esc(t('billing.negative_warning'))}">⚠</span>` : ''}</td></tr>`;
+    }).join('');
+    body.innerHTML = `<p class="txsm txm mb4">${t('billing.summary_text').replace('{n}', sessions.length).replace('{slots}', totalSlots).replace('{sum}', fmtE(totalDebit)).replace('{direct}', fmtE(totalDirect))}</p>
+      <div class="tw"><table class="dt"><thead><tr><th>${t('billing.player')}</th><th>${t('billing.balance_now')}</th><th>${t('billing.debit')}</th><th>${t('billing.direct')}</th><th>${t('billing.balance_after')}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    foot.innerHTML = `<button class="btn btn-sec" onclick="billingModal.step=1;renderBillingModal()">${t('billing.back')}</button>
+      <button class="btn btn-pri" onclick="doCharge()"><i data-lucide="credit-card"></i> ${t('billing.finish')}</button>`;
+  }
+  lucide.createIcons();
+}
+
+function billingMarkAllPaid(sid) {
+  const s = S.sessions.find(x => x.id === sid);
+  if (!s) return;
+  const pids = Object.keys(sessionChargeMap(s));
+  const all = pids.every(pid => billingModal.paid[sid + ':' + pid]);
+  pids.forEach(pid => { billingModal.paid[sid + ':' + pid] = !all; });
+  renderBillingModal();
+  document.querySelectorAll('#mo-billing-body details').forEach(d => d.open = true);
+}
 
 async function doCharge() {
-  if (isCharging) return; // Wenn er schon arbeitet, Klick ignorieren
-  isCharging = true;      // Schranke zu!
-
-  // NEU: Alle angehakten Checkboxen finden und die IDs (PIDs) sammeln
-  const paidChecks = document.querySelectorAll('.paid-check:checked');
-  const paidPids = Array.from(paidChecks).map(cb => cb.dataset.pid);
-
+  if (isCharging) return;
+  isCharging = true;
   try {
-    const sess = getOrSess(planDate);
-    // Die Liste der "schon bezahlten" Spieler (paid_pids) an die API mitsenden
-    await apiFetch('POST', '/charge', { 
-      id: sess.id || planDate,
-      date: sess.date,
-      paid_pids: paidPids 
+    const items = billingModal.ids.map(id => {
+      const s = S.sessions.find(x => x.id === id);
+      const pids = Object.keys(sessionChargeMap(s)).filter(pid => billingModal.paid[id + ':' + pid]);
+      return { id, paid_pids: pids };
     });
-    
+    await apiFetch('POST', '/charge', { items });
     await loadState();
-    closeMo('mo-charge');
+    closeMo('mo-billing');
+    items.forEach(i => billingDeselected.delete(i.id));
     renderAll();
-    showToast(t('toast.charged'));
-  } catch(e) {
-    showToast('Fehler beim Abrechnen: ' + (e.message || ''));
+    showToast(t('billing.toast_done').replace('{n}', items.length));
+  } catch (e) {
+    showToast('⚠️ ' + (e.message || t('billing.error')));
   }
-  
-  isCharging = false; // Ganz am Ende: Schranke wieder auf!
+  isCharging = false;
+}
+
+function revertBilling(id) {
+  const s = (S.sessions || []).find(x => x.id === id);
+  if (!s) return;
+  const sum = (S.transactions || []).filter(x => x.sessionId === id && !x.credit).reduce((a, x) => a + x.amount, 0);
+  const desc = t('billing.revert_confirm').replace('{session}', `${getSessionName(s)} ${fmtDL(s.date)}`).replace('{sum}', fmtE(sum));
+  showConfirmModal(t('billing.revert_title'), desc, '<i data-lucide="undo-2"></i> ' + t('billing.revert'), 'btn-dan', async () => {
+    try {
+      await apiFetch('DELETE', '/charge/' + id);
+      await loadState();
+      renderAll();
+      showToast(t('billing.toast_reverted'));
+    } catch (e) {
+      showToast('⚠️ ' + (e.message || t('billing.error')));
+    }
+  });
 }
 
 // ════════════════════════════════════════
 // ADMIN – PLAYERS
 // ════════════════════════════════════════
+let playersTab = 'list';
+let playerBalanceFilter = 'all';
+let expandedPlayerId = null;
+
+function setPlayersTab(tab) {
+  playersTab = tab === 'activity' ? 'activity' : 'list';
+  const btnList = document.getElementById('players-tab-list');
+  const btnAct = document.getElementById('players-tab-activity');
+  const pList = document.getElementById('players-panel-list');
+  const pAct = document.getElementById('players-panel-activity');
+  if (btnList) {
+    btnList.classList.toggle('active', playersTab === 'list');
+    btnList.setAttribute('aria-selected', playersTab === 'list' ? 'true' : 'false');
+  }
+  if (btnAct) {
+    btnAct.classList.toggle('active', playersTab === 'activity');
+    btnAct.setAttribute('aria-selected', playersTab === 'activity' ? 'true' : 'false');
+  }
+  if (pList) pList.style.display = playersTab === 'list' ? '' : 'none';
+  if (pAct) pAct.style.display = playersTab === 'activity' ? '' : 'none';
+  if (playersTab === 'activity') renderPlayerActivityTable();
+  if (window.lucide) lucide.createIcons();
+}
+
+function openPlayersTab(tab) {
+  setPlayersTab(tab);
+  showView('players');
+  if (tab === 'activity') {
+    const navAct = document.getElementById('nav-activity');
+    const navPl = document.getElementById('nav-players');
+    if (navPl) navPl.classList.remove('active');
+    if (navAct) navAct.classList.add('active');
+  }
+}
+
+function setPlayerBalanceFilter(filter) {
+  playerBalanceFilter = filter;
+  renderPlayers();
+  if (window.lucide) lucide.createIcons();
+}
+
+function togglePlayerDrawer(pid) {
+  expandedPlayerId = expandedPlayerId === pid ? null : pid;
+  renderPlayers();
+  if (window.lucide) lucide.createIcons();
+}
+
+function openPlayerFullHistory(pid) {
+  const sel = document.getElementById('hist-filter');
+  showView('history');
+  if (sel) {
+    sel.value = pid;
+    renderHistory();
+  }
+}
+
 window.handlePlayerSearch = function(val) {
   playerSearchQuery = val;
   renderPlayers();
@@ -2557,12 +3128,30 @@ function renderPlayers() {
   const sortSelect = document.getElementById('player-sort');
   if (sortSelect) sortSelect.value = playerSortOption;
 
-  let activePlayers = S.players.filter(p => p.active !== false);
+  const allActive = S.players.filter(p => p.active !== false);
+  let activePlayers = [...allActive];
   const inactivePlayers = S.players.filter(p => p.active === false);
+
+  const pillsEl = document.getElementById('player-filter-pills');
+  if (pillsEl) {
+    const negCount = allActive.filter(p => bal(p.id) < 0).length;
+    const posCount = allActive.filter(p => bal(p.id) > 0).length;
+    pillsEl.innerHTML = `
+      <button type="button" class="pf-pill ${playerBalanceFilter === 'all' ? 'active' : ''}" onclick="setPlayerBalanceFilter('all')">${t('players.filter_all')} <span>${allActive.length}</span></button>
+      <button type="button" class="pf-pill pf-neg ${playerBalanceFilter === 'neg' ? 'active' : ''}" onclick="setPlayerBalanceFilter('neg')">${t('players.filter_neg')} <span>${negCount}</span></button>
+      <button type="button" class="pf-pill pf-pos ${playerBalanceFilter === 'pos' ? 'active' : ''}" onclick="setPlayerBalanceFilter('pos')">${t('players.filter_pos')} <span>${posCount}</span></button>
+    `;
+  }
 
   if (!activePlayers.length && !inactivePlayers.length) {
     g.innerHTML = `<div class="empty" style="grid-column:1/-1"><i data-lucide="users"></i><h3>${t('players.no_players')}</h3><p>${t('players.add_first')}</p><button class="btn btn-pri" onclick="openAddPlayer()"><i data-lucide="user-plus"></i> ${t('players.add')}</button></div>`;
     return;
+  }
+
+  if (playerBalanceFilter === 'neg') {
+    activePlayers = activePlayers.filter(p => bal(p.id) < 0);
+  } else if (playerBalanceFilter === 'pos') {
+    activePlayers = activePlayers.filter(p => bal(p.id) > 0);
   }
 
   if (playerSearchQuery) {
@@ -2592,20 +3181,70 @@ function renderPlayers() {
   let html = activePlayers.map(p => {
     const b = bal(p.id); 
     const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
-    const txn = S.transactions.filter(t => t.playerId === p.id).length;
-    const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:var(--text-xs);margin-left:6px">${t('misc.admin')}</span>` : '';
-    return `<div class="pc">
-      <div class="pc-head"><div class="av" onclick="openIconPickerModal('${p.id}')" style="cursor:pointer;transition:transform .15s" onmouseover="this.style.transform='scale(1.15)'" onmouseout="this.style.transform=''"><i data-lucide="${playerIcon(p)}" style="width:22px;height:22px"></i></div>
-        <div><div class="pc-name" style="display:flex;align-items:center">${esc(p.name)}${adminBadge}</div><div class="pc-meta">${p.contact ? esc(p.contact) : txn + ' ' + t('transactions.title').toLowerCase()}</div></div></div>
-      <div class="pc-bal-row">
-        <div><div class="label">${t('players.balance')}</div><div class="pc-bal ${cls}">${fmtE(b)}</div></div>
+    const isExpanded = expandedPlayerId === p.id;
+    const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
+    const lastPart = getLastParticipationDate(p.id);
+    const metaStr = p.contact
+      ? esc(p.contact)
+      : (lastPart ? esc(t('players.last_played').replace('{date}', fmtD(lastPart))) : '');
+
+    let drawerHtml = '';
+    if (isExpanded) {
+      const playerTxs = [...(S.transactions || [])]
+        .filter(tx => tx.playerId === p.id)
+        .sort((a, bTx) => (bTx.createdAt || bTx.date || '').localeCompare(a.createdAt || a.date || ''))
+        .slice(0, 5);
+
+      const txRows = playerTxs.length
+        ? playerTxs.map(tx => {
+            const noteText = typeof formatTxNotePlain === 'function'
+              ? formatTxNotePlain(tx)
+              : (tx.note || (tx.credit ? t('transactions.credit_type') : t('transactions.debit_type')));
+            return `<div class="pc-tx-row">
+              <span class="pc-tx-date">${fmtD(tx.date)}</span>
+              <span class="pc-tx-note">${esc(noteText || (tx.credit ? t('transactions.credit_type') : t('transactions.debit_type')))}</span>
+              <span class="pc-tx-amt ${tx.credit ? 'cr' : 'db'}">${tx.credit ? '+' : '–'} ${fmtE(tx.amount)}</span>
+              <button class="btn btn-xs btn-sec" onclick="event.stopPropagation();openEditTx('${tx.id}')" type="button" title="${esc(t('transactions.edit'))}"><i data-lucide="pencil" style="width:11px;height:11px"></i></button>
+            </div>`;
+          }).join('')
+        : `<div class="txxs txm">${t('transactions.no_transactions')}</div>`;
+
+      drawerHtml = `<div class="pc-drawer" onclick="event.stopPropagation()">
+        <div class="pc-drawer-actions">
+          <button class="btn btn-xs btn-ok" onclick="openTx('${p.id}')" type="button"><i data-lucide="wallet"></i> ${t('players.charge')}</button>
+          <button class="btn btn-xs btn-sec" onclick="openEditPlayer('${p.id}')" type="button"><i data-lucide="pencil"></i> ${t('players.edit_short')}</button>
+          <button class="btn btn-xs btn-sec" onclick="openAdminSetPin('${p.id}')" type="button"><i data-lucide="key-round"></i> ${t('players.pin_short')}</button>
+          <button class="btn btn-xs btn-sec" onclick="openIconPickerModal('${p.id}')" type="button"><i data-lucide="smile"></i> ${t('players.icon_short')}</button>
+          <button class="btn btn-xs btn-dan" onclick="deletePlayer('${p.id}')" type="button"><i data-lucide="user-x"></i> ${t('players.deactivate')}</button>
+        </div>
+        <div class="pc-drawer-history">
+          <div class="pc-drawer-hist-head">
+            <span class="label" style="font-size:10px">${t('players.recent_tx')}</span>
+            ${playerTxs.length ? `<button class="pc-hist-link" onclick="openPlayerFullHistory('${p.id}')" type="button">${t('players.view_all_tx')} →</button>` : ''}
+          </div>
+          <div class="pc-tx-list">${txRows}</div>
+        </div>
+      </div>`;
+    }
+
+    return `<div class="pc ${isExpanded ? 'expanded' : ''}">
+      <div class="pc-row" onclick="togglePlayerDrawer('${p.id}')">
+        <div class="av pc-av" onclick="event.stopPropagation();openIconPickerModal('${p.id}')" title="${esc(t('players.icon_short'))}">
+          <i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>
+        </div>
+        <div class="pc-info">
+          <div class="pc-name">${esc(p.name)}${adminBadge}</div>
+          ${metaStr ? `<div class="pc-meta">${metaStr}</div>` : ''}
+        </div>
+        <div class="pc-right">
+          <div class="pc-bal ${cls}">${fmtE(b)}</div>
+          <button class="btn btn-sm btn-ok pc-topup-btn" onclick="event.stopPropagation();openTx('${p.id}')" title="${esc(t('players.charge'))}" type="button">
+            <i data-lucide="plus" style="width:15px;height:15px"></i>
+          </button>
+          <span class="pc-chev ${isExpanded ? 'open' : ''}"><i data-lucide="chevron-down" style="width:16px;height:16px"></i></span>
+        </div>
       </div>
-      <div class="pc-acts">
-        <button class="btn btn-sm btn-ok" onclick="openTx('${p.id}')" title="${t('players.charge')}" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="dollar-sign" style="width:14px;height:14px"></i></button>
-        <button class="btn btn-sm btn-sec" onclick="openEditPlayer('${p.id}')" title="Bearbeiten" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
-        <button class="btn btn-sm btn-sec" onclick="openAdminSetPin('${p.id}')" title="PIN manuell vergeben" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="key-round" style="width:14px;height:14px"></i></button>
-        <button class="btn btn-sm btn-dan" onclick="deletePlayer('${p.id}')" title="Deaktivieren" style="width:34px;height:34px;padding:0;display:flex;align-items:center;justify-content:center;min-height:34px"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
-      </div>
+      ${drawerHtml}
     </div>`;
   }).join('');
 
@@ -2614,13 +3253,13 @@ function renderPlayers() {
     html += inactivePlayers.map(p => {
       const b = bal(p.id); const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
       return `<div class="pc" style="opacity:.5;grid-column:1/-1">
-        <div class="pc-head" style="justify-content:space-between">
-          <div class="flex items-c" style="gap:var(--sp3);min-width:0">
-            <div class="av" style="opacity:.5;flex-shrink:0"><i data-lucide="${playerIcon(p)}" style="width:22px;height:22px"></i></div>
-            <div><div class="pc-name">${esc(p.name)}</div><div class="pc-meta">${t('players.balance')}: <span class="${cls}">${fmtE(b)}</span></div></div>
+        <div class="pc-row">
+          <div class="av pc-av" style="opacity:.5"><i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i></div>
+          <div class="pc-info"><div class="pc-name">${esc(p.name)}</div><div class="pc-meta">${t('players.balance')}: <span class="${cls}">${fmtE(b)}</span></div></div>
+          <div class="pc-right">
+            <button class="btn btn-xs btn-pri" onclick="reactivatePlayer('${p.id}')" type="button"><i data-lucide="rotate-ccw"></i> ${t('players.reactivate')}</button>
+            <button class="btn btn-xs btn-dan" onclick="purgePlayer('${p.id}')" type="button"><i data-lucide="trash-2"></i> ${t('players.purge')}</button>
           </div>
-          <button class="btn btn-sm btn-pri" onclick="reactivatePlayer('${p.id}')" style="flex-shrink:0"><i data-lucide="rotate-ccw"></i> ${t('players.reactivate')}</button>
-          <button class="btn btn-sm btn-dan" onclick="purgePlayer('${p.id}')" style="flex-shrink:0"><i data-lucide="trash-2"></i> ${t('players.purge')}</button>
         </div>
       </div>`;
     }).join('');
@@ -2754,17 +3393,154 @@ async function purgePlayer(id) {
 }
 
 // ════════════════════════════════════════
-// ADMIN – TRANSACTIONS
+// ADMIN – TRANSACTIONS & PLAYER PICKER
 // ════════════════════════════════════════
+let isSwitchingTxPlayer = false;
+
+function openPlayerPickerForTx(isSwitch = false) {
+  isSwitchingTxPlayer = isSwitch;
+  if (isSwitch) {
+    closeMo('mo-tx');
+  }
+  const searchInput = document.getElementById('tx-picker-search');
+  if (searchInput) searchInput.value = '';
+  renderTxPlayerPicker();
+  openMo('mo-pick-player');
+  setTimeout(() => searchInput && searchInput.focus(), 100);
+}
+
+function renderTxPlayerPicker(filterText = '') {
+  const grid = document.getElementById('tx-picker-grid');
+  if (!grid) return;
+  const q = (filterText || '').toLowerCase().trim();
+  const activePlayers = (S.players || [])
+    .filter(p => p.active !== false)
+    .filter(p => !q || (p.name || '').toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!activePlayers.length) {
+    grid.innerHTML = `<div class="txsm txm" style="grid-column:1/-1;text-align:center;padding:var(--sp4)">${t('history.no_transactions')}</div>`;
+    return;
+  }
+
+  grid.innerHTML = activePlayers.map(p => {
+    const b = bal(p.id);
+    const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
+    const isCurrent = p.id === txPid;
+    return `<button type="button" class="player-pick-btn ${isCurrent ? 'active' : ''}" onclick="selectTxPlayer('${p.id}')">
+      <div class="av" style="width:34px;height:34px;font-size:var(--text-sm);flex-shrink:0">
+        <i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>
+      </div>
+      <div style="min-width:0;flex:1">
+        <div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.name)}</div>
+        <div style="font-size:11px;color:var(--txm);margin-top:1px">
+          ${t('players.balance')}: <span class="${cls}" style="font-weight:700">${fmtE(b)}</span>
+        </div>
+      </div>
+    </button>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+function filterTxPlayerPicker(val) {
+  renderTxPlayerPicker(val);
+}
+
+function selectTxPlayer(pid) {
+  closeMo('mo-pick-player');
+  openTx(pid);
+}
+
 function openTx(pid) {
-  txPid = pid;
-  const p = S.players.find(x => x.id === pid);
-  document.getElementById('mo-tx-title').textContent = `${p.name} – ${t('transactions.title')}`;
-  document.getElementById('mo-tx-sub').textContent = `${t('transactions.current_balance')}: ${fmtE(bal(pid))}`;
+  const activePlayers = (S.players || []).filter(p => p.active !== false).sort((a, b) => a.name.localeCompare(b.name));
+  if (!activePlayers.length) return;
+
+  // Wenn keine pid angegeben: erst den modernen Name-Picker öffnen!
+  if (!pid) {
+    openPlayerPickerForTx(false);
+    return;
+  }
+
+  const targetPid = activePlayers.some(p => p.id === pid) ? pid : activePlayers[0].id;
+  txPid = targetPid;
+
+  const sel = document.getElementById('tx-player-select');
+  if (sel) {
+    sel.innerHTML = activePlayers.map(p => `<option value="${p.id}">${esc(p.name)} (${fmtE(bal(p.id))})</option>`).join('');
+    sel.value = targetPid;
+  }
   document.getElementById('tx-amount').value = '';
   document.getElementById('tx-note').value = '';
-  openMo('mo-tx'); setTimeout(() => document.getElementById('tx-amount').focus(), 100);
+  syncTxModalForPlayer(targetPid);
+  openMo('mo-tx');
+  setTimeout(() => document.getElementById('tx-amount').focus(), 100);
 }
+
+function onTxPlayerChange(pid) {
+  txPid = pid;
+  syncTxModalForPlayer(pid);
+}
+
+function syncTxModalForPlayer(pid) {
+  const p = S.players.find(x => x.id === pid);
+  if (!p) return;
+  const b = bal(pid);
+  const cls = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
+
+  document.getElementById('mo-tx-title').textContent = `${p.name} – ${t('transactions.title')}`;
+  const subEl = document.getElementById('mo-tx-sub');
+  if (subEl) subEl.textContent = `${t('transactions.current_balance')}: ${fmtE(b)}`;
+
+  // Modern Selected Player Card aktualisieren
+  const avEl = document.getElementById('tx-sel-player-av');
+  if (avEl) avEl.innerHTML = `<i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>`;
+  const nameEl = document.getElementById('tx-sel-player-name');
+  if (nameEl) nameEl.textContent = p.name;
+  const balEl = document.getElementById('tx-sel-player-bal');
+  if (balEl) {
+    balEl.innerHTML = `${t('transactions.current_balance')}: <span class="${cls}" style="font-weight:700">${fmtE(b)}</span>`;
+  }
+  const sel = document.getElementById('tx-player-select');
+  if (sel) sel.value = pid;
+
+  const amtBox = document.getElementById('tx-quick-amounts');
+  if (amtBox) {
+    const chips = [];
+    if (b < 0) {
+      const deficit = Math.abs(b);
+      chips.push(`<button type="button" class="tx-chip tx-chip-settle" onclick="setTxAmount(${deficit})">${t('transactions.settle_deficit').replace('{amount}', '+' + fmtE(deficit))}</button>`);
+    }
+    [20, 30, 50, 100].forEach(v => {
+      chips.push(`<button type="button" class="tx-chip" onclick="setTxAmount(${v})">+${v} ${S.cfg.currency || '€'}</button>`);
+    });
+    amtBox.innerHTML = chips.join('');
+  }
+
+  const noteBox = document.getElementById('tx-quick-notes');
+  if (noteBox) {
+    const notes = [
+      t('transactions.quick_note_paypal'),
+      t('transactions.quick_note_cash'),
+      t('transactions.quick_note_bank'),
+    ];
+    noteBox.innerHTML = notes.map(n => `<button type="button" class="tx-chip" onclick="setTxNote('${esc(n)}')">${esc(n)}</button>`).join('');
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function setTxAmount(val) {
+  const el = document.getElementById('tx-amount');
+  if (el) {
+    el.value = Number(val.toFixed ? val.toFixed(2) : val);
+    el.focus();
+  }
+}
+
+function setTxNote(val) {
+  const el = document.getElementById('tx-note');
+  if (el) el.value = val;
+}
+
 async function doTx(credit) {
   const amt = parseFloat(document.getElementById('tx-amount').value);
   if (!amt || amt <= 0) { showToast('Gültigen Betrag eingeben.'); return; }
@@ -3004,6 +3780,10 @@ function navigateToSession(date) {
 }
 
 function openSessionDetailsModal(date) {
+  if (S.cfg.total_privacy_mode === '1' && !guestId) {
+    openWelcomeModal();
+    return;
+  }
   const sess = getOrSess(date);
   if (!sess) return;
   
@@ -3530,6 +4310,21 @@ window.toggleSessionGroup = function(date) {
   }
 };
 
+let historyTypeFilter = 'all';
+
+function setHistoryTypeFilter(type) {
+  historyTypeFilter = type;
+  ['all', 'credits', 'debits'].forEach(k => {
+    const btn = document.getElementById('hist-tab-' + k);
+    if (btn) {
+      const active = k === type;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active ? 'true' : 'false');
+    }
+  });
+  renderHistory();
+}
+
 function renderHistory() {
   const sel = document.getElementById('hist-filter');
   if (!sel) return; // Falls das Dropdown im HTML fehlt, brich hier sicher ab
@@ -3538,8 +4333,16 @@ function renderHistory() {
   sel.innerHTML = '<option value="">Alle Spieler</option>' + S.players.filter(p => p.active !== false).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
   sel.value = cur;
 
+  // KPIs passend zum aktuellen Filter aktualisieren
+  renderKPIs();
+
   let txs = [...S.transactions].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   if (sel.value) txs = txs.filter(t => t.playerId === sel.value);
+  if (historyTypeFilter === 'credits') {
+    txs = txs.filter(t => t.credit);
+  } else if (historyTypeFilter === 'debits') {
+    txs = txs.filter(t => !t.credit);
+  }
   
   const el = document.getElementById('history-list');
   if (!el) return;
@@ -3595,6 +4398,19 @@ function renderHistory() {
     if (item.isGroup) {
       const group = item.data;
       const isExpanded = !!expandedSessionGroups[group.date];
+      const hasDebits = group.totalAmount > 0;
+      const hasCredits = group.totalCredits > 0;
+      let groupAmtHtml = '';
+      if (hasDebits && hasCredits) {
+        groupAmtHtml = `<div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px">
+          <div class="expense-card-amount db" style="color:var(--err)">– ${fmtE(group.totalAmount)}</div>
+          <div class="expense-card-amount cr" style="color:var(--suc);font-size:10px">+ ${fmtE(group.totalCredits)}</div>
+        </div>`;
+      } else if (hasDebits) {
+        groupAmtHtml = `<div class="expense-card-amount db" style="color:var(--err)">– ${fmtE(group.totalAmount)}</div>`;
+      } else {
+        groupAmtHtml = `<div class="expense-card-amount cr" style="color:var(--suc)">+ ${fmtE(group.totalCredits)}</div>`;
+      }
       
       return `<div class="grouped-session-card ${isExpanded ? 'expanded' : ''}" id="group-card-${group.date}">
         <div class="grouped-session-header" onclick="toggleSessionGroup('${group.date}')" style="padding: var(--sp4) var(--sp5); display: flex; align-items: center; gap: var(--sp4);">
@@ -3608,13 +4424,13 @@ function renderHistory() {
               <span>Abrechnung Session ${fmtD(group.date)}</span>
             </div>
             <div class="expense-card-meta">
-              <span>${group.transactions.filter(t => !t.credit).length} Spieler</span>
-              <span>·</span>
-              <span>${group.transactions.filter(t => t.credit).length} Barzahler</span>
+              ${group.transactions.filter(t => !t.credit).length ? `<span>${group.transactions.filter(t => !t.credit).length} Spieler</span>` : ''}
+              ${group.transactions.filter(t => !t.credit).length && group.transactions.filter(t => t.credit).length ? `<span>·</span>` : ''}
+              ${group.transactions.filter(t => t.credit).length ? `<span>${group.transactions.filter(t => t.credit).length} Barzahler</span>` : ''}
             </div>
           </div>
           <div class="expense-card-right" style="flex-direction: row; align-items: center; gap: var(--sp3);">
-            <div class="expense-card-amount db" style="color: var(--err)">– ${fmtE(group.totalAmount)}</div>
+            ${groupAmtHtml}
             <div class="grouped-session-toggle" style="color: var(--txm);"><i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i></div>
           </div>
         </div>
@@ -3696,6 +4512,8 @@ function syncSettings() {
     if (dispCourt) dispCourt.checked = S.cfg.display_court_grouping !== '0';
     const privMode = document.getElementById('disp-privacy-mode');
     if (privMode) privMode.checked = S.cfg.privacy_mode === '1';
+    const totalPrivMode = document.getElementById('disp-total-privacy-mode');
+    if (totalPrivMode) totalPrivMode.checked = S.cfg.total_privacy_mode === '1';
     const showDeadline = document.getElementById('disp-show-cancel-deadline');
     if (showDeadline) showDeadline.checked = S.cfg.show_cancel_deadline !== '0';
     const autoCompact = document.getElementById('sys-auto-compact-slots');
@@ -3741,17 +4559,24 @@ async function saveSystemSettings() {
     const h = parseInt(hoursRaw, 10) || 0;
     const m = parseInt(minutesRaw, 10) || 0;
     const cancelHours = Math.max(0, Math.min(240, h + m / 60));
+    const costVal = parseFloat(document.getElementById('sr-cost')?.value);
+    const courtsVal = parseInt(document.getElementById('sr-courts')?.value, 10);
     const settings = {
         sr_enabled: document.getElementById('sys-series-enabled').checked ? '1' : '0',
         cancel_hours: String(cancelHours),
         team_name: document.getElementById('disp-team-name').value.trim(),
         auto_compact_slots: document.getElementById('sys-auto-compact-slots')?.checked ? '1' : '0',
+        cost: !isNaN(costVal) && costVal >= 0 ? costVal : 16,
+        courts: !isNaN(courtsVal) && courtsVal >= 1 ? courtsVal : 2,
     };
     try {
         await apiFetch('PUT', '/config', settings);
         await loadState();
         applyTeamName();
         applyRole();
+        window._lastSessionHash = null;
+        if (typeof renderSessions === 'function') renderSessions();
+        if (isAdmin && typeof renderAll === 'function') renderAll();
         showToast('Einstellungen gespeichert.');
     } catch(e) {
         showToast(t('toast.series_save_error').replace('{msg}', e.message));
@@ -3802,7 +4627,7 @@ async function openAddSeries() {
   document.getElementById('series-edit-occurrences').value = 6;
   document.getElementById('series-edit-time-start').value = '19:00';
   document.getElementById('series-edit-time-end').value = '21:00';
-  document.getElementById('series-edit-courts').value = 2;
+  document.getElementById('series-edit-courts').value = parseInt(S.cfg.courts, 10) || 2;
   document.getElementById('series-edit-price').value = '';
   document.getElementById('series-edit-cancel-hours').value = '';
   document.getElementById('series-edit-court-names').value = '';
@@ -3821,7 +4646,7 @@ function openSeriesEdit(id) {
   document.getElementById('series-edit-occurrences').value = s.occurrences || 6;
   document.getElementById('series-edit-time-start').value = s.timeStart || '19:00';
   document.getElementById('series-edit-time-end').value = s.timeEnd || '21:00';
-  document.getElementById('series-edit-courts').value = s.courts || 2;
+  document.getElementById('series-edit-courts').value = s.courts || parseInt(S.cfg.courts, 10) || 2;
   document.getElementById('series-edit-price').value = s.price !== null && s.price !== undefined ? s.price : '';
   document.getElementById('series-edit-cancel-hours').value = s.cancelHours !== null && s.cancelHours !== undefined ? formatCancelHours(s.cancelHours) : '';
   document.getElementById('series-edit-court-names').value = (s.courtNames || []).join(', ');
@@ -3924,13 +4749,14 @@ async function importData(e) {
 // ════════════════════════════════════════
 // NAVIGATION
 // ════════════════════════════════════════
-const DD_VIEWS = ['dashboard','admin-plan','players','expenses','history','series','settings'];
-const DD_LABELS = {'dashboard':'nav.overview','admin-plan':'nav.session_plan','players':'nav.players','expenses':'nav.expenses','history':'nav.history','series':'nav.series','settings':'nav.settings'};
+const DD_VIEWS = ['admin-plan','players','expenses','billing','history','series','settings','backup'];
+const DD_LABELS = {'admin-plan':'nav.session_plan','players':'nav.players','expenses':'nav.expenses','billing':'nav.billing','history':'nav.history','series':'nav.series','settings':'nav.settings','backup':'nav.backup'};
 
 function showView(name) {
   closeMobileAdminMenu();
+  if (name === 'dashboard') name = 'history';
   // NEU: Sicherheits-Check
-  const adminViews = ['dashboard', 'admin-plan', 'players', 'expenses', 'history', 'series', 'settings'];
+  const adminViews = ['admin-plan', 'players', 'expenses', 'billing', 'history', 'series', 'settings', 'backup'];
   if (adminViews.includes(name) && !isAdmin) {
     name = 'sessions'; // Falls kein Admin, leite um auf Spieltage
   } // <--- DIESE KLAMMER HAT GEFEHLT!
@@ -3994,6 +4820,11 @@ function showView(name) {
   // Render view-specific content
   if (name === 'my-history')      renderMyHistory();
   if (name === 'my-transactions') renderMyTransactions();
+  if (name === 'billing')         renderBilling();
+  if (name === 'admin-plan') {
+    _planStripAnimateNext = true;
+    renderAdminPlan();
+  }
   
   lucide.createIcons();
 } // <--- Und hier muss die Funktion natürlich auch enden
@@ -4187,7 +5018,8 @@ async function loadState() {
         amount: parseFloat(t.amount),
         date: t.date,
         createdAt: t.created_at,
-        note: t.note || ''
+        note: t.note || '',
+        sessionId: t.session_id || null
       }));
     }
 
@@ -4791,9 +5623,11 @@ async function saveDisplaySettings() {
     const settings = {
         display_court_grouping: document.getElementById('disp-court-grouping').checked ? '1' : '0',
         privacy_mode: document.getElementById('disp-privacy-mode').checked ? '1' : '0',
+        total_privacy_mode: document.getElementById('disp-total-privacy-mode')?.checked ? '1' : '0',
         show_cancel_deadline: document.getElementById('disp-show-cancel-deadline').checked ? '1' : '0',
         currency:      document.getElementById('sr-currency').value.trim() || '€',
         cost:          parseFloat(document.getElementById('sr-cost').value) || 16,
+        courts:        parseInt(document.getElementById('sr-courts')?.value, 10) || 2,
         system_language: document.getElementById('sys-language').value || null,
         time_format:   document.getElementById('disp-time-format').value || '24h',
         date_format:   document.getElementById('disp-date-format').value || 'dmy',

@@ -11,10 +11,12 @@ async function navigateAdmin(page, viewName) {
     if (viewName === 'players') text = 'Spieler';
     else if (viewName === 'dashboard') text = 'Übersicht';
     else if (viewName === 'expenses') text = 'Ausgaben';
+    else if (viewName === 'billing') text = 'Abrechnung';
     else if (viewName === 'history') text = 'Transaktionen';
     else if (viewName === 'admin-plan') text = 'Session Planer';
     else if (viewName === 'series') text = 'Session Serien';
-    else if (viewName === 'settings') text = 'System';
+    else if (viewName === 'settings') text = 'Einstellungen';
+    else if (viewName === 'backup') text = 'Datensicherung';
     await page.click(`#bnav-admin-menu button:has-text("${text}")`);
   }
 }
@@ -149,9 +151,10 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
 
-    // Click pencil (edit) button on Alice's card
+    // Click pencil (edit) button on Alice's card (expand card row first)
     const pc = page.locator('.pc').filter({ hasText: 'Alice' });
     await expect(pc).toBeVisible();
+    await pc.locator('.pc-row').click();
     await pc.locator('button.btn-sec').first().click();
     await expect(page.locator('#mo-player')).toHaveClass(/open/);
 
@@ -169,9 +172,10 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
 
-    // Click trash button on Alice's card
+    // Click trash button on Alice's card (expand card row first)
     const pc = page.locator('.pc').filter({ hasText: 'Alice' });
     await expect(pc).toBeVisible();
+    await pc.locator('.pc-row').click();
     await pc.locator('button.btn-dan').click();
 
     // Confirm modal appears
@@ -250,26 +254,30 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await navigateAdmin(page, 'admin-plan');
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
 
-    // Wait for dropdown to populate with the session created in beforeEach
+    // Wait for slider to populate with the session created in beforeEach
     await page.waitForTimeout(500);
 
-    // Select the session
-    await page.selectOption('#session-selector', TOMORROW);
+    // Select the session in the date slider
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(300);
 
-    // Verify session details box is visible
+    // Open details drawer
+    await page.locator('#plan-edit-toggle-btn').click();
     await expect(page.locator('#session-details-box')).toBeVisible();
 
     // Cancel session
-    const cancelBtn = page.locator('button:has-text("Absagen")');
+    const cancelBtn = page.locator('#session-details-box button:has-text("Absagen")');
     await expect(cancelBtn).toBeVisible();
     await cancelBtn.click();
     await page.waitForTimeout(500);
 
     // Should now show "Reaktivieren" (session is cancelled)
-    await expect(page.locator('button:has-text("Reaktivieren")')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#admin-plan-header-dynamic button:has-text("Reaktivieren")').first()).toBeVisible({ timeout: 5000 });
 
-    // Delete session
+    // Re-open details drawer (if needed) and delete session
+    if (!(await page.locator('#session-details-box').isVisible())) {
+      await page.locator('#plan-edit-toggle-btn').click();
+    }
     const deleteBtn = page.locator('#session-details-box button:has-text("Löschen")');
     await expect(deleteBtn).toBeVisible();
     await deleteBtn.click();
@@ -278,9 +286,8 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await confirmBtn.click();
     await page.waitForTimeout(500);
 
-    // Verify session is gone from dropdown
-    const dd = page.locator('#session-selector');
-    await expect(dd).not.toContainText(TOMORROW);
+    // Verify session is gone from date slider
+    await expect(page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`)).toHaveCount(0);
   });
 
   test('07 — Add player via UI: Hinzufügen form', async ({ page }) => {
@@ -326,8 +333,8 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
     await page.waitForTimeout(500);
 
-    // Select tomorrow's session
-    await page.selectOption('#session-selector', TOMORROW);
+    // Select tomorrow's session in the date slider
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(500);
 
     // Click the first empty slot in the admin plan editor
@@ -386,15 +393,14 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     // Create
     await page.locator('#mo-add-session .btn-pri').click();
     await expect(page.locator('#mo-add-session')).not.toHaveClass(/open/, { timeout: 5000 });
-    // Session should now be in the dropdown (formatted as localised date)
-    const monthShort = future.toLocaleDateString('de-DE', { month: 'short' }).replace('.', '');
-    await expect(page.locator('#session-selector')).toContainText(new RegExp(`${monthShort}.*26`));
+    // Session should now be in the date slider
+    await expect(page.locator(`#plan-strip .plan-chip[data-date="${futureDate}"]`)).toBeVisible();
   });
 
   test('15 — Court Name inline editing via Court Section in Admin Plan', async ({ page, request }) => {
     await navigateAdmin(page, 'admin-plan');
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
-    await page.selectOption('#session-selector', TOMORROW);
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(500);
 
     // Find input for Court 1 (court index 0) and Court 2 (court index 1)
@@ -470,7 +476,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
   test('17 — Court Deactivation & Reactivation in Session Planner', async ({ page }) => {
     await navigateAdmin(page, 'admin-plan');
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
-    await page.selectOption('#session-selector', TOMORROW);
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(500);
 
     // Deactivate Court 2 (second .court-sep)
@@ -496,7 +502,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // Navigate back to admin plan and reactivate Court 2
     await navigateAdmin(page, 'admin-plan');
-    await page.selectOption('#session-selector', TOMORROW);
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(500);
 
     const activateBtn = page.locator('.court-sep button.btn-ok').first();
@@ -642,9 +648,59 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     // Transaction should now be deleted from list
     await expect(histList).not.toContainText('deposit updated');
   });
+
+  test('24 — Billing view: open list, batch charge with direct payment, revert', async ({ page, request }) => {
+    const H = { 'Content-Type': 'application/json', 'X-Token': aToken };
+    const players = await (await request.get('/api.php/players')).json();
+    const alice = players.find(p => p.name === 'Alice');
+    const mk = async (date) => {
+      const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date, courts: [[null,null,null,null]], timeStart: '1900', timeEnd: '2100' } })).json();
+      const id = r.id || date;
+      const b = await request.post(`/api.php/sessions/${id}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: alice.id } });
+      expect(b.status()).toBe(200);
+      return id;
+    };
+    const s1 = await mk('2020-03-03');
+    await mk('2020-03-05');
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1000);
+
+    // Badge shows 2 open sessions
+    await expect(page.locator('#nav-billing-count')).toHaveText('2');
+    await navigateAdmin(page, 'billing');
+    await expect(page.locator('#view-billing')).toHaveClass(/active/);
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
+
+    // Batch charge both, Alice paid directly for the first session
+    await page.locator('#billing-footer-btn').click();
+    await expect(page.locator('#mo-billing')).toHaveClass(/open/);
+    await page.locator('#mo-billing-body details').first().locator('summary').click();
+    await page.locator('#mo-billing-body details').first().locator('input[type=checkbox]').first().check();
+    await page.locator('#mo-billing-foot .btn-pri').click();
+    await page.locator('#mo-billing-foot .btn-pri').click();
+    await expect(page.locator('#mo-billing')).not.toHaveClass(/open/, { timeout: 5000 });
+    await expect(page.locator('#billing-content .empty')).toBeVisible();
+
+    // Balance: 100 - 2*10 + 10 (direct payment)
+    const after = await (await request.get('/api.php/players', { headers: H })).json();
+    expect(after.find(p => p.id === alice.id).balance).toBe(90);
+
+    // Revert from "Abgerechnet" tab
+    await page.click('#billing-tab-charged');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
+    await page.locator('#billing-content .billing-item .btn-dan').first().click();
+    await page.locator('#mo-confirm-btn').click();
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+    await page.click('#billing-tab-open');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+  });
 });
 
 // ── Public booking flow: fresh login via welcome + PIN overlay ──
+
+
 test.describe('UI E2E Suite — Public Booking Flow', () => {
 
   const TOMORROW = (() => {
@@ -792,22 +848,23 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
     await page.waitForTimeout(500);
 
-    // Select tomorrow's session
-    await page.selectOption('#session-selector', TOMORROW);
+    // Select tomorrow's session in the date slider
+    await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(500);
 
-    // Click "Abrechnen" in the summary card
-    const chargeBtn = page.locator('button:has-text("Abrechnen")').first();
+    // Click "Abrechnen" / "Zur Abrechnung" in the header card
+    const chargeBtn = page.locator('#admin-plan-header-dynamic button:has-text("Abrechnen"), #admin-plan-header-dynamic button:has-text("Zur Abrechnung")').first();
     await expect(chargeBtn).toBeVisible({ timeout: 5000 });
     await chargeBtn.click();
-    await expect(page.locator('#mo-charge')).toHaveClass(/open/);
+    await expect(page.locator('#mo-billing')).toHaveClass(/open/);
 
-    // Verify Alice appears in charge list
-    await expect(page.locator('#mo-charge-list')).toContainText('Alice');
-
-    // Confirm charge
-    await page.locator('#mo-charge .btn-pri').click();
-    await expect(page.locator('#mo-charge')).not.toHaveClass(/open/, { timeout: 5000 });
+    // Step 1: Alice appears in the review list
+    await expect(page.locator('#mo-billing-body')).toContainText('Alice');
+    await page.locator('#mo-billing-foot .btn-pri').click(); // Weiter
+    // Step 2: summary, then confirm
+    await expect(page.locator('#mo-billing-body')).toContainText('Alice');
+    await page.locator('#mo-billing-foot .btn-pri').click(); // Abrechnung abschließen
+    await expect(page.locator('#mo-billing')).not.toHaveClass(/open/, { timeout: 5000 });
     await page.waitForTimeout(500);
 
     // Badge removed from session selector (status tags removed from plan view)
@@ -890,4 +947,5 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     await banner.locator('.courtle-update-banner-close').click();
     await expect(banner).not.toBeVisible({ timeout: 3000 });
   });
+
 });

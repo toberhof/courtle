@@ -75,29 +75,34 @@ Before making changes to the codebase, please read the corresponding role file i
 
 ---
 
-## 4. Session Planner UI Structure
+## 4. Session Planner UI Structure & Billing
 
-The admin session planner (`view-admin-plan`) has a specific card-based layout:
+### Modern Session Planner (`view-admin-plan`)
+The session planner focuses purely on session organization (dates, times, courts, player bookings, waitlist):
+1. **Interactive Date Strip & Top Bar** (`#session-selector-box`):
+   - Two-row `.plan-nav-box`:
+     - Top bar (`.plan-top-bar`) with section label (`planner.select_session_label`) and right-aligned quick controls: "Nächste" button (`#plan-jump-upcoming-btn` jumping directly to the next upcoming session), date picker dialog (`#plan-date-picker`), and "+ Neue Session".
+     - Full-width horizontal scrollable `.plan-strip` below so mobile and desktop both get 100% viewport width for scrolling through `.plan-chip` cards.
+   - `.plan-chip` cards display weekday + month, large day number, session start time (`.pc-time` to distinguish multiple sessions on the same day), and live status badge (`✓` charged, `€` awaiting billing, `filled/total`, or `✕` cancelled), with `data-date` and `data-id` attributes.
+   - Clickable "HEUTE" visual anchor marking the boundary between past and future sessions.
+2. **Unified Session Header & Integrated Details Drawer** (`#admin-plan-header-dynamic`):
+   - Session title with series indicator (`planner.from_series`) and live `.status-pill` badge (Offen, Wartet auf Abrechnung, Abgerechnet, Abgesagt).
+   - Properly aligned inline metadata chips (`.plan-meta-item` with `display: inline-flex`): Date, time span, slot price, occupancy, and conditional location/note chips (shown only when non-empty).
+   - Focused action bar: Context-aware primary action button ("Zur Abrechnung" / "In Abrechnung ansehen" / "Reaktivieren") and "Details bearbeiten" drawer toggle (`#plan-edit-toggle-btn`).
+   - **Integrated Edit Drawer** (`#session-details-box.plan-edit-drawer`): Folds directly into the bottom of the header card with a responsive multi-column `.plan-edit-grid`, debounced auto-save with inline checkmark feedback (`.save-indicator`), and automatic locking when a session has already been charged.
+3. **Section Tabs** (`#plan-tabs`):
+   - **Belegung** (`#plan-card-slots`): Visual court cards with slot chips, court names, and "+ Court" button.
+   - **Warteliste** (`#plan-waitlist-admin`): Waitlist management with counter badge on the tab.
+   - **Verlauf** (`#plan-history`): Audit activity log loaded on demand.
 
-1. **Header** (`#admin-plan-header-dynamic`): Page title "Sessionplaner" + status badges (Abgerechnet, Gespeichert in Datenbank, Geplant, Abgesagt)
-2. **Session Selector Card** (`#session-selector-box`): 
-   - Heading: "Session auswählen"
-   - Subtitle: "Anzuzeigende Session auswählen. Auf dieser Seite können Änderungen und die Abrechnung für diese Session vorgenommen werden."
-   - Dropdown with all sessions (upcoming first, then past sessions in optgroup)
-   - Navigation buttons below dropdown (prev, today/next, next)
-3. **Session Edit Card** (`#session-details-box`):
-   - Heading: "Session bearbeiten"
-   - Date input (changes the session's date, with hint text)
-   - Time start/end inputs
-   - Location input
-   - Comment input
-   - Action buttons: Speichern, Neue Session, Absagen/Reaktivieren, Löschen
-4. **Slot Manager Card**: Court/slot editing grid
-5. **Waitlist Admin Card**: Waitlist management
-6. **Summary Card**: Billing preview
-7. **History Card**: Session audit log
-
-The `planDate` global variable tracks the currently selected session. Navigation functions: `planPrev()`, `planNext()`, `planGoToUpcoming()`, `planGoToDate(date)`.
+### Centralized Admin Billing (`view-billing`)
+Dedicated financial management view for settling played sessions:
+- **Badge Counter**: Appears dynamically on the "Abrechnung" navigation menu item whenever completed, uncharged sessions require settlement.
+- **"Offen" Tab**: Clean worklist of all past uncharged sessions with selectable checkboxes, total calculations, and batch-settlement button.
+- **Two-Step Settlement Modal** (`#mo-billing`):
+  1. *Review step*: Shows participants per session with individual "Direkt bezahlt" checkboxes (for cash payments without deducting account balances).
+  2. *Confirmation step*: Aggregated balance delta table (balance before → debit → direct payment → balance after) with negative balance warnings.
+- **"Abgerechnet" Tab & Reverts**: Lists settled sessions with ability to revert settlements (`DELETE /charge/{id}`) to restore player balances atomically.
 
 ---
 
