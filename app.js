@@ -2,7 +2,7 @@
 // STATE
 // ════════════════════════════════════════
 // built:430
-const CLIENT_BUILD = 447;
+const CLIENT_BUILD = 448;
 let S = {
   players: [],
   transactions: [],
@@ -1955,8 +1955,14 @@ function planGoToDateClosest(dateStr) {
     target = all.find(s => s.date >= dateStr) || all[all.length - 1];
   }
   if (target) {
-    planDate = target.id || target.date;
-    renderAdminPlan();
+    const targetId = target.id || target.date;
+    const curSess = getOrSess(planDate);
+    const curDate = curSess ? curSess.date : planDate;
+    if (targetId === planDate || target.date === curDate) return;
+    planDate = targetId;
+    setTimeout(() => {
+      renderAdminPlan();
+    }, 80);
   }
 }
 
@@ -2149,10 +2155,10 @@ function renderAdminPlan(keepDetailsOpen) {
             <button class="btn ${isAtUpcoming ? 'btn-sec active-toggle' : 'btn-sec'} btn-sm" id="plan-jump-upcoming-btn" onclick="planGoToUpcoming()" title="${esc(t('planner.jump_upcoming_title'))}" type="button">
               <i data-lucide="calendar-arrow-up"></i> <span>${t('planner.jump_upcoming')}</span>
             </button>
-            <label class="btn btn-sec btn-sm" id="plan-date-picker-btn" style="position:relative;overflow:hidden;cursor:pointer;margin:0" title="${esc(t('planner.jump_to_date'))}">
+            <div class="btn btn-sec btn-sm" id="plan-date-picker-wrap" style="position:relative;overflow:hidden;cursor:pointer;margin:0;display:inline-flex;align-items:center;justify-content:center" title="${esc(t('planner.jump_to_date'))}">
               <i data-lucide="calendar-search"></i>
-              <input type="date" id="plan-date-picker" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2;margin:0;padding:0;border:none;pointer-events:auto" onchange="planGoToDateClosest(this.value)">
-            </label>
+              <input type="date" id="plan-date-picker" value="${sess.date}" style="position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;z-index:2;margin:0;padding:0;border:none;pointer-events:auto" onchange="planGoToDateClosest(this.value)">
+            </div>
             <button class="btn btn-pri btn-sm" onclick="openAddSessionModal()" type="button"><i data-lucide="plus"></i> <span data-i18n="session.new">${t('session.new')}</span></button>
           </div>
         </div>
@@ -5862,6 +5868,7 @@ window.addEventListener('resize', function() {
 if (typeof window !== 'undefined') {
   document.addEventListener('focusout', function(e) {
     if (e.target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+      if (['date', 'time', 'datetime-local', 'month', 'color'].includes(e.target.type)) return;
       setTimeout(function() {
         if (!document.activeElement || !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
           window.scrollTo(window.scrollX, window.scrollY);
