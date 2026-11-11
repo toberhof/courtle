@@ -462,6 +462,11 @@ select.fi{cursor:pointer}
 .pc-tx-note{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx)}
 .pc-tx-amt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
 .pc-tx-amt.cr{color:var(--suc)}.pc-tx-amt.db{color:var(--err)}
+.pc-detail-list{display:flex;flex-direction:column;gap:2px}
+.pc-detail-row{display:flex;align-items:center;justify-content:space-between;gap:var(--sp2);font-size:var(--text-xs);padding:4px 0;border-top:1px solid oklch(from var(--tx) l c h/.06)}
+.pc-detail-row:first-child{border-top:none}
+.pc-detail-lbl{color:var(--txm);font-weight:500}
+.pc-detail-val{color:var(--tx);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap;flex-shrink:0}
 .player-controls-compact{display:flex;flex-direction:column;gap:var(--sp2)}
 .player-search-row{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
 .player-filter-pills{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}

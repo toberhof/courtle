@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:468
-const CLIENT_BUILD = 468;
+// built:469
+const CLIENT_BUILD = 469;
 let S = {
   players: [],
   transactions: [],
@@ -3731,6 +3731,25 @@ function renderPlayers() {
           <button class="btn btn-xs btn-sec" onclick="openIconPickerModal('${p.id}')" type="button"><i data-lucide="smile"></i> ${t('players.icon_short')}</button>
           <button class="btn btn-xs btn-dan" onclick="deletePlayer('${p.id}')" type="button"><i data-lucide="user-x"></i> ${t('players.deactivate')}</button>
         </div>
+        <div class="pc-drawer-history">
+          <div class="pc-drawer-hist-head">
+            <span class="label" style="font-size:10px">${t('players.tab_activity', 'Aktivität')}</span>
+          </div>
+          <div class="pc-detail-list">
+            <div class="pc-detail-row">
+              <span class="pc-detail-lbl">${t('players.last_login', 'Letzter Login')}</span>
+              <span class="pc-detail-val">${p.lastLogin ? fmtDTS(p.lastLogin) : '–'}</span>
+            </div>
+            <div class="pc-detail-row">
+              <span class="pc-detail-lbl">${t('players.last_activity', 'Letzte Aktivität')}</span>
+              <span class="pc-detail-val">${p.lastInteraction ? fmtDTS(p.lastInteraction) : '–'}</span>
+            </div>
+            <div class="pc-detail-row">
+              <span class="pc-detail-lbl">${t('players.last_participation', 'Letzte Teilnahme')}</span>
+              <span class="pc-detail-val">${partDate ? fmtD(partDate) : '–'}</span>
+            </div>
+          </div>
+        </div>
       </div>`;
     }
 
@@ -3745,20 +3764,6 @@ function renderPlayers() {
         </div>
         <div class="pc-right">
           <span class="pc-chev ${isExpanded ? 'open' : ''}"><i data-lucide="chevron-down" style="width:16px;height:16px"></i></span>
-        </div>
-      </div>
-      <div class="act-metrics" style="margin-top:var(--sp2);cursor:pointer" onclick="togglePlayerDrawer('${p.id}')">
-        <div class="act-metric-item">
-          <span class="act-metric-lbl">${t('players.login_sort', 'Login')}</span>
-          <span class="act-metric-val">${p.lastLogin ? fmtDTS(p.lastLogin) : '–'}</span>
-        </div>
-        <div class="act-metric-item">
-          <span class="act-metric-lbl">${t('players.activity_sort', 'Aktivität')}</span>
-          <span class="act-metric-val">${p.lastInteraction ? fmtDTS(p.lastInteraction) : '–'}</span>
-        </div>
-        <div class="act-metric-item">
-          <span class="act-metric-lbl">${t('players.last_participation', 'Gespielt')}</span>
-          <span class="act-metric-val">${partDate ? fmtD(partDate) : '–'}</span>
         </div>
       </div>
       ${drawerHtml}
