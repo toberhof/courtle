@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:471
-const CLIENT_BUILD = 471;
+// built:472
+const CLIENT_BUILD = 472;
 let S = {
   players: [],
   transactions: [],
@@ -3153,29 +3153,44 @@ function openSlotModal(date, ci, si) {
   const allSlots = sess.courts.flat();
   const curVal = sess.courts[ci][si];
   const list = document.getElementById('mo-slot-list');
-  list.innerHTML = S.players.filter(p => p.active !== false).map(p => {
+  const players = S.players.filter(p => p.active !== false).slice().sort((a, b) => a.name.localeCompare(b.name));
+  list.innerHTML = players.map(p => {
     const b = bal(p.id);
     // Is this player's main slot taken (in a different slot than current)?
     const mainTaken = allSlots.some(v => v === p.id && v !== curVal);
     // How many guest slots does this player have?
     const guestSlots = allSlots.filter(v => v && v.startsWith(p.id + '|') && v !== curVal);
-    const canGuest = !mainTaken ? guestSlots.length < 2 : guestSlots.length < 2;
+    const canGuest = guestSlots.length < 2;
     const g1Taken = allSlots.some(v => v === p.id + '|g1' && v !== curVal);
     const g2Taken = allSlots.some(v => v === p.id + '|g2' && v !== curVal);
     const gTag = !g1Taken ? p.id + '|g1' : p.id + '|g2';
     const sel = curVal === p.id;
     const selGuest = curVal === p.id + '|g1' || curVal === p.id + '|g2';
-    const canAddGuest = canGuest && !g1Taken || !g2Taken;
-    const guestAvail = !(g1Taken && g2Taken);
-    return `<div style="display:flex;gap:6px;align-items:stretch;margin-bottom:4px">
-      ${!mainTaken || sel ? `<button class="btn ${sel ? 'btn-pri' : 'btn-sec'} btn-full" onclick="assignSlot('${p.id}')" style="justify-content:space-between;flex:1">
-        <span style="display:flex;align-items:center;gap:var(--sp2)"><div class="av" style="width:28px;height:28px;font-size:var(--text-xs)"><i data-lucide="${playerIcon(p)}" style="width:14px;height:14px"></i></div>${esc(p.name)}</span>
-        <span style="font-size:var(--text-xs);color:${b < 0 ? 'var(--err)' : 'var(--suc)'}">${fmtE(b)}</span>
-      </button>` : `<div class="btn btn-sec btn-full" style="justify-content:space-between;flex:1;opacity:.5;cursor:default">
-        <span style="display:flex;align-items:center;gap:var(--sp2)"><div class="av" style="width:28px;height:28px;font-size:var(--text-xs)"><i data-lucide="${playerIcon(p)}" style="width:14px;height:14px"></i></div>${esc(p.name)} <span style="font-size:var(--text-xs);opacity:.6">(bereits gebucht)</span></span>
-        <span style="font-size:var(--text-xs);color:${b < 0 ? 'var(--err)' : 'var(--suc)'}">${fmtE(b)}</span>
-      </div>`}
-      ${guestAvail ? `<button class="btn ${selGuest ? 'btn-pri' : 'btn-sec'}" onclick="assignSlot('${gTag}')" title="Gast buchen" style="padding:0 10px;white-space:nowrap;font-size:var(--text-xs)">+Gast</button>` : ''}
+    const guestAvail = canGuest && (!g1Taken || !g2Taken);
+    const isBooked = mainTaken && !sel;
+    const balClass = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
+
+    return `<div class="slot-pick-row">
+      <button type="button" class="slot-player-btn ${sel ? 'is-current' : ''} ${isBooked ? 'is-booked' : ''}"
+        ${isBooked ? 'disabled' : `onclick="assignSlot('${p.id}')"`}>
+        <div class="av" style="width:34px;height:34px;font-size:var(--text-sm);flex-shrink:0">
+          <i data-lucide="${playerIcon(p)}" style="width:16px;height:16px"></i>
+        </div>
+        <div class="slot-player-info">
+          <div class="slot-player-name">${esc(p.name)}</div>
+          <div class="slot-player-meta">
+            <span class="slot-player-bal ${balClass}">${fmtE(b)}</span>
+            ${isBooked ? `<span class="slot-player-tag"><i data-lucide="check" style="width:10px;height:10px"></i> ${t('slot.booked')}</span>` : ''}
+            ${sel ? `<span class="slot-player-tag is-assigned"><i data-lucide="check-circle-2" style="width:10px;height:10px"></i> ${t('slot.assigned_here')}</span>` : ''}
+          </div>
+        </div>
+      </button>
+      <button type="button" class="slot-guest-btn ${selGuest ? 'is-current' : ''} ${!guestAvail ? 'disabled' : ''}"
+        ${guestAvail ? `onclick="assignSlot('${gTag}')"` : 'disabled'}
+        title="${guestAvail ? t('slot.book_guest') : t('slot.guest_max')}">
+        <i data-lucide="user-plus" style="width:14px;height:14px"></i>
+        <span>${t('slot.guest')}</span>
+      </button>
     </div>`;
   }).join('');
   openMo('mo-slot'); lucide.createIcons();
@@ -6430,23 +6445,36 @@ function renderAdminWlList() {
   const sess = getOrSess(_adminWlDate);
   const alreadyWl = new Set(sess.waitlist);
   const list = document.getElementById('mo-slot-list');
-  list.innerHTML = S.players.filter(p => p.active !== false).map(p => {
+  const players = S.players.filter(p => p.active !== false).slice().sort((a, b) => a.name.localeCompare(b.name));
+  list.innerHTML = players.map(p => {
     const onWl = alreadyWl.has(p.id);
     const g1Taken = alreadyWl.has(p.id + '|g1');
     const g2Taken = alreadyWl.has(p.id + '|g2');
     const guestAvail = !(g1Taken && g2Taken);
     const gTag = !g1Taken ? p.id + '|g1' : p.id + '|g2';
     const b = bal(p.id);
-    return `<div style="display:flex;gap:6px;align-items:stretch;margin-bottom:4px">
-      <button class="btn ${onWl ? 'btn-pri' : 'btn-sec'} btn-full" style="justify-content:space-between;flex:1${onWl ? ';opacity:.65;cursor:default' : ''}"
-        ${onWl ? 'disabled' : `onclick="adminDoAddWl('${_adminWlDate}','${p.id}')"` }>
-        <span style="display:flex;align-items:center;gap:var(--sp2)">
-          <div class="av" style="width:28px;height:28px;font-size:var(--text-xs)"><i data-lucide="${playerIcon(p)}" style="width:14px;height:14px"></i></div>
-          ${esc(p.name)}${onWl ? ' <span style="font-size:var(--text-xs);opacity:.7">(auf Liste)</span>' : ''}
-        </span>
-        <span style="font-size:var(--text-xs);color:${b < 0 ? 'var(--err)' : 'var(--suc)'}">${ fmtE(b) }</span>
+    const balClass = b < 0 ? 'neg' : b === 0 ? 'zero' : 'pos';
+
+    return `<div class="slot-pick-row">
+      <button type="button" class="slot-player-btn ${onWl ? 'is-booked' : ''}"
+        ${onWl ? 'disabled' : `onclick="adminDoAddWl('${_adminWlDate}','${p.id}')"`}>
+        <div class="av" style="width:34px;height:34px;font-size:var(--text-sm);flex-shrink:0">
+          <i data-lucide="${playerIcon(p)}" style="width:16px;height:16px"></i>
+        </div>
+        <div class="slot-player-info">
+          <div class="slot-player-name">${esc(p.name)}</div>
+          <div class="slot-player-meta">
+            <span class="slot-player-bal ${balClass}">${fmtE(b)}</span>
+            ${onWl ? `<span class="slot-player-tag"><i data-lucide="clock" style="width:10px;height:10px"></i> ${t('slot.on_waitlist')}</span>` : ''}
+          </div>
+        </div>
       </button>
-      ${guestAvail ? `<button class="btn btn-sec" onclick="adminDoAddWl('${_adminWlDate}','${gTag}')" title="${t('session.guest_to_waitlist')}" style="padding:0 10px;white-space:nowrap;font-size:var(--text-xs)">+${t('misc.guest')}</button>` : ''}
+      <button type="button" class="slot-guest-btn ${!guestAvail ? 'disabled' : ''}"
+        ${guestAvail ? `onclick="adminDoAddWl('${_adminWlDate}','${gTag}')"` : 'disabled'}
+        title="${guestAvail ? t('session.guest_to_waitlist') : t('slot.guest_max')}">
+        <i data-lucide="user-plus" style="width:14px;height:14px"></i>
+        <span>${t('slot.guest')}</span>
+      </button>
     </div>`;
   }).join('');
   lucide.createIcons();
