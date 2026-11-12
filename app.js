@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:508
-const CLIENT_BUILD = 508;
+// built:511
+const CLIENT_BUILD = 511;
 let S = {
   players: [],
   transactions: [],
@@ -2477,6 +2477,7 @@ function renderAdminPlan(keepDetailsOpen) {
   const sessTime = getSessionTime(sess);
   const sessCost = getSessionCost(sess);
   const sessId = sess.id || sess.date;
+  const timeStr = sessTime.start ? (sessTime.end ? `${sessTime.start}–${sessTime.end}` : sessTime.start) : '';
 
   const activeCourts = sess.courts.filter((_, i) => !sess.disabledCourts.includes(i));
   const allPids = [...new Set(activeCourts.flat().filter(Boolean))];
@@ -2611,25 +2612,25 @@ function renderAdminPlan(keepDetailsOpen) {
         </div>
 
         <div class="plan-meta-subline">
-          <span><i data-lucide="calendar"></i> ${esc(fmtDL(sess.date))}</span>
-          ${effectiveLoc ? `<span>·</span><span><i data-lucide="map-pin"></i> ${esc(effectiveLoc)}</span>` : ''}
-          ${sess.note ? `<span>·</span><span class="plan-note-highlight"><i data-lucide="message-square"></i> ${esc(sess.note)}</span>` : ''}
-        </div>
-
-        <div class="plan-stat-grid">
-          <div class="plan-stat">
-            <span class="plan-stat-label"><i data-lucide="clock"></i> ${t('session.time', 'Zeit')}</span>
-            <span class="plan-stat-val">${sessTime.start}–${sessTime.end}</span>
+          <div class="plan-meta-row">
+            <i data-lucide="calendar"></i>
+            <span>${esc(fmtDL(sess.date))}${timeStr ? ` · ${esc(timeStr)}` : ''}</span>
           </div>
-          <div class="plan-stat">
-            <span class="plan-stat-label"><i data-lucide="tag"></i> ${t('session.price', 'Preis')}</span>
-            <span class="plan-stat-val">${fmtE(sessCost)}</span>
-            <span class="plan-stat-unit">/ Slot</span>
-          </div>
-          <div class="plan-stat">
-            <span class="plan-stat-label"><i data-lucide="users"></i> ${t('session.slots_meta', 'Belegung')}</span>
-            <span class="plan-stat-val ${filled === total ? 'plan-stat-full' : ''}">${filled} / ${total}</span>
-          </div>
+          ${effectiveLoc ? `
+          <div class="plan-meta-row">
+            <i data-lucide="map-pin"></i>
+            <span>${esc(effectiveLoc)}</span>
+          </div>` : ''}
+          ${sessCost !== null && sessCost !== undefined ? `
+          <div class="plan-meta-row">
+            <i data-lucide="tag"></i>
+            <span>${fmtE(sessCost)} / Slot</span>
+          </div>` : ''}
+          ${sess.note ? `
+          <div class="plan-meta-row plan-note-highlight">
+            <i data-lucide="message-square"></i>
+            <span>${esc(sess.note)}</span>
+          </div>` : ''}
         </div>
       </div>
 
@@ -3050,14 +3051,29 @@ async function toggleSessionCancel() {
   const isCancelled = rawSess?.cancelled || sess?.cancelled || false;
   const newCancelled = !isCancelled;
   const targetId = sess?.id || rawSess?.id || planDate;
-  try {
-    await apiFetch('PUT', '/sessions/' + targetId, { cancelled: newCancelled });
-    await loadState();
-    renderAdminPlan();
-    renderSessions();
-    lucide.createIcons();
-    showToast(newCancelled ? t('toast.session_cancelled') : t('toast.session_reactivated'));
-  } catch(e) {}
+
+  const doToggle = async () => {
+    try {
+      await apiFetch('PUT', '/sessions/' + targetId, { cancelled: newCancelled });
+      await loadState();
+      renderAdminPlan();
+      renderSessions();
+      lucide.createIcons();
+      showToast(newCancelled ? t('toast.session_cancelled') : t('toast.session_reactivated'));
+    } catch(e) {}
+  };
+
+  if (newCancelled) {
+    showConfirmModal(
+      t('confirm.cancel_session'),
+      t('confirm.cancel_session_desc'),
+      '<i data-lucide="x-circle"></i> ' + t('confirm.cancel_session_btn'),
+      'btn-dan',
+      doToggle
+    );
+  } else {
+    await doToggle();
+  }
 }
 
 async function deleteSession() {

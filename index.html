@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:508-->
+<!--built:511-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=508">
+<link rel="stylesheet" href="style.css?build=511">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=508" defer></script>
-<script src="app.js?build=508" defer></script>
+<script src="i18n.js?build=511" defer></script>
+<script src="app.js?build=511" defer></script>
 
 <div class="app-shell">
 
@@ -294,7 +294,7 @@ if ('serviceWorker' in navigator) {
         <button class="btn btn-ok btn-sm" onclick="openAddPlayer()" type="button"><i data-lucide="user-plus"></i> <span data-i18n="players.add">Hinzufügen</span></button>
       </div>
     </div>
-    <div class="seg-tabs mb4" id="players-tabs" role="tablist">
+    <div class="seg-tabs seg-tabs-mobile-full mb4" id="players-tabs" role="tablist">
       <button class="seg-tab active" id="players-tab-manage" role="tab" aria-selected="true" onclick="setPlayersTab('manage')"><span data-i18n="players.tab_manage">Verwaltung</span></button>
       <button class="seg-tab" id="players-tab-balance" role="tab" aria-selected="false" onclick="setPlayersTab('balance')"><span data-i18n="players.tab_list">Guthaben</span></button>
       <button class="seg-tab" id="players-tab-activity" role="tab" aria-selected="false" onclick="setPlayersTab('activity')"><span data-i18n="players.tab_activity">Aktivität</span></button>
@@ -375,7 +375,7 @@ if ('serviceWorker' in navigator) {
     </div>
 
     <!-- Top-Level Dimension Switcher -->
-    <div class="seg-tabs mb4" id="fin-dimension-tabs" role="tablist">
+    <div class="seg-tabs seg-tabs-mobile-full mb4" id="fin-dimension-tabs" role="tablist">
       <button class="seg-tab active" id="fin-tab-team" role="tab" aria-selected="true" onclick="setFinDimension('team')" type="button">
         <i data-lucide="piggy-bank"></i>
         <span data-i18n="finances.tab_team">Teamkasse</span>
@@ -432,7 +432,7 @@ if ('serviceWorker' in navigator) {
     </div>
 
     <!-- Soft Tabs (Segmented Control) -->
-    <div class="seg-tabs mb4" id="settings-tabs" role="tablist">
+    <div class="seg-tabs seg-tabs-mobile-full mb4" id="settings-tabs" role="tablist">
       <button class="seg-tab active" id="settings-tab-general" role="tab" aria-selected="true" onclick="setSettingsTab('general')">
         <span data-i18n="settings.tab_general">Allgemein</span>
       </button>
@@ -827,7 +827,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 508)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 511)</span>
 
 </footer>
 

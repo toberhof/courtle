@@ -261,10 +261,13 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await page.locator('#plan-edit-toggle-btn').click();
     await expect(page.locator('#session-details-box')).toBeVisible();
 
-    // Cancel session (action button now in header)
+    // Cancel session (action button now in header) - opens confirmation modal
     const cancelBtn = page.locator('#plan-cancel-btn, #admin-plan-header-dynamic button:has-text("Absagen")').first();
     await expect(cancelBtn).toBeVisible();
     await cancelBtn.click();
+    const confirmCancelBtn = page.locator('#mo-confirm .btn-dan, #mo-confirm #mo-confirm-btn').first();
+    await expect(confirmCancelBtn).toBeVisible({ timeout: 5000 });
+    await confirmCancelBtn.click();
     await page.waitForTimeout(500);
 
     // Should now show "Reaktivieren" (session is cancelled)
