@@ -193,7 +193,7 @@ test.describe('iOS & iPhone PWA Mobile Suite', () => {
   test('03 — iOS Virtual Keyboard & Focusout Viewport Reset', async ({ page }) => {
     // Open Admin Plan view
     await page.click('#bnav-admin-dd');
-    await page.click('#bnav-admin-menu button:has-text("Session Planer")');
+    await page.click('#bnav-admin-plan');
     await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
 
     // Open session details drawer if collapsed
