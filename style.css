@@ -3133,6 +3133,10 @@ body:has(.pin-modal-overlay.open) {
 /* ── Billing ── */
 .nav-badge{margin-left:auto;min-width:18px;height:18px;padding:0 6px;border-radius:9px;background:var(--err);color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center}
 .nav-badge[hidden]{display:none}
+.nav-action-pill{margin-left:auto;display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:var(--r-full);background:oklch(from var(--suc) l c h / .12);border:1px solid oklch(from var(--suc) l c h / .25);color:var(--suc);font-size:10.5px;font-weight:700;line-height:14px;white-space:nowrap;cursor:pointer;transition:background var(--tr),border-color var(--tr),transform var(--tr),color var(--tr)}
+.nav-action-pill:hover{background:oklch(from var(--suc) l c h / .22);border-color:var(--suc);color:var(--suc);transform:scale(1.04)}
+.nav-action-pill:active{transform:scale(.96)}
+.nav-action-pill i, .nav-action-pill svg{width:11px;height:11px;stroke-width:2.5px;flex-shrink:0}
 .seg-tabs{display:inline-flex;max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;scrollbar-width:none;gap:3px;padding:3px;border-radius:var(--r-md);background:oklch(from var(--tx) l c h / .06);border:1px solid var(--bor)}
 .seg-tabs::-webkit-scrollbar{display:none}
 .seg-tab{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:var(--sp2) var(--sp4);border:1px solid transparent;border-radius:calc(var(--r-md) - 2px);background:transparent;color:var(--txm);font-size:var(--text-sm);font-weight:600;cursor:pointer;transition:background var(--tr),color var(--tr),box-shadow var(--tr),border-color var(--tr);min-height:36px;white-space:nowrap;flex-shrink:0}

@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:503-->
+<!--built:504-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=503">
+<link rel="stylesheet" href="style.css?build=504">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=503" defer></script>
-<script src="app.js?build=503" defer></script>
+<script src="i18n.js?build=504" defer></script>
+<script src="app.js?build=504" defer></script>
 
 <div class="app-shell">
 
@@ -107,9 +107,7 @@ if ('serviceWorker' in navigator) {
         </button>
         <button class="nav-dd-item" id="nav-history" onclick="showView('history');closeNavDD()">
           <i data-lucide="chart-no-axes-gantt" style="width:16px;height:16px"></i><span data-i18n="nav.history">Kassenbuch</span>
-        </button>
-        <button class="nav-dd-item nav-dd-quick-tx" id="nav-quick-tx" onclick="closeNavDD();openTx()">
-          <i data-lucide="plus-circle" style="width:16px;height:16px"></i><span data-i18n="nav.quick_topup">Einzahlung</span>
+          <span class="nav-action-pill" id="nav-quick-tx" onclick="event.stopPropagation();closeNavDD();openTx()" role="button" data-i18n="nav.quick_topup_action">+ Einzahlen</span>
         </button>
         <div class="nav-dd-divider"></div>
         <div class="nav-dd-group-title" data-i18n="nav.group_general">Allgemein</div>
@@ -829,7 +827,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 503)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 504)</span>
 
 </footer>
 
@@ -892,9 +890,7 @@ if ('serviceWorker' in navigator) {
   </button>
   <button onclick="showView('history');closeMobileAdminMenu()">
     <i data-lucide="chart-no-axes-gantt"></i> <span data-i18n="nav.history">Kassenbuch</span>
-  </button>
-  <button class="bnav-quick-tx" onclick="closeMobileAdminMenu();openTx()">
-    <i data-lucide="plus-circle"></i> <span data-i18n="nav.quick_topup">Einzahlung</span>
+    <span class="nav-action-pill" onclick="event.stopPropagation();closeMobileAdminMenu();openTx()" role="button" data-i18n="nav.quick_topup_action">+ Einzahlen</span>
   </button>
   <div class="bnav-divider"></div>
   <div class="bnav-group-title" data-i18n="nav.group_general">Allgemein</div>
