@@ -376,7 +376,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // Save settings and await API response
     await page.evaluate(() => settingsAutoSave());
-    await page.waitForTimeout(600);
+    await expect(page.locator('#settings-save-pill')).toHaveClass(/show/, { timeout: 5000 });
 
     // Reload and verify persistence
     await page.reload();

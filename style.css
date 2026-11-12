@@ -708,8 +708,8 @@ select.fi{cursor:pointer}
 .player-controls-compact{display:flex;flex-direction:column;gap:var(--sp2)}
 .player-search-row{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
 .player-filter-pills{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
-.pf-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:var(--r-full);font-size:var(--text-xs);font-weight:600;background:var(--sur);border:1px solid var(--bor);color:var(--txm);cursor:pointer;transition:all var(--tr)}
-.pf-pill span:not([data-i18n]),.pf-pill .pf-cnt{font-size:10px;font-weight:700;padding:1px 5px;border-radius:var(--r-full);background:var(--suroff);color:var(--txm)}
+.pf-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;min-height:32px;border-radius:var(--r-full);font-size:var(--text-xs);font-weight:600;background:var(--sur);border:1px solid var(--bor);color:var(--txm);cursor:pointer;transition:all var(--tr)}
+.pf-pill span:not([data-i18n]),.pf-pill .pf-cnt{font-size:10px;font-weight:700;padding:1px 6px;border-radius:var(--r-full);background:var(--suroff);color:var(--txm)}
 .pf-pill.active{border-color:var(--pri);background:var(--prhl);color:var(--pri)}
 .pf-pill.active span:not([data-i18n]),.pf-pill.active .pf-cnt{background:var(--pri);color:var(--txi)}
 .pf-pill.pf-pos.active{border-color:var(--pri);background:var(--prhl);color:var(--pri)}
@@ -2740,17 +2740,62 @@ body:has(.pin-modal-overlay.open) {
 .fin-player-select {
   width: auto;
   font-size: var(--text-xs);
-  height: 30px;
+  height: 32px;
+  min-height: 32px;
   padding: 0 var(--sp6) 0 var(--sp3);
   border-radius: var(--r-full);
   background-color: var(--sur);
+  border: 1px solid var(--bor);
+  color: var(--tx);
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--tr), background var(--tr);
+}
+.fin-player-select:hover {
+  background-color: var(--sur2);
+  border-color: oklch(from var(--pri) l c h / .35);
+}
+.fin-player-select:focus {
+  border-color: var(--pri);
+  box-shadow: 0 0 0 3px oklch(from var(--pri) l c h / .15);
 }
 .fin-csv-btn {
-  min-height: 30px;
-  height: 30px;
+  min-height: 32px;
+  height: 32px;
   padding: 0 var(--sp3);
   border-radius: var(--r-full);
   font-size: var(--text-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp1);
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .fin-controls-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--sp2);
+  }
+  .fin-controls-bar .player-filter-pills {
+    width: 100%;
+  }
+  .fin-controls-right {
+    margin-left: 0;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: var(--sp2);
+  }
+  .fin-player-select {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+  }
+  .fin-csv-btn {
+    flex-shrink: 0;
+  }
 }
 .expense-list, .history-list {
   display: flex;
