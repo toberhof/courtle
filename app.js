@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:472
-const CLIENT_BUILD = 472;
+// built:473
+const CLIENT_BUILD = 473;
 let S = {
   players: [],
   transactions: [],
@@ -3149,6 +3149,8 @@ function openSlotModal(date, ci, si) {
   document.getElementById('mo-slot-title').textContent = `${getCourtLabel(date, ci)} – ${t('session.position')} ${si + 1}`;
   const danBtn = document.getElementById('mo-slot').querySelector('.btn-dan');
   if (danBtn) danBtn.style.display = '';
+  const foot = document.getElementById('mo-slot').querySelector('.mo-foot');
+  if (foot) foot.style.display = '';
   const sess = getOrSess(date);
   const allSlots = sess.courts.flat();
   const curVal = sess.courts[ci][si];
@@ -6484,6 +6486,8 @@ async function adminAddToWaitlist(date) {
   document.getElementById('mo-slot-title').textContent = t('session.add_to_waitlist');
   const danBtn = document.getElementById('mo-slot').querySelector('.btn-dan');
   if (danBtn) danBtn.style.display = 'none';
+  const foot = document.getElementById('mo-slot').querySelector('.mo-foot');
+  if (foot) foot.style.display = 'none';
   _adminWlDate = date;
   renderAdminWlList();
   openMo('mo-slot');
