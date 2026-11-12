@@ -120,6 +120,10 @@ function db(): PDO {
     if ($ver < 3) {
         migrate_v3_tx_session_link($pdo);
     }
+    $ver = (int)$pdo->query("SELECT value FROM config WHERE key='schema_version'")->fetchColumn();
+    if ($ver < 4) {
+        migrate_v4_expenses_session_link($pdo);
+    }
     return $pdo;
 }
 
@@ -130,6 +134,7 @@ function handle_system_init(): void {
     init_db($db);
     migrate_v2_sessions($db);
     migrate_v3_tx_session_link($db);
+    migrate_v4_expenses_session_link($db);
     json_out(['ok' => true, 'message' => 'Datenbank-Struktur erfolgreich geprüft und aktualisiert.']);
 }
 
@@ -194,7 +199,8 @@ function init_db(PDO $db): void {
         price REAL DEFAULT NULL,
         cancel_hours REAL DEFAULT NULL,
         name TEXT DEFAULT NULL,
-        court_names TEXT
+        court_names TEXT,
+        billing_deferred INTEGER DEFAULT 0
     )");
     
     $db->exec("CREATE TABLE IF NOT EXISTS courts (
@@ -210,7 +216,9 @@ function init_db(PDO $db): void {
         amount REAL NOT NULL, 
         date TEXT NOT NULL, 
         note TEXT NOT NULL DEFAULT '', 
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        session_id TEXT DEFAULT NULL,
+        paid_by TEXT DEFAULT NULL
     )");
     
     $db->exec("CREATE TABLE IF NOT EXISTS session_history (
@@ -283,7 +291,8 @@ function init_db(PDO $db): void {
         "ALTER TABLE players ADD COLUMN theme TEXT DEFAULT 'auto'",
         "ALTER TABLE sessions ADD COLUMN court_names TEXT",
         "ALTER TABLE series ADD COLUMN court_names TEXT",
-        "ALTER TABLE transactions ADD COLUMN session_id TEXT DEFAULT NULL"
+        "ALTER TABLE transactions ADD COLUMN session_id TEXT DEFAULT NULL",
+        "ALTER TABLE sessions ADD COLUMN billing_deferred INTEGER DEFAULT 0"
     ];
 
     foreach ($migrations as $sql) {
@@ -358,6 +367,14 @@ function uuid_v4(): string {
 
 function is_uuid(string $str): bool {
     return (bool)preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $str);
+}
+
+function migrate_v4_expenses_session_link(PDO $db): void {
+    try { $db->exec("ALTER TABLE expenses ADD COLUMN session_id TEXT DEFAULT NULL"); } catch (Throwable $e) {}
+    try { $db->exec("ALTER TABLE expenses ADD COLUMN paid_by TEXT DEFAULT NULL"); } catch (Throwable $e) {}
+    $db->exec("CREATE INDEX IF NOT EXISTS idx_expenses_session ON expenses(session_id)");
+    $db->prepare("INSERT OR IGNORE INTO config (key, value) VALUES ('billing_rounding', 'exact')")->execute();
+    $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', '4')")->execute();
 }
 
 function migrate_v3_tx_session_link(PDO $db): void {
@@ -455,7 +472,8 @@ function migrate_v2_sessions(PDO $db): void {
             price REAL DEFAULT NULL,
             cancel_hours REAL DEFAULT NULL,
             name TEXT DEFAULT NULL,
-            court_names TEXT
+            court_names TEXT,
+            billing_deferred INTEGER DEFAULT 0
         )");
 
         $db->exec("CREATE TABLE courts_new (
@@ -546,6 +564,7 @@ function get_server_build(): string {
 function json_out(mixed $data, int $code = 200): never {
     http_response_code($code);
     header('Content-Type: application/json; charset=utf-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
     header('X-Courtle-Build: ' . get_server_build());
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     exit;
@@ -922,13 +941,14 @@ function handle_player_create(): void {
     
     // HENNE-EI: Check if DB is empty
     $count = $db->query("SELECT COUNT(*) FROM players")->fetchColumn();
-    
+    $emoji = isset($b['emoji']) && !empty($b['emoji']) ? (string)$b['emoji'] : null;
+
     if ($count == 0) {
         // First player ever - no auth required, auto-make admin
         $id = gid();
         $pin_hash = isset($b['pin']) && $b['pin'] ? password_hash($b['pin'], PASSWORD_DEFAULT) : null;
-        $stmt = $db->prepare("INSERT INTO players (id,name,contact,pin_hash,created_at,admin) VALUES (?,?,?,?,?,1)");
-        $stmt->execute([$id, $b['name'], $b['contact'] ?? null, $pin_hash, date('c')]);
+        $stmt = $db->prepare("INSERT INTO players (id,name,contact,pin_hash,created_at,admin,emoji) VALUES (?,?,?,?,?,1,?)");
+        $stmt->execute([$id, $b['name'], $b['contact'] ?? null, $pin_hash, date('c'), $emoji]);
         json_out(['id' => $id, 'name' => $b['name'], 'admin' => true], 201);
     } else {
         // Normal flow - require admin
@@ -936,8 +956,8 @@ function handle_player_create(): void {
         $id = gid();
         $pin_hash = isset($b['pin']) && $b['pin'] ? password_hash($b['pin'], PASSWORD_DEFAULT) : null;
         $admin_flag = isset($b['admin']) && $b['admin'] ? 1 : 0;
-        $stmt = $db->prepare("INSERT INTO players (id,name,contact,pin_hash,created_at,admin) VALUES (?,?,?,?,?,?)");
-        $stmt->execute([$id, $b['name'], $b['contact'] ?? null, $pin_hash, date('c'), $admin_flag]);
+        $stmt = $db->prepare("INSERT INTO players (id,name,contact,pin_hash,created_at,admin,emoji) VALUES (?,?,?,?,?,?,?)");
+        $stmt->execute([$id, $b['name'], $b['contact'] ?? null, $pin_hash, date('c'), $admin_flag, $emoji]);
         json_out(['id' => $id, 'name' => $b['name']], 201);
     }
 }
@@ -1148,6 +1168,7 @@ function handle_sessions_list(): void {
             'cancelHours'    => isset($s['cancel_hours']) && $s['cancel_hours'] !== null ? (float)$s['cancel_hours'] : null,
             'name'           => $s['name'] ?? null,
             'courtNames'     => json_decode($s['court_names'] ?? '[]', true) ?: [],
+            'billingDeferred'=> (bool)($s['billing_deferred'] ?? 0),
         ];
     }
     json_out($out);
@@ -1246,7 +1267,7 @@ function handle_session_update(string $idOrDate): void {
         $hasMutations = isset($b['timeStart']) || isset($b['timeEnd']) || isset($b['newDate'])
             || isset($b['disabledCourts']) || isset($b['waitlist']) || isset($b['note'])
             || isset($b['location']) || isset($b['courts']) || isset($b['cancelled']) || isset($b['price'])
-            || isset($b['name']) || isset($b['courtNames']);
+            || isset($b['name']) || isset($b['courtNames']) || isset($b['billingDeferred']);
         if ($hasMutations) {
             err('This session has already been charged. No more changes are possible.', 403);
         }
@@ -1266,8 +1287,8 @@ function handle_session_update(string $idOrDate): void {
 
     // Upsert session row if not exists
     if (!$sess) {
-        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names)
-            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?)")
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, ?)")
            ->execute([
                $sessId,
                $sessDate,
@@ -1277,7 +1298,8 @@ function handle_session_update(string $idOrDate): void {
                isset($b['price']) && $b['price'] !== null ? (float)$b['price'] : null,
                isset($b['cancelHours']) && $b['cancelHours'] !== null ? (float)$b['cancelHours'] : null,
                $b['name'] ?? null,
-               isset($b['courtNames']) && is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : '[]'
+               isset($b['courtNames']) && is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : '[]',
+               !empty($b['billingDeferred']) ? 1 : 0
            ]);
     }
 
@@ -1394,6 +1416,10 @@ function handle_session_update(string $idOrDate): void {
         $db->prepare("UPDATE sessions SET cancelled=? WHERE id=?")->execute([$b['cancelled'] ? 1 : 0, $sessId]);
     }
 
+    if (isset($b['billingDeferred'])) {
+        $db->prepare("UPDATE sessions SET billing_deferred=? WHERE id=?")->execute([$b['billingDeferred'] ? 1 : 0, $sessId]);
+    }
+
     json_out(['ok' => true, 'id' => $sessId, 'date' => $sessDate]);
 }
 
@@ -1426,8 +1452,10 @@ function handle_expense_create(): void {
     $b = body();
     if (empty($b['amount'])) err('Amount is required.');
     $id = gid();
-    $stmt = db()->prepare("INSERT INTO expenses (id, amount, date, note, created_at) VALUES (?, ?, ?, ?, ?)");
-    $stmt->execute([$id, (float)$b['amount'], $b['date'] ?? date('Y-m-d'), $b['note'] ?? '', date('c')]);
+    $paidBy = !empty($b['paid_by']) ? (string)$b['paid_by'] : null;
+    $sessionId = !empty($b['session_id']) ? (string)$b['session_id'] : null;
+    $stmt = db()->prepare("INSERT INTO expenses (id, amount, date, note, created_at, session_id, paid_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
+    $stmt->execute([$id, (float)$b['amount'], $b['date'] ?? date('Y-m-d'), $b['note'] ?? '', date('c'), $sessionId, $paidBy]);
     json_out(['id' => $id], 201);
 }
 
@@ -1436,8 +1464,9 @@ function handle_expense_update(string $id): void {
     $b = body();
     $amt = (float)($b['amount'] ?? 0);
     if ($amt <= 0) err('Invalid amount.');
-    $stmt = db()->prepare("UPDATE expenses SET amount=?, date=?, note=? WHERE id=?");
-    $stmt->execute([$amt, $b['date'] ?? date('Y-m-d'), $b['note'] ?? '', $id]);
+    $paidBy = array_key_exists('paid_by', $b) ? (!empty($b['paid_by']) ? (string)$b['paid_by'] : null) : null;
+    $stmt = db()->prepare("UPDATE expenses SET amount=?, date=?, note=?, paid_by=? WHERE id=?");
+    $stmt->execute([$amt, $b['date'] ?? date('Y-m-d'), $b['note'] ?? '', $paidBy, $id]);
     json_out(['ok' => true]);
 }
 
@@ -1447,8 +1476,57 @@ function handle_expense_delete(string $id): void {
     json_out(['ok' => true]);
 }
 
+function compute_slot_shares(float $totalPrice, array $counts, string $roundingMode, ?string $paidByPid): array {
+    $totalSlots = array_sum($counts);
+    if ($totalSlots <= 0) return [];
+    
+    // Convert to integer cents to avoid floating point imprecision
+    $totalCents = (int)round($totalPrice * 100);
+    $shares = [];
+    
+    if ($roundingMode === 'exact') {
+        $baseCents = intdiv($totalCents, $totalSlots);
+        $remCents  = $totalCents % $totalSlots;
+        
+        // Expand slots into individual slot items with owner pid
+        $slotOwners = [];
+        // If paidByPid is among participants, prioritize their slot(s) for the extra cent
+        if ($paidByPid && isset($counts[$paidByPid])) {
+            for ($i = 0; $i < $counts[$paidByPid]; $i++) $slotOwners[] = $paidByPid;
+        }
+        foreach ($counts as $pid => $n) {
+            if ($pid === $paidByPid) continue;
+            for ($i = 0; $i < $n; $i++) $slotOwners[] = $pid;
+        }
+        
+        // Distribute cents
+        $assignedCents = [];
+        for ($i = 0; $i < count($slotOwners); $i++) {
+            $pid = $slotOwners[$i];
+            $extra = ($i < $remCents) ? 1 : 0;
+            $c = $baseCents + $extra;
+            $assignedCents[$pid] = ($assignedCents[$pid] ?? 0) + $c;
+        }
+        foreach ($counts as $pid => $n) {
+            $shares[$pid] = round(($assignedCents[$pid] ?? 0) / 100, 2);
+        }
+    } elseif ($roundingMode === 'ceil') {
+        $slotCents = (int)ceil($totalCents / $totalSlots);
+        foreach ($counts as $pid => $n) {
+            $shares[$pid] = round(($slotCents * $n) / 100, 2);
+        }
+    } else { // 'round' (standard commercial rounding)
+        $slotCents = (int)round($totalCents / $totalSlots);
+        foreach ($counts as $pid => $n) {
+            $shares[$pid] = round(($slotCents * $n) / 100, 2);
+        }
+    }
+    
+    return $shares;
+}
+
 // ── Charge ──
-function charge_session(PDO $db, array $sess, array $paidPids, string $now, string $performedBy): array {
+function charge_session(PDO $db, array $sess, array $paidPids, string $now, string $performedBy, ?float $totalPriceOverride = null, ?string $paidByPlayerId = null, bool $recordTeamExpense = false): array {
     if ($sess['charged']) throw new RuntimeException('Already charged.');
     if (!empty($sess['cancelled'])) throw new RuntimeException('Cancelled sessions cannot be charged.');
 
@@ -1465,16 +1543,37 @@ function charge_session(PDO $db, array $sess, array $paidPids, string $now, stri
         $base = explode('|', $sl['player_id'])[0];
         $counts[$base] = ($counts[$base] ?? 0) + 1;
     }
+    $totalSlots = array_sum($counts);
+    if ($totalSlots <= 0) throw new RuntimeException('Session has no booked slots.');
 
     $cost = (float)($db->query("SELECT value FROM config WHERE key='cost'")->fetchColumn() ?? 10);
     if ($sess['price'] !== null) $cost = (float)$sess['price'];
+
+    $roundingMode = $db->query("SELECT value FROM config WHERE key='billing_rounding'")->fetchColumn() ?: 'exact';
+    if (!in_array($roundingMode, ['exact', 'ceil', 'round'], true)) $roundingMode = 'exact';
+
+    $isCustomPrice = ($totalPriceOverride !== null && $totalPriceOverride >= 0);
+    $totalPrice = $isCustomPrice ? (float)$totalPriceOverride : ($cost * $totalSlots);
+
+    // Compute player debit amounts
+    if ($isCustomPrice) {
+        $playerDebits = compute_slot_shares($totalPrice, $counts, $roundingMode, $paidByPlayerId);
+        // Persist new per-slot price on the session
+        $avgSlotPrice = round($totalPrice / $totalSlots, 2);
+        $db->prepare("UPDATE sessions SET price=? WHERE id=?")->execute([$avgSlotPrice, $sessId]);
+    } else {
+        $playerDebits = [];
+        foreach ($counts as $pid => $n) {
+            $playerDebits[$pid] = round($cost * $n, 2);
+        }
+    }
 
     $tx = $db->prepare("INSERT INTO transactions (id,player_id,credit,amount,date,created_at,note,session_id) VALUES (?,?,?,?,?,?,?,?)");
     $timeLabel = $sess['time_start'] ? " ({$sess['time_start']})" : "";
     $total = 0.0;
     $direct = 0.0;
     foreach ($counts as $pid => $n) {
-        $amt  = $cost * $n;
+        $amt  = $playerDebits[$pid] ?? 0.0;
         $note = $n > 1 ? "Session $date$timeLabel (+" . ($n-1) . " Guest)" : "Session $date$timeLabel";
         // 1. Charge (debit)
         $tx->execute([gid(), $pid, 0, $amt, $date, $now, $note, $sessId]);
@@ -1486,9 +1585,37 @@ function charge_session(PDO $db, array $sess, array $paidPids, string $now, stri
         }
     }
 
-    $db->prepare("UPDATE sessions SET charged=1 WHERE id=?")->execute([$sessId]);
+    // 3. Player outlay reimbursement or team expense
+    if (!empty($paidByPlayerId)) {
+        // Find player name for note
+        $pNameStmt = $db->prepare("SELECT name FROM players WHERE id=?");
+        $pNameStmt->execute([$paidByPlayerId]);
+        $pName = $pNameStmt->fetchColumn() ?: 'Spieler';
+        
+        $reimburseAmt = round($totalPrice, 2);
+        // Credit on player's account
+        $tx->execute([gid(), $paidByPlayerId, 1, $reimburseAmt, $date, $now, "Auslage Session $date$timeLabel", $sessId]);
+        // Expense record
+        $expStmt = $db->prepare("INSERT INTO expenses (id, amount, date, note, created_at, session_id, paid_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $expStmt->execute([gid(), $reimburseAmt, $date, "Session $date$timeLabel (Auslage: $pName)", $now, $sessId, $paidByPlayerId]);
+    } elseif ($recordTeamExpense) {
+        $expAmt = round($totalPrice, 2);
+        $expStmt = $db->prepare("INSERT INTO expenses (id, amount, date, note, created_at, session_id, paid_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
+        $expStmt->execute([gid(), $expAmt, $date, "Session $date$timeLabel", $now, $sessId, null]);
+    }
+
+    $db->prepare("UPDATE sessions SET charged=1, billing_deferred=0 WHERE id=?")->execute([$sessId]);
     log_session_history($db, $sessId, null, 'charged', null, null, $performedBy,
-        json_encode(['players' => count($counts), 'slots' => array_sum($counts), 'amount' => $total, 'direct' => $direct, 'paid_pids' => array_values($paidPids)]), $date);
+        json_encode([
+            'players' => count($counts),
+            'slots' => array_sum($counts),
+            'amount' => $total,
+            'total_price' => $totalPrice,
+            'direct' => $direct,
+            'paid_pids' => array_values($paidPids),
+            'paid_by_player_id' => $paidByPlayerId,
+            'record_team_expense' => $recordTeamExpense
+        ]), $date);
 
     return ['session_id' => $sessId, 'players' => count($counts), 'slots' => array_sum($counts), 'amount' => $total];
 }
@@ -1518,7 +1645,12 @@ function handle_charge(): void {
             $sess = get_session_row($db, $id);
             if (!$sess) throw new RuntimeException("Session not found: $id");
             $paid = array_map('strval', is_array($it['paid_pids'] ?? null) ? $it['paid_pids'] : []);
-            $results[] = charge_session($db, $sess, $paid, $now, $by);
+            
+            $totalPrice = isset($it['total_price']) && $it['total_price'] !== '' && $it['total_price'] !== null ? (float)$it['total_price'] : null;
+            $paidByPlayerId = !empty($it['paid_by_player_id']) ? (string)$it['paid_by_player_id'] : null;
+            $recordTeamExpense = !empty($it['record_team_expense']);
+
+            $results[] = charge_session($db, $sess, $paid, $now, $by, $totalPrice, $paidByPlayerId, $recordTeamExpense);
         }
         $db->exec('COMMIT');
     } catch (Throwable $e) {
@@ -1549,6 +1681,7 @@ function handle_charge_revert(string $idOrDate): void {
         foreach ($rows as $r) { if ($r['credit']) $direct += (float)$r['amount']; else $debit += (float)$r['amount']; }
 
         $db->prepare("DELETE FROM transactions WHERE session_id=?")->execute([$sessId]);
+        $db->prepare("DELETE FROM expenses WHERE session_id=?")->execute([$sessId]);
         $db->prepare("UPDATE sessions SET charged=0 WHERE id=?")->execute([$sessId]);
         log_session_history($db, $sessId, null, 'charge_reverted', null, null, get_performer_id(),
             json_encode(['amount' => $debit, 'direct' => $direct, 'deleted' => count($rows)]), $sess['date']);
@@ -1594,10 +1727,13 @@ function handle_config_set(): void {
         'team_name',
         'cancel_hours',
         'show_cancel_deadline',
+        'show_team_pool',
+        'show_runway_banner',
         'system_language',
         'time_format',
         'date_format',
         'auto_compact_slots',
+        'billing_rounding',
     ];
     foreach ($b as $k => $v) {
         if (!in_array($k, $allowed, true)) continue;
@@ -1613,10 +1749,13 @@ function handle_config_set(): void {
         if ($k === 'sroccurrences' && ((int)$v < 1 || (int)$v > 52)) continue;
         if ($k === 'cancel_hours' && ((float)$v < 0 || (float)$v > 168)) continue;
         if ($k === 'show_cancel_deadline' && !in_array($v, ['0', '1'], true)) continue;
+        if ($k === 'show_team_pool' && !in_array($v, ['0', '1'], true)) continue;
+        if ($k === 'show_runway_banner' && !in_array($v, ['0', '1'], true)) continue;
         if ($k === 'currency' && (mb_strlen($v) < 1 || mb_strlen($v) > 5)) continue;
         if ($k === 'system_language' && $v !== '' && !in_array($v, ['de', 'en', 'es', 'it', 'fr', 'pt'], true)) continue;
         if ($k === 'time_format' && !in_array($v, ['24h', '12h'], true)) continue;
         if ($k === 'date_format' && !in_array($v, ['dmy', 'mdy', 'ymd'], true)) continue;
+        if ($k === 'billing_rounding' && !in_array($v, ['exact', 'ceil', 'round'], true)) continue;
         $db->prepare("INSERT OR REPLACE INTO config VALUES (?,?)")->execute([$k, $v]);
     }
     json_out(['ok' => true]);
@@ -1713,7 +1852,7 @@ function handle_import(): void {
     }
     foreach (($b['sessions'] ?? []) as $s) {
         $sessId = $s['id'] ?? uuid_v4();
-        $db->prepare("INSERT OR IGNORE INTO sessions (id,date,charged,disabled_courts,waitlist,note,time_start,time_end,cancelled,location,price,cancel_hours,name,court_names) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        $db->prepare("INSERT OR IGNORE INTO sessions (id,date,charged,disabled_courts,waitlist,note,time_start,time_end,cancelled,location,price,cancel_hours,name,court_names,billing_deferred) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
             ->execute([
                 $sessId,
                 $s['date'],
@@ -1728,7 +1867,8 @@ function handle_import(): void {
                 isset($s['price']) && $s['price'] !== null ? (float)$s['price'] : null,
                 isset($s['cancel_hours']) && $s['cancel_hours'] !== null ? (float)$s['cancel_hours'] : null,
                 $s['name'] ?? null,
-                $s['court_names'] ?? '[]'
+                $s['court_names'] ?? '[]',
+                !empty($s['billing_deferred']) ? 1 : 0
             ]);
     }
     foreach (($b['courts'] ?? []) as $c) {
@@ -1739,13 +1879,15 @@ function handle_import(): void {
         }
     }
     foreach (($b['expenses'] ?? []) as $ex) {
-        $db->prepare("INSERT OR IGNORE INTO expenses (id,amount,date,note,created_at) VALUES (?,?,?,?,?)")
+        $db->prepare("INSERT OR IGNORE INTO expenses (id,amount,date,note,created_at,session_id,paid_by) VALUES (?,?,?,?,?,?,?)")
             ->execute([
                 $ex['id'],
                 (float)$ex['amount'],
                 $ex['date'],
                 $ex['note'] ?? '',
-                $ex['created_at'] ?? date('c')
+                $ex['created_at'] ?? date('c'),
+                $ex['session_id'] ?? null,
+                $ex['paid_by'] ?? null
             ]);
     }
     foreach (($b['session_history'] ?? []) as $sh) {
@@ -1830,8 +1972,8 @@ function handle_session_book(string $idOrDate): void {
         $name = $b['name'] ?? ($series['name'] ?? null);
         $cn = isset($b['courtNames']) ? (is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null) : ($series['court_names'] ?? '[]');
 
-        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names)
-            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?)")
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, 0)")
            ->execute([$sessId, $date, $timeStart, $timeEnd, $loc, $pr, $ch, $name, $cn]);
     }
 
@@ -2075,8 +2217,8 @@ function handle_session_join_waitlist(string $idOrDate): void {
         $name = $b['name'] ?? ($series['name'] ?? null);
         $cn = isset($b['courtNames']) ? (is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null) : ($series['court_names'] ?? '[]');
 
-        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names)
-            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?)")
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, 0)")
            ->execute([$sessId, $date, $timeStart, $timeEnd, $loc, $pr, $ch, $name, $cn]);
     }
 

@@ -1,5 +1,35 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const allProjects = [
+  {
+    name: 'chromium',
+    use: { ...devices['Desktop Chrome'] },
+  },
+  {
+    name: 'firefox',
+    use: { ...devices['Desktop Firefox'] },
+  },
+  {
+    name: 'webkit',
+    use: { ...devices['Desktop Safari'] },
+  },
+  {
+    name: 'ios',
+    use: { ...devices['iPhone 14'] }, // Test iOS mobile layout (iPhone 14 WebKit)
+  },
+  {
+    name: 'galaxy-s24',
+    use: { ...devices['Galaxy S24'] }, // Test Android mobile layout
+  },
+];
+
+// Default to Chromium locally unless --project=..., ALL_BROWSERS=1, or CI is set
+const includeAllProjects =
+  !!process.env.CI ||
+  !!process.env.ALL_BROWSERS ||
+  process.argv.some((arg) => arg.startsWith('--project')) ||
+  'TEST_WORKER_INDEX' in process.env;
+
 export default defineConfig({
   testDir: '.',
   fullyParallel: false, // Run sequentially to avoid SQLite write locking
@@ -20,28 +50,7 @@ export default defineConfig({
     locale: 'de-DE', // Force German locale to align with test assertions
   },
 
-  projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-    {
-      name: 'ios',
-      use: { ...devices['iPhone 14'] }, // Test iOS mobile layout (iPhone 14 WebKit)
-    },
-    {
-      name: 'galaxy-s24',
-      use: { ...devices['Galaxy S24'] }, // Test Android mobile layout
-    },
-  ],
+  projects: includeAllProjects ? allProjects : [allProjects[0]],
 
   // Automatically spin up the isolated Docker test container before running E2E tests
   webServer: {

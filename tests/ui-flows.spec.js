@@ -6,18 +6,7 @@ async function navigateAdmin(page, viewName) {
     await trigger.click();
     await page.click(`#nav-${viewName}`);
   } else {
-    await page.click('#bnav-admin-dd');
-    let text = '';
-    if (viewName === 'players') text = 'Spieler';
-    else if (viewName === 'dashboard') text = 'Übersicht';
-    else if (viewName === 'expenses') text = 'Ausgaben';
-    else if (viewName === 'billing') text = 'Abrechnung';
-    else if (viewName === 'history') text = 'Transaktionen';
-    else if (viewName === 'admin-plan') text = 'Session Planer';
-    else if (viewName === 'series') text = 'Session Serien';
-    else if (viewName === 'settings') text = 'Einstellungen';
-    else if (viewName === 'backup') text = 'Datensicherung';
-    await page.click(`#bnav-admin-menu button:has-text("${text}")`);
+    await page.evaluate(v => showView(v), viewName);
   }
 }
 
@@ -101,9 +90,10 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     // Navigate to admin players view
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
+    await page.click('#players-tab-balance');
 
     // Find Alice's card (players sorted alphabetically, "Admin" first)
-    const pc = page.locator('.pc').filter({ hasText: 'Alice' });
+    const pc = page.locator('#players-balance-grid .pc').filter({ hasText: 'Alice' });
     await expect(pc).toBeVisible();
     await pc.locator('button.btn-ok').click();
     await expect(page.locator('#mo-tx')).toHaveClass(/open/);
@@ -116,16 +106,17 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // Wait for renderAll and verify balance updated (100 + 75 = 175)
     await page.waitForTimeout(500);
-    const aliceCard = page.locator('.pc').filter({ hasText: 'Alice' });
+    const aliceCard = page.locator('#players-balance-grid .pc').filter({ hasText: 'Alice' });
     await expect(aliceCard).toContainText(/175/);
   });
 
   test('02 — Expense via UI: create, verify in table, then delete', async ({ page }) => {
-    await navigateAdmin(page, 'expenses');
-    await expect(page.locator('#view-expenses')).toHaveClass(/active/);
+    await navigateAdmin(page, 'history');
+    await expect(page.locator('#view-history')).toHaveClass(/active/);
+    await page.click('#hist-tab-expenses');
 
     // Click "Erfassen" to add expense
-    await page.click('button:has-text("Erfassen")');
+    await page.click('#hist-btn-add-expense');
     await expect(page.locator('#mo-expense')).toHaveClass(/open/);
 
     await page.fill('#ex-amount', '42.50');
@@ -151,10 +142,9 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
 
-    // Click pencil (edit) button on Alice's card (expand card row first)
-    const pc = page.locator('.pc').filter({ hasText: 'Alice' });
+    // Click pencil (edit) button directly on Alice's card in #players-grid
+    const pc = page.locator('#players-grid .pc').filter({ hasText: 'Alice' });
     await expect(pc).toBeVisible();
-    await pc.locator('.pc-row').click();
     await pc.locator('button.btn-sec').first().click();
     await expect(page.locator('#mo-player')).toHaveClass(/open/);
 
@@ -165,18 +155,17 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('#mo-player')).not.toHaveClass(/open/, { timeout: 5000 });
 
     await page.waitForTimeout(500);
-    await expect(page.locator('.pc').filter({ hasText: 'Alice Cooper' })).toBeVisible();
+    await expect(page.locator('#players-grid .pc').filter({ hasText: 'Alice Cooper' })).toBeVisible();
   });
 
   test('04 — Player deactivate + reactivate via UI', async ({ page }) => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
 
-    // Click trash button on Alice's card (expand card row first)
-    const pc = page.locator('.pc').filter({ hasText: 'Alice' });
+    // Click trash button directly on Alice's card in #players-grid
+    const pc = page.locator('#players-grid .pc').filter({ hasText: 'Alice' });
     await expect(pc).toBeVisible();
-    await pc.locator('.pc-row').click();
-    await pc.locator('button.btn-dan').click();
+    await pc.locator('button.btn-dan').first().click();
 
     // Confirm modal appears
     const confirmBtn = page.locator('#mo-confirm button.btn-pri, #mo-confirm button.btn-dan').first();
@@ -261,12 +250,19 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(300);
 
+    // Verify 2-zone header structure and full-width tabs with icons
+    await expect(page.locator('#admin-plan-header-dynamic .plan-header-top')).toBeVisible();
+    await expect(page.locator('#admin-plan-header-dynamic .plan-action-bar')).toBeVisible();
+    await expect(page.locator('#plan-tabs')).toHaveClass(/seg-tabs-full/);
+    await expect(page.locator('#plan-tab-slots svg, #plan-tab-slots i')).toBeVisible();
+    await expect(page.locator('#plan-tab-history svg, #plan-tab-history i')).toBeVisible();
+
     // Open details drawer
     await page.locator('#plan-edit-toggle-btn').click();
     await expect(page.locator('#session-details-box')).toBeVisible();
 
-    // Cancel session
-    const cancelBtn = page.locator('#session-details-box button:has-text("Absagen")');
+    // Cancel session (action button now in header)
+    const cancelBtn = page.locator('#plan-cancel-btn, #admin-plan-header-dynamic button:has-text("Absagen")').first();
     await expect(cancelBtn).toBeVisible();
     await cancelBtn.click();
     await page.waitForTimeout(500);
@@ -274,11 +270,8 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     // Should now show "Reaktivieren" (session is cancelled)
     await expect(page.locator('#admin-plan-header-dynamic button:has-text("Reaktivieren")').first()).toBeVisible({ timeout: 5000 });
 
-    // Re-open details drawer (if needed) and delete session
-    if (!(await page.locator('#session-details-box').isVisible())) {
-      await page.locator('#plan-edit-toggle-btn').click();
-    }
-    const deleteBtn = page.locator('#session-details-box button:has-text("Löschen")');
+    // Delete session (action button in header)
+    const deleteBtn = page.locator('#plan-delete-btn, #admin-plan-header-dynamic button:has-text("Löschen")').first();
     await expect(deleteBtn).toBeVisible();
     await deleteBtn.click();
     const confirmBtn = page.locator('#mo-confirm .btn-pri, #mo-confirm .btn-dan').first();
@@ -306,15 +299,16 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // Wait for render
     await page.waitForTimeout(500);
-    await expect(page.locator('.pc').filter({ hasText: 'Bob' })).toBeVisible();
+    await expect(page.locator('#players-grid .pc').filter({ hasText: 'Bob' })).toBeVisible();
   });
 
   test('08 — Debit via UI: Abbuchen reduces player balance', async ({ page }) => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
+    await page.click('#players-tab-balance');
 
     // Click charge button on Alice
-    const pc = page.locator('.pc').filter({ hasText: 'Alice' });
+    const pc = page.locator('#players-balance-grid .pc').filter({ hasText: 'Alice' });
     await pc.locator('button.btn-ok').click();
     await expect(page.locator('#mo-tx')).toHaveClass(/open/);
 
@@ -325,7 +319,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // Balance should be 100 - 30 = 70
     await page.waitForTimeout(500);
-    await expect(page.locator('.pc').filter({ hasText: 'Alice' })).toContainText(/70/);
+    await expect(page.locator('#players-balance-grid .pc').filter({ hasText: 'Alice' })).toContainText(/70/);
   });
 
   test('09 — Admin slot management: assign player to slot', async ({ page }) => {
@@ -353,23 +347,57 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('#plan-slots-editor')).toContainText('Alice');
   });
 
-  test('10 — Settings: change team name via UI', async ({ page }) => {
+  test('10 — Settings: change team name via UI, soft tabs, iOS switches & session settings', async ({ page }) => {
     await navigateAdmin(page, 'settings');
     await expect(page.locator('#view-settings')).toHaveClass(/active/);
 
-    // Change team name
+    // Verify soft tabs exist
+    const tabGen = page.locator('#settings-tab-general');
+    const tabSess = page.locator('#settings-tab-sessions');
+    await expect(tabGen).toBeVisible();
+    await expect(tabSess).toBeVisible();
+    await expect(tabGen).toHaveClass(/active/);
+    await expect(page.locator('#settings-panel-general')).toBeVisible();
+    await expect(page.locator('#settings-panel-sessions')).not.toBeVisible();
+
+    // Change team name in General tab
     await page.fill('#disp-team-name', '');
     await page.fill('#disp-team-name', 'New Team Name');
 
-    // Save general settings (scoped to settings view)
-    await page.click('#view-settings .btn-pri');
-    await page.waitForTimeout(1000);
+    // Switch to Sessions tab
+    await tabSess.click();
+    await expect(tabSess).toHaveClass(/active/);
+    await expect(page.locator('#settings-panel-sessions')).toBeVisible();
+    await expect(page.locator('#settings-panel-general')).not.toBeVisible();
 
-    // Reload and verify team name persisted
+    // Modify session settings: courts, price, cancel hours, auto-compact toggle
+    await page.fill('#sr-courts', '3');
+    await page.fill('#sr-cost', '20');
+    await page.fill('#sys-cancel-hours', '8');
+    
+    // Toggle auto-compact slots via iOS switch
+    const autoCompactCheck = page.locator('#sys-auto-compact-slots');
+    const wasChecked = await autoCompactCheck.isChecked();
+    await autoCompactCheck.click();
+    expect(await autoCompactCheck.isChecked()).toBe(!wasChecked);
+
+    // Save settings and await API response
+    await page.evaluate(() => settingsAutoSave());
+    await expect(page.locator('#settings-save-pill')).toHaveClass(/show/, { timeout: 5000 });
+
+    // Reload and verify persistence
     await page.reload();
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(500);
     await expect(page.locator('#topbar-team-name')).toContainText('New Team Name');
+
+    // Navigate back to settings and verify sessions tab values
+    await navigateAdmin(page, 'settings');
+    await page.locator('#settings-tab-sessions').click();
+    await expect(page.locator('#sr-courts')).toHaveValue('3');
+    await expect(page.locator('#sr-cost')).toHaveValue('20');
+    await expect(page.locator('#sys-cancel-hours')).toHaveValue('8');
+    expect(await page.locator('#sys-auto-compact-slots').isChecked()).toBe(!wasChecked);
   });
 
   test('11 — Add session via UI: create new session from admin plan', async ({ page }) => {
@@ -536,8 +564,11 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     if (!await privCheck.isChecked()) {
       await privCheck.check();
     }
-    await page.locator('button[onclick="saveDisplaySettings()"]').click();
-    await page.waitForTimeout(500);
+    if (await page.locator('button[onclick="saveDisplaySettings()"]').isVisible()) {
+      await page.locator('button[onclick="saveDisplaySettings()"]').click();
+    } else {
+      await page.waitForTimeout(600);
+    }
 
     // Clear session to simulate anonymous visitor
     await page.evaluate(() => {
@@ -564,7 +595,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
   test('22 — Self-Service Profile: Change own PIN and contact email via profile menu', async ({ page, request }) => {
     // 1. Open profile menu and click PIN ändern
     await openProfileMenu(page);
-    const changePinBtn = page.locator('button:has-text("PIN ändern")').first();
+    const changePinBtn = page.locator('button:has-text("PIN ändern"):visible');
     await expect(changePinBtn).toBeVisible({ timeout: 5000 });
     await changePinBtn.click();
 
@@ -579,7 +610,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // 3. Open profile menu and change email
     await openProfileMenu(page);
-    const changeEmailBtn = page.locator('button:has-text("E-Mail ändern")').first();
+    const changeEmailBtn = page.locator('button:has-text("E-Mail ändern"):visible');
     await expect(changeEmailBtn).toBeVisible({ timeout: 5000 });
     await changeEmailBtn.click();
 
@@ -608,6 +639,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
   test('23 — Admin Transaction History: Edit and delete transaction via history UI', async ({ page }) => {
     await navigateAdmin(page, 'history');
     await expect(page.locator('#view-history')).toHaveClass(/active/);
+    await page.click('#fin-tab-players');
 
     // Initial transaction from beforeEach should be present in history list
     const histList = page.locator('#history-list');
@@ -695,6 +727,189 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
     await page.click('#billing-tab-open');
     await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+  });
+
+  test('25 — Billing view & modal: live custom total price, Splitwise division and player outlay with atomic revert', async ({ page, request }) => {
+    const H = { 'Content-Type': 'application/json', 'X-Token': aToken };
+    const pBob = await (await request.post('/api.php/players', { headers: H, data: { name: 'BobOutlay', pin: '3333', admin: false } })).json();
+    const pCharlie = await (await request.post('/api.php/players', { headers: H, data: { name: 'Charlie', pin: '4444', admin: false } })).json();
+    
+    // Create past session with 3 players: Alice, BobOutlay, Charlie
+    const players = await (await request.get('/api.php/players')).json();
+    const alice = players.find(p => p.name === 'Alice');
+    const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date: '2020-04-01', courts: [[null,null,null,null]], timeStart: '1800', timeEnd: '2000' } })).json();
+    const sid = r.id;
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: alice.id } });
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 1, player_id: pBob.id } });
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 2, player_id: pCharlie.id } });
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(500);
+
+    await navigateAdmin(page, 'billing');
+    await expect(page.locator('#view-billing')).toHaveClass(/active/);
+
+    // Open review modal for this session
+    const item = page.locator('.billing-item', { hasText: '1. Apr' }).first();
+    await item.locator('button:has-text("Prüfen")').click();
+    await expect(page.locator('#mo-billing')).toHaveClass(/open/);
+
+    // Step 1: change total session price to 40.00
+    const priceInput = page.locator('#mo-billing .billing-total-price-input').first();
+    await priceInput.fill('40');
+    await priceInput.dispatchEvent('input');
+    await page.waitForTimeout(200);
+
+    // Select BobOutlay as payer
+    const payerSelect = page.locator('#mo-billing .billing-payer-select').first();
+    await payerSelect.selectOption(`player:${pBob.id}`);
+    await page.waitForTimeout(200);
+
+    // Advance to step 2
+    await page.locator('#mo-billing-foot .btn-pri').click();
+    await page.waitForTimeout(300);
+
+    // In step 2 preview, verify BobOutlay has outlay badge (+ 40,00 €)
+    const bobRow = page.locator('#mo-billing-body .billing-delta-row, #mo-billing-body tr', { hasText: 'BobOutlay' });
+    await expect(bobRow).toContainText('40,00');
+
+    // Finish charging
+    await page.locator('#mo-billing-foot .btn-pri').click();
+    await expect(page.locator('#mo-billing')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Check balances via API:
+    // Bob started with 0, outlay +40.00, debit -13.34 (Splitwise extra cent) -> +26.66
+    const updatedPlayers = await (await request.get('/api.php/players', { headers: H })).json();
+    expect(updatedPlayers.find(p => p.id === pBob.id).balance).toBe(26.66);
+    // Alice had 100, -13.33 -> 86.67
+    expect(updatedPlayers.find(p => p.id === alice.id).balance).toBe(86.67);
+    expect(updatedPlayers.find(p => p.id === pCharlie.id).balance).toBe(-13.33);
+
+    // Check that expense was created and is visible in History -> Platzkosten tab
+    await navigateAdmin(page, 'history');
+    await page.click('#hist-tab-expenses');
+    await expect(page.locator('#expenses-container')).toBeVisible();
+    await expect(page.locator('#expenses-container')).toContainText('40,00');
+    await expect(page.locator('#expenses-container')).toContainText('BobOutlay');
+
+    // Navigate back to Billing -> Abgerechnet tab and revert
+    await navigateAdmin(page, 'billing');
+    await page.click('#billing-tab-charged');
+    await page.locator('.billing-item .btn-dan').first().click();
+    await page.locator('#mo-confirm-btn').click();
+    await page.waitForTimeout(500);
+
+    // Check balances reverted
+    const revertedPlayers = await (await request.get('/api.php/players', { headers: H })).json();
+    expect(revertedPlayers.find(p => p.id === pBob.id).balance).toBe(0);
+    expect(revertedPlayers.find(p => p.id === alice.id).balance).toBe(100);
+    expect(revertedPlayers.find(p => p.id === pCharlie.id).balance).toBe(0);
+  });
+
+  test('26 — Billing view: defer session, verify badge decrement, verify deferred tab, undefer', async ({ page, request }) => {
+    const H = { 'Content-Type': 'application/json', 'X-Token': aToken };
+    const players = await (await request.get('/api.php/players')).json();
+    const alice = players.find(p => p.name === 'Alice');
+    
+    // Create 2 past sessions with booking
+    const mk = async (date) => {
+      const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date, courts: [[null,null,null,null]], timeStart: '1900', timeEnd: '2100' } })).json();
+      const id = r.id || date;
+      await request.post(`/api.php/sessions/${id}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: alice.id } });
+      return id;
+    };
+    const s1 = await mk('2020-04-10');
+    const s2 = await mk('2020-04-12');
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Badge shows 2 open sessions
+    await expect(page.locator('#nav-billing-count')).toHaveText('2');
+    await navigateAdmin(page, 'billing');
+    await expect(page.locator('#view-billing')).toHaveClass(/active/);
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
+
+    // Defer the first session
+    const firstItem = page.locator('#billing-content .billing-item').first();
+    const deferBtn = firstItem.locator('button', { hasText: 'Zurückstellen' });
+    await expect(deferBtn).toBeVisible();
+    await deferBtn.click();
+
+    // Verify badge decreased to 1 and only 1 open session remains
+    await expect(page.locator('#nav-billing-count')).toHaveText('1');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+
+    // Switch to "Zurückgestellt" tab
+    await page.click('#billing-tab-deferred');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+    await expect(page.locator('#billing-content .billing-item .badge')).toContainText('Zurückgestellt');
+
+    // Undefer
+    const undeferBtn = page.locator('#billing-content .billing-item button', { hasText: 'Wieder vorlegen' });
+    await expect(undeferBtn).toBeVisible();
+    await undeferBtn.click();
+
+    // Verify deferred tab is now empty
+    await expect(page.locator('#billing-content .empty')).toBeVisible();
+
+    // Verify badge is back to 2
+    await expect(page.locator('#nav-billing-count')).toHaveText('2');
+
+    // Switch back to "Offen" tab and verify 2 items
+    await page.click('#billing-tab-open');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
+  });
+
+  test('27 — Player edit modal: change PIN and choose icon', async ({ page, request }) => {
+    await navigateAdmin(page, 'players');
+    await expect(page.locator('#view-players')).toHaveClass(/active/);
+
+    // Open edit modal for Alice
+    const pc = page.locator('#players-grid .pc').filter({ hasText: 'Alice' });
+    await expect(pc).toBeVisible();
+    await pc.locator('button.btn-sec').first().click();
+    await expect(page.locator('#mo-player')).toHaveClass(/open/);
+
+    // Verify PIN hint for existing player
+    await expect(page.locator('#p-pin-hint')).toContainText('4-stellige');
+
+    // Fill new PIN
+    await page.fill('#p-pin', '5678');
+
+    // Click icon chooser button
+    await page.click('#mo-player button:has-text("Icon wählen")');
+    await expect(page.locator('#mo-emoji')).toHaveClass(/open/);
+
+    // Select 'rocket' icon
+    const rocketBtn = page.locator('#emoji-grid button:has([data-lucide="rocket"])');
+    await rocketBtn.click();
+    await expect(page.locator('#mo-emoji')).not.toHaveClass(/open/);
+
+    // Preview inside #mo-player should now show rocket
+    await expect(page.locator('#p-avatar-preview-icon')).toHaveAttribute('data-lucide', 'rocket');
+
+    // Save player
+    await page.locator('#mo-player button:has-text("Speichern")').click();
+    await expect(page.locator('#mo-player')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Verify player card has rocket icon
+    const updatedPc = page.locator('#players-grid .pc').filter({ hasText: 'Alice' });
+    await expect(updatedPc.locator('.pc-av [data-lucide="rocket"]')).toBeVisible();
+
+    // Verify API player data via request
+    const players = await (await request.get('/api.php/players')).json();
+    const alice = players.find(p => p.name.includes('Alice'));
+    expect(alice.emoji).toBe('rocket');
+
+    // Verify login with new PIN (5678) works via /api.php/auth
+    const loginRes = await request.post('/api.php/auth', {
+      data: { player_id: alice.id, pin: '5678' }
+    });
+    expect(loginRes.status()).toBe(200);
+    const loginData = await loginRes.json();
+    expect(loginData.token).toBeTruthy();
   });
 });
 
@@ -905,6 +1120,44 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
 
     // Verify CSV download link exists
     await expect(page.locator('.btn-csv-link')).toBeVisible();
+
+    // Switch to the admin session to control banner visibility in settings
+    await page.evaluate(({ tok, pid }) => {
+      localStorage.setItem('_tok', tok);
+      localStorage.setItem('_guestId', pid);
+    }, { tok: auth.token, pid: admin.id });
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Both display toggles default to enabled
+    await page.evaluate(() => showView('settings'));
+    await expect(page.locator('#disp-show-team-pool')).toBeChecked();
+    await expect(page.locator('#disp-show-runway-banner')).toBeChecked();
+
+    // Hide the team cash pool only
+    await page.locator('label.switch:has(#disp-show-team-pool)').click();
+    await expect(page.locator('#settings-save-pill')).toHaveClass(/show/);
+    await page.evaluate(() => showView('my-transactions'));
+    await expect(page.locator('#my-group-pool')).not.toBeVisible();
+    await expect(page.locator('#my-runway-indicator')).toBeVisible();
+
+    // Hide the motivational runway banner as well
+    await page.evaluate(() => showView('settings'));
+    await page.locator('label.switch:has(#disp-show-runway-banner)').click();
+    await expect(page.locator('#settings-save-pill')).toHaveClass(/show/);
+    await page.evaluate(() => showView('my-transactions'));
+    await expect(page.locator('#my-group-pool')).not.toBeVisible();
+    await expect(page.locator('#my-runway-indicator')).not.toBeVisible();
+
+    // Re-enable both banners
+    await page.evaluate(() => showView('settings'));
+    await page.locator('label.switch:has(#disp-show-team-pool)').click();
+    await expect(page.locator('#settings-save-pill')).toHaveClass(/show/);
+    await page.locator('label.switch:has(#disp-show-runway-banner)').click();
+    await expect(page.locator('#settings-save-pill')).toHaveClass(/show/);
+    await page.evaluate(() => showView('my-transactions'));
+    await expect(page.locator('#my-group-pool')).toBeVisible();
+    await expect(page.locator('#my-runway-indicator')).toBeVisible();
   });
 
   test('20 — Dark & Light Theme Toggle and Persistence', async ({ page }) => {

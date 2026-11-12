@@ -980,4 +980,151 @@ test.describe('API Handler Integration Suite', () => {
     const hist = await (await request.get(`/api.php/session-history?session_id=${s2}`, { headers: H })).json();
     expect(hist.map(h => h.action)).toEqual(expect.arrayContaining(['charged', 'charge_reverted']));
   });
+
+  test('Billing — TC-API-01: Fair division of custom total price', async ({ request }) => {
+    const admin = await (await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } })).json();
+    const auth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const H = { 'X-Token': auth.token, 'Content-Type': 'application/json' };
+    const pA = await (await request.post('/api.php/players', { headers: H, data: { name: 'PlayerA', pin: '2222' } })).json();
+    const pB = await (await request.post('/api.php/players', { headers: H, data: { name: 'PlayerB', pin: '3333' } })).json();
+    const pC = await (await request.post('/api.php/players', { headers: H, data: { name: 'PlayerC', pin: '4444' } })).json();
+
+    const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date: '2099-02-01', courts: [[null,null,null,null]], timeStart: '1900', timeEnd: '2100' } })).json();
+    const sid = r.id;
+    // pA has 2 slots (1 self + 1 guest), pB has 1 slot, pC has 1 slot = 4 slots total
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: pA.id } });
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 1, player_id: `${pA.id}|g1` } });
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 2, player_id: pB.id } });
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 3, player_id: pC.id } });
+
+    // Charge with total_price: 60.00 -> 15.00 / slot
+    const chargeRes = await request.post('/api.php/charge', {
+      headers: H,
+      data: { items: [{ id: sid, total_price: 60, paid_pids: [] }] }
+    });
+    expect(chargeRes.status()).toBe(200);
+
+    const players = await (await request.get('/api.php/players', { headers: H })).json();
+    expect(players.find(p => p.id === pA.id).balance).toBe(-30);
+    expect(players.find(p => p.id === pB.id).balance).toBe(-15);
+    expect(players.find(p => p.id === pC.id).balance).toBe(-15);
+
+    const sess = (await (await request.get('/api.php/sessions', { headers: H })).json()).find(s => s.id === sid);
+    expect(sess.price).toBe(15);
+  });
+
+  test('Billing — TC-API-02 & TC-API-05: Splitwise rounding, player outlay and atomic revert', async ({ request }) => {
+    const admin = await (await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } })).json();
+    const auth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const H = { 'X-Token': auth.token, 'Content-Type': 'application/json' };
+    await request.put('/api.php/config', { headers: H, data: { billing_rounding: 'exact' } });
+
+    const pA = await (await request.post('/api.php/players', { headers: H, data: { name: 'Lukas', pin: '2222' } })).json();
+    const pB = await (await request.post('/api.php/players', { headers: H, data: { name: 'PlayerB', pin: '3333' } })).json();
+    const pC = await (await request.post('/api.php/players', { headers: H, data: { name: 'PlayerC', pin: '4444' } })).json();
+
+    const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date: '2099-02-05', courts: [[null,null,null,null]], timeStart: '1900', timeEnd: '2100' } })).json();
+    const sid = r.id;
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: pA.id } });
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 1, player_id: pB.id } });
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 2, player_id: pC.id } });
+
+    // 40.00 split across 3 slots with paid_by_player_id = Lukas (pA)
+    const chargeRes = await request.post('/api.php/charge', {
+      headers: H,
+      data: {
+        items: [{
+          id: sid,
+          total_price: 40,
+          paid_by_player_id: pA.id
+        }]
+      }
+    });
+    expect(chargeRes.status()).toBe(200);
+
+    const players = await (await request.get('/api.php/players', { headers: H })).json();
+    // In exact mode with pA as payer: pA gets -13.34 debit + 40.00 credit = +26.66
+    expect(players.find(p => p.id === pA.id).balance).toBe(26.66);
+    expect(players.find(p => p.id === pB.id).balance).toBe(-13.33);
+    expect(players.find(p => p.id === pC.id).balance).toBe(-13.33);
+
+    // Sum of net balances across participants = 26.66 - 13.33 - 13.33 = 0.00 !
+    const netSum = players.filter(p => [pA.id, pB.id, pC.id].includes(p.id)).reduce((acc, p) => acc + p.balance, 0);
+    expect(Math.abs(netSum)).toBeLessThan(0.001);
+
+    // Verify expense created with session_id
+    const expenses = await (await request.get('/api.php/expenses', { headers: H })).json();
+    const exp = expenses.find(e => e.sessionId === sid || e.session_id === sid);
+    expect(exp).toBeDefined();
+    expect(parseFloat(exp.amount)).toBe(40);
+    expect(exp.paidBy || exp.paid_by).toBe(pA.id);
+
+    // Revert charge (TC-API-05)
+    const rev = await request.delete(`/api.php/charge/${sid}`, { headers: H });
+    expect(rev.status()).toBe(200);
+
+    const playersAfter = await (await request.get('/api.php/players', { headers: H })).json();
+    expect(playersAfter.find(p => p.id === pA.id).balance).toBe(0);
+    expect(playersAfter.find(p => p.id === pB.id).balance).toBe(0);
+    expect(playersAfter.find(p => p.id === pC.id).balance).toBe(0);
+
+    const expensesAfter = await (await request.get('/api.php/expenses', { headers: H })).json();
+    expect(expensesAfter.some(e => (e.sessionId || e.session_id) === sid)).toBe(false);
+  });
+
+  test('Billing — TC-API-03 & TC-API-04: Rounding modes (ceil, round) and team single expense', async ({ request }) => {
+    const admin = await (await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } })).json();
+    const auth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const H = { 'X-Token': auth.token, 'Content-Type': 'application/json' };
+
+    const pA = await (await request.post('/api.php/players', { headers: H, data: { name: 'P1', pin: '2222' } })).json();
+    const pB = await (await request.post('/api.php/players', { headers: H, data: { name: 'P2', pin: '3333' } })).json();
+    const pC = await (await request.post('/api.php/players', { headers: H, data: { name: 'P3', pin: '4444' } })).json();
+
+    const makeSess = async (d) => {
+      const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date: d, courts: [[null,null,null,null]], timeStart: '1900', timeEnd: '2100' } })).json();
+      const sid = r.id;
+      await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: pA.id } });
+      await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 1, player_id: pB.id } });
+      await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 2, player_id: pC.id } });
+      return sid;
+    };
+
+    // 1. Ceil mode
+    await request.put('/api.php/config', { headers: H, data: { billing_rounding: 'ceil' } });
+    const sCeil = await makeSess('2099-03-01');
+    await request.post('/api.php/charge', { headers: H, data: { items: [{ id: sCeil, total_price: 40 }] } });
+
+    let players = await (await request.get('/api.php/players', { headers: H })).json();
+    expect(players.find(p => p.id === pA.id).balance).toBe(-13.34);
+    expect(players.find(p => p.id === pB.id).balance).toBe(-13.34);
+    expect(players.find(p => p.id === pC.id).balance).toBe(-13.34);
+
+    // 2. Round mode + record_team_expense (TC-API-04)
+    await request.put('/api.php/config', { headers: H, data: { billing_rounding: 'round' } });
+    const sRound = await makeSess('2099-03-02');
+    await request.post('/api.php/charge', {
+      headers: H,
+      data: {
+        items: [{
+          id: sRound,
+          total_price: 40,
+          record_team_expense: true
+        }]
+      }
+    });
+
+    players = await (await request.get('/api.php/players', { headers: H })).json();
+    // delta from sRound was 13.33 each
+    expect(players.find(p => p.id === pA.id).balance).toBe(-26.67);
+    expect(players.find(p => p.id === pB.id).balance).toBe(-26.67);
+    expect(players.find(p => p.id === pC.id).balance).toBe(-26.67);
+
+    // Check team expense record created
+    const expenses = await (await request.get('/api.php/expenses', { headers: H })).json();
+    const exp = expenses.find(e => (e.sessionId || e.session_id) === sRound);
+    expect(exp).toBeDefined();
+    expect(parseFloat(exp.amount)).toBe(40);
+    expect(exp.paidBy || exp.paid_by).toBeNull();
+  });
 });

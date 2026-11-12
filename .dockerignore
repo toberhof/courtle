@@ -11,4 +11,8 @@ LICENSE
 tests/
 node_modules/
 docker-compose.test.yml
+.agents/
+specs/
+scripts/
+agents/
 
