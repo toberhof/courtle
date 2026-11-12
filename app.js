@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:475
-const CLIENT_BUILD = 475;
+// built:476
+const CLIENT_BUILD = 476;
 let S = {
   players: [],
   transactions: [],
@@ -6748,21 +6748,14 @@ function shuffleTeams() {
     return `<div class="court-mixer-card">
       <div class="court-mixer-head">
         <span class="court-mixer-title"><i data-lucide="map-pin" style="width:12px;height:12px"></i> ${esc(courtName)}</span>
-        <span class="badge bg-neu" style="font-size:10px;padding:1px 6px">${players.length} ${t('players.count', 'Spieler')}</span>
       </div>
       <div class="court-mixer-match">
-        <div class="court-mixer-row">
-          <span class="court-mixer-tag team-a">A</span>
-          <div class="court-mixer-pair">${teamA.map(playerLabel).join('')}</div>
-        </div>
+        <div class="court-mixer-pair">${teamA.map(playerLabel).join('')}</div>
         ${teamB.length > 0 ? `
           <div class="court-mixer-divider">
             <span class="court-mixer-vs-pill">${t('teams.vs', 'vs')}</span>
           </div>
-          <div class="court-mixer-row">
-            <span class="court-mixer-tag team-b">B</span>
-            <div class="court-mixer-pair">${teamB.map(playerLabel).join('')}</div>
-          </div>
+          <div class="court-mixer-pair">${teamB.map(playerLabel).join('')}</div>
         ` : ''}
       </div>
     </div>`;
