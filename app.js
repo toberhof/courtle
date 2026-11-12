@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:499
-const CLIENT_BUILD = 499;
+// built:500
+const CLIENT_BUILD = 500;
 let S = {
   players: [],
   transactions: [],
@@ -1296,9 +1296,23 @@ function buildSessionCard(dateOrSess, isNextSession = false) {
         const p = playerMap.get(isGuest ? pid.split('|')[0] : pid);
         const isMe = pid === guestId || isMyGuest;
         const filledCls = isMe ? 'me' : 'filled';
+        let nameHtml = '';
+        if (privacy) {
+          nameHtml = `<span class="slot-name">${t('session.booked')}</span>`;
+        } else if (isGuest) {
+          nameHtml = `<div class="slot-name slot-name-col">
+            <div class="slot-guest-title">
+              <span>${t('session.guest')}</span>
+              ${isMyGuest ? `<button onclick="removeGuestSlot('${sessId}',${ci},${si})" class="slot-guest-remove" title="${t('misc.guest')} entfernen">×</button>` : ''}
+            </div>
+            <div class="slot-guest-sub">${t('session.guest_of').replace('{name}', esc(p ? p.name : '?'))}</div>
+          </div>`;
+        } else {
+          nameHtml = `<span class="slot-name">${p ? esc(p.name) : '?'}${isMe ? ` <span style="opacity:.6;font-size:var(--text-xs)">${t('misc.you')}</span>` : ''}</span>`;
+        }
         slotChips += `<div class="admin-slot ${filledCls}">
           <div class="av" style="width:32px;height:32px;font-size:var(--text-sm)">${privacy ? '<i data-lucide="hat-glasses" style="width:16px;height:16px"></i>' : (p ? `<i data-lucide="${playerIcon(p, isGuest)}" style="width:16px;height:16px"></i>` : '?')}</div>
-          <span class="slot-name">${privacy ? t('session.booked') : (p ? (isGuest ? t('session.guest') + ` (` + esc(p.name) + `)` : esc(p.name)) : '?')}${privacy ? '' : (isGuest ? '' : (isMe ? ` <span style="opacity:.6;font-size:var(--text-xs)">${t('misc.you')}</span>` : ''))}${isMyGuest ? ` <button onclick="removeGuestSlot('${sessId}',${ci},${si})" style="background:none;border:none;color:var(--err);cursor:pointer;padding:0 2px;font-size:10px" title="${t('misc.guest')} entfernen">×</button>` : ''}</span>
+          ${nameHtml}
         </div>`;
       } else {
         const mySlotCount = sess.courts.flat().filter(v => v && baseId(v) === guestId).length;
@@ -2789,11 +2803,16 @@ function renderAdminPlan(keepDetailsOpen) {
       slots.forEach((pid, si) => {
         const rawId = pid ? pid.split('|')[0] : null;
         const p = rawId ? playerMap.get(rawId) : null;
-        const guestLabel = pid && pid.includes('|') ? ` (${t('misc.guest')})` : '';
+        const isGuest = pid && pid.includes('|');
         if (p) {
           html += `<div class="admin-slot filled" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
-            <div class="av" style="width:32px;height:32px;font-size:var(--text-sm)"><i data-lucide="${playerIcon(p)}" style="width:16px;height:16px"></i></div>
-            <span class="slot-name">${esc(p.name)}${guestLabel}</span>
+            <div class="av" style="width:32px;height:32px;font-size:var(--text-sm)"><i data-lucide="${playerIcon(p, isGuest)}" style="width:16px;height:16px"></i></div>
+            ${isGuest ? `
+            <div class="slot-name slot-name-col">
+              <div class="slot-guest-title"><span>${t('session.guest')}</span></div>
+              <div class="slot-guest-sub">${t('session.guest_of').replace('{name}', esc(p.name))}</div>
+            </div>` : `
+            <span class="slot-name">${esc(p.name)}</span>`}
           </div>`;
         } else {
           html += `<div class="admin-slot" onclick="${sess.charged ? '' : `openSlotModal('${sessId}',${ci},${si})`}">
@@ -4804,9 +4823,22 @@ function openSessionDetailsModal(date) {
         const p = playerMap.get(isGuest ? pid.split('|')[0] : pid);
         const isMe = pid === guestId || isMyGuest;
         const filledCls = isMe ? 'me' : 'filled';
+        let nameHtml = '';
+        if (privacy) {
+          nameHtml = `<span class="slot-name">${t('session.booked')}</span>`;
+        } else if (isGuest) {
+          nameHtml = `<div class="slot-name slot-name-col">
+            <div class="slot-guest-title">
+              <span>${t('session.guest')}</span>
+            </div>
+            <div class="slot-guest-sub">${t('session.guest_of').replace('{name}', esc(p ? p.name : '?'))}</div>
+          </div>`;
+        } else {
+          nameHtml = `<span class="slot-name">${p ? esc(p.name) : '?'}${isMe ? ` <span style="opacity:.6;font-size:var(--text-xs)">${t('misc.you')}</span>` : ''}</span>`;
+        }
         slotChips += `<div class="admin-slot ${filledCls}">
           <div class="av" style="width:32px;height:32px;font-size:var(--text-sm)">${privacy ? '<i data-lucide="hat-glasses" style="width:16px;height:16px"></i>' : (p ? `<i data-lucide="${playerIcon(p, isGuest)}" style="width:16px;height:16px"></i>` : '?')}</div>
-          <span class="slot-name">${privacy ? t('session.booked') : (p ? (isGuest ? t('session.guest') + ` (` + esc(p.name) + `)` : esc(p.name)) : '?')}${privacy ? '' : (isGuest ? '' : (isMe ? ` <span style="opacity:.6;font-size:var(--text-xs)">${t('misc.you')}</span>` : ''))}</span>
+          ${nameHtml}
         </div>`;
       } else {
         slotChips += `<div class="admin-slot" style="cursor:default;pointer-events:none">

@@ -1117,6 +1117,12 @@ select.fi{cursor:pointer}
 .admin-slot.filled{border-style:solid;border:1px solid oklch(from var(--pri) l c h / 0.20);background:oklch(from var(--pri) l c h / 0.08);box-shadow:0 1px 3px oklch(from var(--pri) l c h / 0.06)}
 .admin-slot.me{border-style:solid;border-color:var(--pri);background:color-mix(in srgb, var(--pri) 22%, var(--prhl));font-weight:700;color:var(--pri)}
 .admin-slot .slot-name{font-weight:600;font-size:var(--text-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.admin-slot .slot-name.slot-name-col{display:flex;flex-direction:column;justify-content:center;line-height:1.2;white-space:normal;overflow:hidden;flex:1}
+.admin-slot .slot-guest-title{font-weight:700;font-size:var(--text-sm);color:var(--tx);display:flex;align-items:center;justify-content:space-between;gap:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.admin-slot.me .slot-guest-title{color:var(--pri)}
+.admin-slot .slot-guest-sub{font-size:11px;font-weight:500;color:var(--txm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.admin-slot.me .slot-guest-sub{color:color-mix(in srgb, var(--pri) 75%, var(--tx));opacity:.85}
+.admin-slot .slot-guest-remove{background:none;border:none;color:var(--err);cursor:pointer;padding:0 2px;font-size:13px;line-height:1;font-weight:700;border-radius:var(--r-sm)}
 .admin-slot.filled .av{background:oklch(from var(--pri) l c h / 0.16);color:var(--pri)}
 .admin-slot.me .av{background:var(--pri);color:var(--txi)}
 .admin-slot .slot-ph{color:var(--txf);font-size:var(--text-sm)}
@@ -1124,8 +1130,13 @@ select.fi{cursor:pointer}
 [data-theme="dark"] .admin-slot.filled .av{background:color-mix(in srgb, var(--pri) 20%, var(--sur));color:var(--txm)}
 #view-sessions .admin-slot.filled .slot-name{color:var(--tx)}
 #view-sessions .admin-slot.me .slot-name{color:var(--pri);font-weight:700}
-[data-theme="dark"] #view-sessions .admin-slot.filled .slot-name{color:var(--tx)}
-[data-theme="dark"] #view-sessions .admin-slot.me .slot-name{color:var(--pri)}
+[data-theme="dark"] #view-sessions .admin-slot.filled .slot-name,
+[data-theme="dark"] #view-sessions .admin-slot.filled .slot-guest-title,
+[data-theme="dark"] .admin-slot.filled .slot-guest-title{color:var(--tx)}
+[data-theme="dark"] #view-sessions .admin-slot.me .slot-name,
+[data-theme="dark"] #view-sessions .admin-slot.me .slot-guest-title,
+[data-theme="dark"] .admin-slot.me .slot-guest-title{color:var(--pri)}
+[data-theme="dark"] .admin-slot .slot-guest-sub{color:var(--txm)}
 [data-theme="dark"] #view-sessions .admin-slot.me .av{color:var(--txi)}
 .court-sep{font-size:var(--text-xs);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--txm);margin-bottom:var(--sp2);margin-top:var(--sp4);display:flex;align-items:center;gap:var(--sp2)}
 .court-sep:first-child{margin-top:0}
