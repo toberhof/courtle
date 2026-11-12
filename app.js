@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:490
-const CLIENT_BUILD = 490;
+// built:491
+const CLIENT_BUILD = 491;
 let S = {
   players: [],
   transactions: [],
@@ -3988,17 +3988,16 @@ function renderPlayers() {
   let html = activePlayers.map(p => {
     const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
 
-    return `<div class="pc">
+    return `<div class="pc pc-clickable" onclick="openEditPlayer('${p.id}')">
       <div class="pc-row">
-        <div class="av pc-av pc-row-clickable" onclick="openEditPlayer('${p.id}')" title="${esc(t('players.edit'))}">
+        <div class="av pc-av" title="${esc(t('players.edit'))}">
           <i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>
         </div>
-        <div class="pc-info pc-row-clickable" onclick="openEditPlayer('${p.id}')">
+        <div class="pc-info">
           <div class="pc-name">${esc(p.name)}${adminBadge}</div>
           ${p.contact ? `<div class="pc-meta">${esc(p.contact)}</div>` : ''}
         </div>
-        <div class="pc-right">
-          <button class="btn btn-icon-sm btn-sec" onclick="openEditPlayer('${p.id}')" type="button" title="${esc(t('players.edit'))}" aria-label="${esc(t('players.edit'))}"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
+        <div class="pc-right" onclick="event.stopPropagation()">
           <button class="btn btn-icon-sm btn-dan" onclick="deletePlayer('${p.id}')" type="button" title="${esc(t('players.deactivate'))}" aria-label="${esc(t('players.deactivate'))}"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
         </div>
       </div>

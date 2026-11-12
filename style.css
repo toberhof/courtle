@@ -431,6 +431,8 @@ select.fi{cursor:pointer}
 /* ── PLAYER CARD (COMPACT LIST + INLINE DRAWER) ── */
 .pg{display:flex;flex-direction:column;gap:var(--sp2)}
 .pc{background:var(--sur);border:1px solid oklch(from var(--tx) l c h/.08);border-radius:var(--r-lg);padding:var(--sp3) var(--sp4);box-shadow:var(--sh-sm);display:flex;flex-direction:column;gap:0;transition:box-shadow var(--tr),border-color var(--tr)}
+.pc.pc-clickable{cursor:pointer}
+.pc.pc-clickable:hover{border-color:var(--pri);box-shadow:var(--sh-md)}
 .pc:hover{border-color:oklch(from var(--pri) l c h/.35)}
 .pc.expanded{border-color:var(--pri);box-shadow:var(--sh-md)}
 .pc-head{display:flex;align-items:center;gap:var(--sp3)}
