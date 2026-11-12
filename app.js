@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:509
-const CLIENT_BUILD = 509;
+// built:510
+const CLIENT_BUILD = 510;
 let S = {
   players: [],
   transactions: [],
@@ -3051,14 +3051,29 @@ async function toggleSessionCancel() {
   const isCancelled = rawSess?.cancelled || sess?.cancelled || false;
   const newCancelled = !isCancelled;
   const targetId = sess?.id || rawSess?.id || planDate;
-  try {
-    await apiFetch('PUT', '/sessions/' + targetId, { cancelled: newCancelled });
-    await loadState();
-    renderAdminPlan();
-    renderSessions();
-    lucide.createIcons();
-    showToast(newCancelled ? t('toast.session_cancelled') : t('toast.session_reactivated'));
-  } catch(e) {}
+
+  const doToggle = async () => {
+    try {
+      await apiFetch('PUT', '/sessions/' + targetId, { cancelled: newCancelled });
+      await loadState();
+      renderAdminPlan();
+      renderSessions();
+      lucide.createIcons();
+      showToast(newCancelled ? t('toast.session_cancelled') : t('toast.session_reactivated'));
+    } catch(e) {}
+  };
+
+  if (newCancelled) {
+    showConfirmModal(
+      t('confirm.cancel_session'),
+      t('confirm.cancel_session_desc'),
+      '<i data-lucide="x-circle"></i> ' + t('confirm.cancel_session_btn'),
+      'btn-dan',
+      doToggle
+    );
+  } else {
+    await doToggle();
+  }
 }
 
 async function deleteSession() {
