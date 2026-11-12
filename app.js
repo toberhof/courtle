@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:486
-const CLIENT_BUILD = 486;
+// built:487
+const CLIENT_BUILD = 487;
 let S = {
   players: [],
   transactions: [],
@@ -6730,13 +6730,12 @@ function shuffleTeams() {
     const name = p ? esc(p.name) : '?';
     const isGuest = pid.includes('|');
     const isMe = guestId && (pid === guestId || (isGuest && pid.startsWith(guestId + '|')));
-    const youTag = isMe && !isGuest ? ` <span class="cm-tag">(${t('misc.you')})</span>` : '';
-    const guestTag = isGuest ? ` <span class="cm-tag">(${t('misc.guest')})</span>` : '';
     const iconName = p ? playerIcon(p, isGuest) : 'user';
+    const displayName = isGuest ? `${t('session.guest')} (${name})` : name;
 
     return `<div class="court-mixer-player ${isMe ? 'me' : ''}">
       <div class="av" style="width:22px;height:22px;font-size:10px;flex-shrink:0"><i data-lucide="${iconName}" style="width:12px;height:12px"></i></div>
-      <span class="court-mixer-player-name">${name}${youTag}${guestTag}</span>
+      <span class="court-mixer-player-name">${displayName}</span>
     </div>`;
   }
 
