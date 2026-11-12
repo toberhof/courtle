@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:488
-const CLIENT_BUILD = 488;
+// built:490
+const CLIENT_BUILD = 490;
 let S = {
   players: [],
   transactions: [],
@@ -137,6 +137,7 @@ Object.defineProperty(window, 'guestId', {
 });
 let userPinBuf = '';
 let editPid = null;
+let editPlayerEmoji = null;
 let txPid = null;
 let slotCtx = null;
 let iconTarget = null;
@@ -3985,36 +3986,22 @@ function renderPlayers() {
   });
 
   let html = activePlayers.map(p => {
-    const isExpanded = expandedPlayerId === p.id;
     const adminBadge = p.admin ? ` <span class="badge bg-pri" style="font-size:10px;padding:1px 6px">${t('misc.admin')}</span>` : '';
-    const partDate = getLastParticipationDate(p.id);
 
-    let drawerHtml = '';
-    if (isExpanded) {
-      drawerHtml = `<div class="pc-drawer" onclick="event.stopPropagation()">
-        <div class="pc-drawer-actions">
-          <button class="btn btn-xs btn-sec" onclick="openEditPlayer('${p.id}')" type="button"><i data-lucide="pencil"></i> ${t('players.edit_short')}</button>
-          <button class="btn btn-xs btn-sec" onclick="openAdminSetPin('${p.id}')" type="button"><i data-lucide="key-round"></i> ${t('players.pin_short')}</button>
-          <button class="btn btn-xs btn-sec" onclick="openIconPickerModal('${p.id}')" type="button"><i data-lucide="smile"></i> ${t('players.icon_short')}</button>
-          <button class="btn btn-xs btn-dan" onclick="deletePlayer('${p.id}')" type="button"><i data-lucide="user-x"></i> ${t('players.deactivate')}</button>
-        </div>
-      </div>`;
-    }
-
-    return `<div class="pc ${isExpanded ? 'expanded' : ''}">
-      <div class="pc-row" onclick="togglePlayerDrawer('${p.id}')">
-        <div class="av pc-av" onclick="event.stopPropagation();openIconPickerModal('${p.id}')" title="${esc(t('players.icon_short'))}">
+    return `<div class="pc">
+      <div class="pc-row">
+        <div class="av pc-av pc-row-clickable" onclick="openEditPlayer('${p.id}')" title="${esc(t('players.edit'))}">
           <i data-lucide="${playerIcon(p)}" style="width:18px;height:18px"></i>
         </div>
-        <div class="pc-info">
+        <div class="pc-info pc-row-clickable" onclick="openEditPlayer('${p.id}')">
           <div class="pc-name">${esc(p.name)}${adminBadge}</div>
           ${p.contact ? `<div class="pc-meta">${esc(p.contact)}</div>` : ''}
         </div>
         <div class="pc-right">
-          <span class="pc-chev ${isExpanded ? 'open' : ''}"><i data-lucide="chevron-down" style="width:16px;height:16px"></i></span>
+          <button class="btn btn-icon-sm btn-sec" onclick="openEditPlayer('${p.id}')" type="button" title="${esc(t('players.edit'))}" aria-label="${esc(t('players.edit'))}"><i data-lucide="pencil" style="width:14px;height:14px"></i></button>
+          <button class="btn btn-icon-sm btn-dan" onclick="deletePlayer('${p.id}')" type="button" title="${esc(t('players.deactivate'))}" aria-label="${esc(t('players.deactivate'))}"><i data-lucide="trash-2" style="width:14px;height:14px"></i></button>
         </div>
       </div>
-      ${drawerHtml}
     </div>`;
   }).join('');
 
@@ -4162,21 +4149,13 @@ function renderPlayerBalances() {
   g.innerHTML = html;
 }
 
-function openAddPlayer() {
-  editPid = null;
-  document.getElementById('mo-player-title').textContent = t('players.add_title');
-  document.getElementById('save-p-btn').textContent = t('players.save_add');
-  document.getElementById('p-name').value = '';
-  document.getElementById('p-contact').value = '';
-  
-  // NEU: Admin-Checkbox anzeigen (nur für bestehende Admins)
-  const adminWrap = document.getElementById('p-admin-wrap');
-  if (adminWrap) {
-    adminWrap.style.display = isAdmin ? 'block' : 'none';
-    document.getElementById('p-admin').checked = false;
+function updateEditPlayerAvatarPreview(emojiName) {
+  editPlayerEmoji = emojiName || null;
+  const iconEl = document.getElementById('p-avatar-preview-icon');
+  if (iconEl) {
+    iconEl.setAttribute('data-lucide', emojiName || 'user');
+    if (window.lucide) lucide.createIcons();
   }
-  
-  openMo('mo-player'); setTimeout(() => document.getElementById('p-name').focus(), 100);
 }
 
 function openEditPlayer(id) {
@@ -4186,8 +4165,11 @@ function openEditPlayer(id) {
   document.getElementById('save-p-btn').textContent = t('misc.save');
   document.getElementById('p-name').value = p.name;
   document.getElementById('p-contact').value = p.contact || '';
-  
-  // NEU: Admin-Checkbox füllen & anzeigen (nur für bestehende Admins)
+  document.getElementById('p-pin').value = '';
+  document.getElementById('p-pin-hint').textContent = t('players.pin_edit_hint');
+
+  updateEditPlayerAvatarPreview(p.emoji || 'user');
+
   const adminWrap = document.getElementById('p-admin-wrap');
   if (adminWrap) {
     adminWrap.style.display = isAdmin ? 'block' : 'none';
@@ -4197,27 +4179,82 @@ function openEditPlayer(id) {
   openMo('mo-player');
 }
 
+function openAddPlayer() {
+  editPid = null;
+  document.getElementById('mo-player-title').textContent = t('players.add_title');
+  document.getElementById('save-p-btn').textContent = t('players.save_add');
+  document.getElementById('p-name').value = '';
+  document.getElementById('p-contact').value = '';
+  document.getElementById('p-pin').value = '';
+  document.getElementById('p-pin-hint').textContent = t('players.pin_add_hint');
+
+  updateEditPlayerAvatarPreview('user');
+
+  const adminWrap = document.getElementById('p-admin-wrap');
+  if (adminWrap) {
+    adminWrap.style.display = isAdmin ? 'block' : 'none';
+    document.getElementById('p-admin').checked = false;
+  }
+
+  openMo('mo-player');
+  setTimeout(() => { const el = document.getElementById('p-name'); if (el) el.focus(); }, 100);
+}
+
+function openIconPickerForEditPlayer() {
+  const current = editPlayerEmoji || (editPid ? (S.players.find(x => x.id === editPid)?.emoji || '') : '');
+  const sub = document.getElementById('emoji-subtitle');
+  if (sub) sub.textContent = t('icon.subtitle');
+  const grid = document.getElementById('emoji-grid');
+  if (grid) {
+    grid.innerHTML = ICONS.map(name => `<button type="button" class="${name === current ? 'sel' : ''}" onclick="selectIconForEditPlayer('${name}')"><i data-lucide="${name}" style="width:20px;height:20px"></i></button>`).join('');
+  }
+  openMo('mo-emoji');
+  if (window.lucide) lucide.createIcons();
+}
+
+function selectIconForEditPlayer(name) {
+  updateEditPlayerAvatarPreview(name);
+  closeMo('mo-emoji');
+}
+
 async function savePlayer() {
   const name = document.getElementById('p-name').value.trim();
   const contact = document.getElementById('p-contact').value.trim();
+  const pin = document.getElementById('p-pin').value.trim();
   
-  // NEU: Checkbox-Wert auslesen
   const adminCb = document.getElementById('p-admin');
   const makeAdmin = adminCb ? adminCb.checked : false;
 
-  if (!name) { showToast('Bitte Namen eingeben.'); return; }
+  if (!name) { showToast(t('toast.name_required', 'Bitte Namen eingeben.')); return; }
+  if (pin && (!/^\d{4}$/.test(pin))) {
+    showToast(t('toast.pin_must_4'));
+    return;
+  }
+
+  const payload = {
+    name,
+    contact,
+    admin: makeAdmin,
+    emoji: editPlayerEmoji || null
+  };
+  if (pin) {
+    payload.pin = pin;
+  }
+
   try {
     if (editPid) {
-      await apiFetch('PUT', '/players/' + editPid, { name, contact, admin: makeAdmin });
+      await apiFetch('PUT', '/players/' + editPid, payload);
       showToast(t('toast.player_updated'));
     } else {
-      await apiFetch('POST', '/players', { name, contact, admin: makeAdmin });
+      await apiFetch('POST', '/players', payload);
       showToast(t('toast.player_added'));
     }
     await loadState();
     closeMo('mo-player');
     renderAll();
-  } catch(e) {}
+  } catch(e) {
+    showToast(e.message || t('toast.error'));
+  }
 }
 async function deletePlayer(id) {
    const p = S.players.find(x => x.id === id);
