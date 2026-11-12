@@ -27,7 +27,8 @@ const allProjects = [
 const includeAllProjects =
   !!process.env.CI ||
   !!process.env.ALL_BROWSERS ||
-  process.argv.some((arg) => arg.startsWith('--project'));
+  process.argv.some((arg) => arg.startsWith('--project')) ||
+  'TEST_WORKER_INDEX' in process.env;
 
 export default defineConfig({
   testDir: '.',

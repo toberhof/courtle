@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:506-->
+<!--built:507-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=506">
+<link rel="stylesheet" href="style.css?build=507">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=506" defer></script>
-<script src="app.js?build=506" defer></script>
+<script src="i18n.js?build=507" defer></script>
+<script src="app.js?build=507" defer></script>
 
 <div class="app-shell">
 
@@ -257,9 +257,9 @@ if ('serviceWorker' in navigator) {
     <div id="admin-plan-header-dynamic" class="card mb4"></div>
 
     <!-- 3. Section Tabs (Belegung / Verlauf) -->
-    <div class="seg-tabs mb4" id="plan-tabs" role="tablist">
-      <button class="seg-tab active" id="plan-tab-slots" role="tab" aria-selected="true" onclick="setPlanTab('slots')"><span data-i18n="planner.tab_slots">Belegung</span></button>
-      <button class="seg-tab" id="plan-tab-history" role="tab" aria-selected="false" onclick="setPlanTab('history')"><span data-i18n="planner.tab_history">Verlauf</span></button>
+    <div class="seg-tabs seg-tabs-full mb4" id="plan-tabs" role="tablist">
+      <button class="seg-tab active" id="plan-tab-slots" role="tab" aria-selected="true" onclick="setPlanTab('slots')"><i data-lucide="layout-grid"></i> <span data-i18n="planner.tab_slots">Belegung</span></button>
+      <button class="seg-tab" id="plan-tab-history" role="tab" aria-selected="false" onclick="setPlanTab('history')"><i data-lucide="history"></i> <span data-i18n="planner.tab_history">Verlauf</span></button>
     </div>
 
     <!-- Slots / Courts -->
@@ -827,7 +827,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 506)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 507)</span>
 
 </footer>
 

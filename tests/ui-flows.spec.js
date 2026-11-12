@@ -250,6 +250,13 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await page.locator(`#plan-strip .plan-chip[data-date="${TOMORROW}"]`).first().click();
     await page.waitForTimeout(300);
 
+    // Verify 2-zone header structure and full-width tabs with icons
+    await expect(page.locator('#admin-plan-header-dynamic .plan-header-top')).toBeVisible();
+    await expect(page.locator('#admin-plan-header-dynamic .plan-action-bar')).toBeVisible();
+    await expect(page.locator('#plan-tabs')).toHaveClass(/seg-tabs-full/);
+    await expect(page.locator('#plan-tab-slots svg, #plan-tab-slots i')).toBeVisible();
+    await expect(page.locator('#plan-tab-history svg, #plan-tab-history i')).toBeVisible();
+
     // Open details drawer
     await page.locator('#plan-edit-toggle-btn').click();
     await expect(page.locator('#session-details-box')).toBeVisible();
