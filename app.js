@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:497
-const CLIENT_BUILD = 497;
+// built:498
+const CLIENT_BUILD = 498;
 let S = {
   players: [],
   transactions: [],
@@ -3306,6 +3306,10 @@ function updateBillingBadge() {
 function setBillingTab(tab) {
   billingTab = tab;
   renderBilling();
+  const el = document.getElementById(`billing-tab-${tab}`);
+  if (el && el.scrollIntoView) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+  }
 }
 
 async function deferBillingSession(sessionId, deferred) {
