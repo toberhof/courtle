@@ -3751,15 +3751,13 @@ body:has(.pin-modal-overlay.open) {
   gap: var(--sp2);
 }
 .court-mixer-match {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: var(--sp3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp2);
   padding: var(--sp3) var(--sp4);
 }
 @media (max-width: 480px) {
   .court-mixer-match {
-    gap: var(--sp2);
     padding: var(--sp3);
   }
 }
@@ -3767,15 +3765,18 @@ body:has(.pin-modal-overlay.open) {
   display: flex;
   flex-direction: column;
   gap: var(--sp2);
-  min-width: 0;
+  width: 100%;
 }
-.court-mixer-vs-col {
+.court-mixer-vs-divider {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: var(--sp1);
-  padding: 0 var(--sp1);
+  gap: var(--sp3);
+  margin: 4px 0;
+}
+.court-mixer-vs-line {
+  flex: 1;
+  height: 1px;
+  background: var(--bor);
 }
 .court-mixer-vs {
   width: 28px;
@@ -3801,9 +3802,11 @@ body:has(.pin-modal-overlay.open) {
   background: var(--sur2);
   border: 1px solid var(--bor);
   border-radius: var(--r-lg);
-  padding: 6px var(--sp3);
+  padding: 8px var(--sp3);
   font-size: var(--text-sm);
   min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   transition: border-color var(--tr), background var(--tr);
 }
 .court-mixer-player.me {
@@ -3811,8 +3814,8 @@ body:has(.pin-modal-overlay.open) {
   background: color-mix(in srgb, var(--pri) 12%, var(--sur2));
 }
 .court-mixer-player .av {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   font-size: 11px;
   border-radius: 50%;
   flex-shrink: 0;
@@ -3851,7 +3854,7 @@ body:has(.pin-modal-overlay.open) {
 }
 .court-mixer-bench-list {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--sp2);
 }
 .court-mixer-foot {

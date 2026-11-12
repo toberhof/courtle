@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:473
-const CLIENT_BUILD = 473;
+// built:474
+const CLIENT_BUILD = 474;
 let S = {
   players: [],
   transactions: [],
@@ -6752,10 +6752,14 @@ function shuffleTeams() {
       </div>
       <div class="court-mixer-match">
         <div class="court-mixer-team">${teamA.map(playerLabel).join('')}</div>
-        <div class="court-mixer-vs-col">
-          <div class="court-mixer-vs">${t('teams.vs', 'VS')}</div>
-        </div>
-        <div class="court-mixer-team">${teamB.map(playerLabel).join('')}</div>
+        ${teamB.length > 0 ? `
+          <div class="court-mixer-vs-divider">
+            <span class="court-mixer-vs-line"></span>
+            <div class="court-mixer-vs">${t('teams.vs', 'VS')}</div>
+            <span class="court-mixer-vs-line"></span>
+          </div>
+          <div class="court-mixer-team">${teamB.map(playerLabel).join('')}</div>
+        ` : ''}
       </div>
     </div>`;
   }).join('') + (benchPlayers.length > 0 ? `
