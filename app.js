@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:507
-const CLIENT_BUILD = 507;
+// built:508
+const CLIENT_BUILD = 508;
 let S = {
   players: [],
   transactions: [],
@@ -2597,7 +2597,7 @@ function renderAdminPlan(keepDetailsOpen) {
   const effectiveLoc = (sess.location || S.cfg.srlocation || '').trim();
   const cancelActionLabel = isCancelled ? t('session.reactivate') : t('session.cancel');
 
-  // 3. Unified Header + Metadata + Collapsible Edit Drawer Card (2-Zone Layout)
+  // 3. Unified Header + Metadata (Mini-Stat-Grid) + Collapsible Edit Drawer Card
   if (headBox) {
     headBox.innerHTML = `
       <div class="plan-header-top">
@@ -2610,13 +2610,26 @@ function renderAdminPlan(keepDetailsOpen) {
           <span class="status-pill ${statusClass}">${statusLabel}</span>
         </div>
 
-        <div class="plan-meta-row">
-          <span class="plan-meta-item"><i data-lucide="calendar"></i> <span>${esc(fmtDL(sess.date))}</span></span>
-          <span class="plan-meta-item"><i data-lucide="clock"></i> <span>${sessTime.start}–${sessTime.end}</span></span>
-          ${effectiveLoc ? `<span class="plan-meta-item"><i data-lucide="map-pin"></i> <span>${esc(effectiveLoc)}</span></span>` : ''}
-          <span class="plan-meta-item"><i data-lucide="tag"></i> <span>${fmtE(sessCost)} / Slot</span></span>
-          <span class="plan-meta-item"><i data-lucide="users"></i> <span>${filled} / ${total} ${t('session.slots_meta')}</span></span>
-          ${sess.note ? `<span class="plan-meta-item plan-meta-note"><i data-lucide="message-square"></i> <span>${esc(sess.note)}</span></span>` : ''}
+        <div class="plan-meta-subline">
+          <span><i data-lucide="calendar"></i> ${esc(fmtDL(sess.date))}</span>
+          ${effectiveLoc ? `<span>·</span><span><i data-lucide="map-pin"></i> ${esc(effectiveLoc)}</span>` : ''}
+          ${sess.note ? `<span>·</span><span class="plan-note-highlight"><i data-lucide="message-square"></i> ${esc(sess.note)}</span>` : ''}
+        </div>
+
+        <div class="plan-stat-grid">
+          <div class="plan-stat">
+            <span class="plan-stat-label"><i data-lucide="clock"></i> ${t('session.time', 'Zeit')}</span>
+            <span class="plan-stat-val">${sessTime.start}–${sessTime.end}</span>
+          </div>
+          <div class="plan-stat">
+            <span class="plan-stat-label"><i data-lucide="tag"></i> ${t('session.price', 'Preis')}</span>
+            <span class="plan-stat-val">${fmtE(sessCost)}</span>
+            <span class="plan-stat-unit">/ Slot</span>
+          </div>
+          <div class="plan-stat">
+            <span class="plan-stat-label"><i data-lucide="users"></i> ${t('session.slots_meta', 'Belegung')}</span>
+            <span class="plan-stat-val ${filled === total ? 'plan-stat-full' : ''}">${filled} / ${total}</span>
+          </div>
         </div>
       </div>
 
@@ -2627,12 +2640,12 @@ function renderAdminPlan(keepDetailsOpen) {
           ${isAwaiting ? `<button class="btn btn-sec btn-sm" onclick="deferBillingSession('${sessId}', true)" type="button"><i data-lucide="clock"></i> <span>${t('billing.defer')}</span></button>` : ''}
         </div>
         <div class="plan-actions-right">
-          <button class="btn btn-sec btn-icon-sm ${showDetails ? 'active-toggle' : ''}" id="plan-edit-toggle-btn" onclick="togglePlanDetails()" type="button" title="${esc(t('planner.edit_details'))}" aria-label="${esc(t('planner.edit_details'))}">
+          <button class="btn btn-sec btn-sm ${showDetails ? 'active-toggle' : ''}" id="plan-edit-toggle-btn" onclick="togglePlanDetails()" type="button" title="${esc(t('planner.edit_details'))}">
             <i data-lucide="sliders-horizontal"></i>
-            <span class="plan-btn-label">${t('planner.edit_details')}</span>
+            <span>${t('planner.edit_details')}</span>
           </button>
-          ${!isCancelled && !sess.charged ? `<button class="btn btn-dan btn-icon-sm" id="plan-cancel-btn" onclick="toggleSessionCancel()" type="button" title="${esc(t('session.cancel'))}" aria-label="${esc(t('session.cancel'))}"><i data-lucide="x-circle"></i></button>` : ''}
-          ${isCancelled ? `<button class="btn btn-dan btn-icon-sm" id="plan-delete-btn" onclick="deleteSession()" type="button" title="${esc(t('misc.delete'))}" aria-label="${esc(t('misc.delete'))}"><i data-lucide="trash-2"></i></button>` : ''}
+          ${!isCancelled && !sess.charged ? `<button class="btn btn-sec btn-sm plan-btn-cancel" id="plan-cancel-btn" onclick="toggleSessionCancel()" type="button" title="${esc(t('session.cancel'))}"><i data-lucide="x-circle"></i> <span>${t('session.cancel')}</span></button>` : ''}
+          ${isCancelled ? `<button class="btn btn-dan btn-sm" id="plan-delete-btn" onclick="deleteSession()" type="button" title="${esc(t('misc.delete'))}"><i data-lucide="trash-2"></i> <span>${t('misc.delete')}</span></button>` : ''}
         </div>
       </div>
 
