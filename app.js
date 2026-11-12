@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:505
-const CLIENT_BUILD = 505;
+// built:506
+const CLIENT_BUILD = 506;
 let S = {
   players: [],
   transactions: [],
