@@ -3112,6 +3112,7 @@ body:has(.pin-modal-overlay.open) {
 .plan-chip.active.st-open .pc-badge{background:oklch(from var(--pri) l c h / .18);color:var(--pri)}
 .plan-chip.st-awaiting .pc-badge{background:oklch(from var(--gld) l c h / .2);color:var(--gld)}
 .plan-chip.st-charged .pc-badge{background:oklch(from var(--txm) l c h / .15);color:var(--txm)}
+.plan-chip.st-deferred .pc-badge{background:oklch(from var(--txm) l c h / .15);color:var(--txm)}
 .plan-chip.st-cancelled .pc-badge{background:oklch(from var(--err) l c h / .15);color:var(--err)}
 .plan-today-marker{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:var(--sp1) 6px;border-radius:var(--r-sm);border:1px dashed oklch(from var(--pri) l c h / .4);background:oklch(from var(--pri) l c h / .06);color:var(--pri);font-size:9px;font-weight:800;letter-spacing:.08em;writing-mode:vertical-lr;text-orientation:mixed;user-select:none;flex-shrink:0;cursor:pointer;transition:background var(--tr),border-color var(--tr)}
 .plan-today-marker:hover{background:oklch(from var(--pri) l c h / .15);border-color:var(--pri)}
@@ -3127,6 +3128,8 @@ body:has(.pin-modal-overlay.open) {
 .status-pill.st-awaiting::before{background:var(--gld)}
 .status-pill.st-charged{background:oklch(from var(--txm) l c h / .12);color:var(--txm)}
 .status-pill.st-charged::before{background:var(--txm)}
+.status-pill.st-deferred{background:oklch(from var(--txm) l c h / .12);color:var(--txm)}
+.status-pill.st-deferred::before{background:var(--txm)}
 .status-pill.st-cancelled{background:oklch(from var(--err) l c h / .12);color:var(--err)}
 .status-pill.st-cancelled::before{background:var(--err)}
 .save-indicator{display:inline-flex;align-items:center;gap:4px;font-size:var(--text-xs);font-weight:600;color:var(--suc);opacity:0;transition:opacity .3s ease}

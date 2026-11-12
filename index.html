@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:487-->
+<!--built:488-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=487">
+<link rel="stylesheet" href="style.css?build=488">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=487" defer></script>
-<script src="app.js?build=487" defer></script>
+<script src="i18n.js?build=488" defer></script>
+<script src="app.js?build=488" defer></script>
 
 <div class="app-shell">
 
@@ -242,6 +242,7 @@ if ('serviceWorker' in navigator) {
     <div id="billing-intro"></div>
     <div class="seg-tabs mb4" role="tablist">
       <button class="seg-tab active" id="billing-tab-open" role="tab" aria-selected="true" onclick="setBillingTab('open')"></button>
+      <button class="seg-tab" id="billing-tab-deferred" role="tab" aria-selected="false" onclick="setBillingTab('deferred')"></button>
       <button class="seg-tab" id="billing-tab-charged" role="tab" aria-selected="false" onclick="setBillingTab('charged')"></button>
     </div>
     <div id="billing-content"></div>
@@ -830,7 +831,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 487)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 488)</span>
 
 </footer>
 
@@ -1181,9 +1182,30 @@ if ('serviceWorker' in navigator) {
 <div class="mo" id="mo-player">
   <div class="mo-box">
     <div class="mo-head"><h2 class="mo-title" id="mo-player-title" data-i18n="players.add_title">Spieler</h2><button class="mo-close btn-icon" onclick="closeMo('mo-player')"><i data-lucide="x"></i></button></div>
+    
+    <!-- Icon / Avatar Selector -->
+    <div class="fg" style="margin-bottom:var(--sp4)">
+      <label class="fl" data-i18n="players.icon">Icon</label>
+      <div class="flex items-c g3">
+        <div class="av pc-av" id="p-avatar-preview" style="cursor:pointer;width:44px;height:44px" onclick="openIconPickerForEditPlayer()" title="Icon wählen">
+          <i data-lucide="user" id="p-avatar-preview-icon" style="width:20px;height:20px"></i>
+        </div>
+        <button type="button" class="btn btn-sec btn-sm" onclick="openIconPickerForEditPlayer()">
+          <i data-lucide="smile"></i> <span data-i18n="players.change_icon">Icon wählen</span>
+        </button>
+      </div>
+    </div>
+
     <div class="fg"><label class="fl" data-i18n="players.name">Name</label><input type="text" id="p-name" class="fi" data-i18n-placeholder="players.name_placeholder" placeholder="Max Mustermann"></div>
     <div class="fg"><label class="fl" data-i18n="players.contact">Kontakt (optional)</label><input type="text" id="p-contact" class="fi" data-i18n-placeholder="players.contact_placeholder" placeholder="max@mail.de"></div>
     
+    <!-- PIN Field -->
+    <div class="fg" id="p-pin-wrap">
+      <label class="fl" data-i18n="players.pin">PIN (4-stellig)</label>
+      <input type="password" id="p-pin" class="fi" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="new-password">
+      <span class="settings-desc" id="p-pin-hint" data-i18n="players.pin_edit_hint" style="margin-top:4px">4-stellige Zahlen-PIN. Leer lassen, um bestehende PIN beizubehalten.</span>
+    </div>
+
     <div class="fg" id="p-admin-wrap" style="display:none; margin-top:var(--sp2);">
       <label class="fl" style="display:flex; align-items:center; gap:8px; cursor:pointer;">
         <input type="checkbox" id="p-admin" style="width:16px; height:16px;"> 

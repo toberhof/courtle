@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:487
-const CLIENT_BUILD = 487;
+// built:488
+const CLIENT_BUILD = 488;
 let S = {
   players: [],
   transactions: [],
@@ -2468,7 +2468,7 @@ function renderAdminPlan(keepDetailsOpen) {
   const total = activeCourts.length * 4;
   const filled = allPids.length;
   const isEnded = sessionEndDate(sess) < new Date();
-  const isAwaiting = !sess.charged && !isCancelled && isEnded && filled > 0;
+  const isAwaiting = !sess.charged && !isCancelled && !sess.billingDeferred && isEnded && filled > 0;
 
   let statusClass = 'st-open';
   let statusLabel = t('planner.status_open');
@@ -2478,6 +2478,9 @@ function renderAdminPlan(keepDetailsOpen) {
   } else if (sess.charged) {
     statusClass = 'st-charged';
     statusLabel = t('planner.status_charged');
+  } else if (sess.billingDeferred) {
+    statusClass = 'st-deferred';
+    statusLabel = t('planner.status_deferred');
   } else if (isAwaiting) {
     statusClass = 'st-awaiting';
     statusLabel = t('planner.status_awaiting');
@@ -2496,12 +2499,13 @@ function renderAdminPlan(keepDetailsOpen) {
     const sTotalSlots = (sActiveCourts.length || (s.courts ? s.courts.length : 2)) * 4;
     const sFilled = Object.values(sCounts).reduce((a, b) => a + b, 0);
     const sEnded = sessionEndDate(s) < new Date();
-    const sAwaiting = !s.charged && !s.cancelled && sEnded && sFilled > 0;
+    const sAwaiting = !s.charged && !s.cancelled && !s.billingDeferred && sEnded && sFilled > 0;
 
     let chipClass = 'st-open';
     let bText = `${sFilled}/${sTotalSlots}`;
     if (s.cancelled) { chipClass = 'st-cancelled'; bText = '✕'; }
     else if (s.charged) { chipClass = 'st-charged'; bText = '✓'; }
+    else if (s.billingDeferred) { chipClass = 'st-deferred'; bText = '⏸'; }
     else if (sAwaiting) { chipClass = 'st-awaiting'; bText = '€'; }
 
     const dObj = new Date(s.date + 'T00:00:00');
@@ -2590,6 +2594,8 @@ function renderAdminPlan(keepDetailsOpen) {
         </div>
         <div class="flex items-c g2 wrap">
           ${primaryActionBtn}
+          ${sess.billingDeferred ? `<button class="btn btn-sec btn-sm" onclick="deferBillingSession('${sessId}', false)"><i data-lucide="rotate-ccw"></i> ${t('billing.undefer')}</button>` : ''}
+          ${isAwaiting ? `<button class="btn btn-sec btn-sm" onclick="deferBillingSession('${sessId}', true)"><i data-lucide="clock"></i> ${t('billing.defer')}</button>` : ''}
           ${!isCancelled && !sess.charged ? `<button class="btn btn-dan btn-sm" id="plan-cancel-btn" onclick="toggleSessionCancel()"><i data-lucide="x-circle"></i> ${t('session.cancel')}</button>` : ''}
           ${isCancelled ? `<button class="btn btn-dan btn-sm" id="plan-delete-btn" onclick="deleteSession()"><i data-lucide="trash-2"></i> ${t('misc.delete')}</button>` : ''}
           <button class="btn btn-sec btn-sm ${showDetails ? 'active-toggle' : ''}" id="plan-edit-toggle-btn" onclick="togglePlanDetails()"><i data-lucide="sliders-horizontal"></i> <span>${t('planner.edit_details')}</span></button>
@@ -3254,7 +3260,14 @@ function sessionEndDate(s) {
 function getOpenBillingSessions() {
   const now = new Date();
   return (S.sessions || [])
-    .filter(s => !s.charged && !s.cancelled && sessionEndDate(s) < now && Object.keys(sessionChargeMap(s)).length > 0)
+    .filter(s => !s.charged && !s.cancelled && !s.billingDeferred && sessionEndDate(s) < now && Object.keys(sessionChargeMap(s)).length > 0)
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.timeStart || '').localeCompare(b.timeStart || ''));
+}
+
+function getDeferredBillingSessions() {
+  const now = new Date();
+  return (S.sessions || [])
+    .filter(s => !s.charged && !s.cancelled && s.billingDeferred && sessionEndDate(s) < now && Object.keys(sessionChargeMap(s)).length > 0)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.timeStart || '').localeCompare(b.timeStart || ''));
 }
 
@@ -3286,6 +3299,20 @@ function setBillingTab(tab) {
   renderBilling();
 }
 
+async function deferBillingSession(sessionId, deferred) {
+  try {
+    await apiFetch('PUT', '/sessions/' + sessionId, { billingDeferred: deferred });
+    await loadState();
+    renderBilling();
+    renderAdminPlan();
+    renderSessions();
+    lucide.createIcons();
+    showToast(deferred ? t('billing.toast_deferred') : t('billing.toast_undeferred'));
+  } catch(e) {
+    showToast(t('billing.error'));
+  }
+}
+
 function billingSessionHeader(s) {
   const { start, end } = getSessionTime(s);
   const time = start && end ? ` · ${fmtTime(start)}–${fmtTime(end)}` : '';
@@ -3297,15 +3324,26 @@ function renderBilling() {
   const root = document.getElementById('billing-content');
   if (!root) return;
   const openList = getOpenBillingSessions();
+  const deferredList = getDeferredBillingSessions();
   const chargedList = getChargedSessions();
   const tabOpen = document.getElementById('billing-tab-open');
+  const tabDef = document.getElementById('billing-tab-deferred');
   const tabCh = document.getElementById('billing-tab-charged');
-  tabOpen.textContent = `${t('billing.tab_open')} (${openList.length})`;
-  tabCh.textContent = t('billing.tab_charged');
-  tabOpen.classList.toggle('active', billingTab === 'open');
-  tabCh.classList.toggle('active', billingTab === 'charged');
-  tabOpen.setAttribute('aria-selected', billingTab === 'open');
-  tabCh.setAttribute('aria-selected', billingTab === 'charged');
+  if (tabOpen) {
+    tabOpen.textContent = `${t('billing.tab_open')} (${openList.length})`;
+    tabOpen.classList.toggle('active', billingTab === 'open');
+    tabOpen.setAttribute('aria-selected', billingTab === 'open');
+  }
+  if (tabDef) {
+    tabDef.textContent = `${t('billing.tab_deferred')} (${deferredList.length})`;
+    tabDef.classList.toggle('active', billingTab === 'deferred');
+    tabDef.setAttribute('aria-selected', billingTab === 'deferred');
+  }
+  if (tabCh) {
+    tabCh.textContent = t('billing.tab_charged');
+    tabCh.classList.toggle('active', billingTab === 'charged');
+    tabCh.setAttribute('aria-selected', billingTab === 'charged');
+  }
 
   const intro = document.getElementById('billing-intro');
   if (intro) {
@@ -3338,6 +3376,7 @@ function renderBilling() {
               <div class="bi-meta">${t('billing.session_meta').replace('{slots}', tot.slots).replace('{players}', tot.players)}</div>
               <div class="bi-actions">
                 <button class="btn btn-sec btn-sm" onclick="openBillingModal(['${s.id}'])">${t('billing.review')}</button>
+                <button class="btn btn-sec btn-sm" onclick="deferBillingSession('${s.id}', true)"><i data-lucide="clock"></i> ${t('billing.defer')}</button>
                 <button class="btn-nav" onclick="openBillingInPlanner('${s.id}')"><i data-lucide="arrow-up-right"></i> ${t('billing.open_in_planner')}</button>
               </div>
             </div>
@@ -3349,6 +3388,30 @@ function renderBilling() {
       document.getElementById('billing-footer-sum').textContent = t('billing.selected_summary').replace('{n}', selected.length).replace('{sum}', fmtE(sum));
       document.getElementById('billing-footer-btn').disabled = selected.length === 0;
       footer.hidden = false;
+    }
+  } else if (billingTab === 'deferred') {
+    footer.hidden = true;
+    if (!deferredList.length) {
+      root.innerHTML = `<div class="empty"><i data-lucide="clock"></i><h3>${t('billing.deferred_empty_title')}</h3><p class="txsm">${t('billing.deferred_empty_text')}</p></div>`;
+    } else {
+      root.innerHTML = `<div class="billing-list">
+        ${deferredList.map(s => {
+          const tot = billingSessionTotals(s);
+          return `<div class="billing-item">
+            <div class="bi-main">
+              <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('billing.badge_deferred')}</span></div>
+              <div class="bi-meta">${billingSessionHeader(s)}</div>
+              <div class="bi-meta">${t('billing.session_meta').replace('{slots}', tot.slots).replace('{players}', tot.players)}</div>
+              <div class="bi-actions">
+                <button class="btn btn-pri btn-sm" onclick="openBillingModal(['${s.id}'])">${t('billing.review')}</button>
+                <button class="btn btn-sec btn-sm" onclick="deferBillingSession('${s.id}', false)"><i data-lucide="rotate-ccw"></i> ${t('billing.undefer')}</button>
+                <button class="btn-nav" onclick="openBillingInPlanner('${s.id}')"><i data-lucide="arrow-up-right"></i> ${t('billing.open_in_planner')}</button>
+              </div>
+            </div>
+            <div class="bi-sum">${fmtE(tot.sum)}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
     }
   } else {
     footer.hidden = true;

@@ -749,13 +749,13 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('#mo-billing')).toHaveClass(/open/);
 
     // Step 1: change total session price to 40.00
-    const priceInput = page.locator('.billing-total-price-input').first();
+    const priceInput = page.locator('#mo-billing .billing-total-price-input').first();
     await priceInput.fill('40');
     await priceInput.dispatchEvent('input');
     await page.waitForTimeout(200);
 
     // Select BobOutlay as payer
-    const payerSelect = page.locator('.billing-payer-select').first();
+    const payerSelect = page.locator('#mo-billing .billing-payer-select').first();
     await payerSelect.selectOption(`player:${pBob.id}`);
     await page.waitForTimeout(200);
 
@@ -798,6 +798,61 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     expect(revertedPlayers.find(p => p.id === pBob.id).balance).toBe(0);
     expect(revertedPlayers.find(p => p.id === alice.id).balance).toBe(100);
     expect(revertedPlayers.find(p => p.id === pCharlie.id).balance).toBe(0);
+  });
+
+  test('26 — Billing view: defer session, verify badge decrement, verify deferred tab, undefer', async ({ page, request }) => {
+    const H = { 'Content-Type': 'application/json', 'X-Token': aToken };
+    const players = await (await request.get('/api.php/players')).json();
+    const alice = players.find(p => p.name === 'Alice');
+    
+    // Create 2 past sessions with booking
+    const mk = async (date) => {
+      const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date, courts: [[null,null,null,null]], timeStart: '1900', timeEnd: '2100' } })).json();
+      const id = r.id || date;
+      await request.post(`/api.php/sessions/${id}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: alice.id } });
+      return id;
+    };
+    const s1 = await mk('2020-04-10');
+    const s2 = await mk('2020-04-12');
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Badge shows 2 open sessions
+    await expect(page.locator('#nav-billing-count')).toHaveText('2');
+    await navigateAdmin(page, 'billing');
+    await expect(page.locator('#view-billing')).toHaveClass(/active/);
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
+
+    // Defer the first session
+    const firstItem = page.locator('#billing-content .billing-item').first();
+    const deferBtn = firstItem.locator('button', { hasText: 'Zurückstellen' });
+    await expect(deferBtn).toBeVisible();
+    await deferBtn.click();
+
+    // Verify badge decreased to 1 and only 1 open session remains
+    await expect(page.locator('#nav-billing-count')).toHaveText('1');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+
+    // Switch to "Zurückgestellt" tab
+    await page.click('#billing-tab-deferred');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+    await expect(page.locator('#billing-content .billing-item .badge')).toContainText('Zurückgestellt');
+
+    // Undefer
+    const undeferBtn = page.locator('#billing-content .billing-item button', { hasText: 'Wieder vorlegen' });
+    await expect(undeferBtn).toBeVisible();
+    await undeferBtn.click();
+
+    // Verify deferred tab is now empty
+    await expect(page.locator('#billing-content .empty')).toBeVisible();
+
+    // Verify badge is back to 2
+    await expect(page.locator('#nav-billing-count')).toHaveText('2');
+
+    // Switch back to "Offen" tab and verify 2 items
+    await page.click('#billing-tab-open');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
   });
 });
 

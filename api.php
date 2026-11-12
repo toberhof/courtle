@@ -199,7 +199,8 @@ function init_db(PDO $db): void {
         price REAL DEFAULT NULL,
         cancel_hours REAL DEFAULT NULL,
         name TEXT DEFAULT NULL,
-        court_names TEXT
+        court_names TEXT,
+        billing_deferred INTEGER DEFAULT 0
     )");
     
     $db->exec("CREATE TABLE IF NOT EXISTS courts (
@@ -290,7 +291,8 @@ function init_db(PDO $db): void {
         "ALTER TABLE players ADD COLUMN theme TEXT DEFAULT 'auto'",
         "ALTER TABLE sessions ADD COLUMN court_names TEXT",
         "ALTER TABLE series ADD COLUMN court_names TEXT",
-        "ALTER TABLE transactions ADD COLUMN session_id TEXT DEFAULT NULL"
+        "ALTER TABLE transactions ADD COLUMN session_id TEXT DEFAULT NULL",
+        "ALTER TABLE sessions ADD COLUMN billing_deferred INTEGER DEFAULT 0"
     ];
 
     foreach ($migrations as $sql) {
@@ -470,7 +472,8 @@ function migrate_v2_sessions(PDO $db): void {
             price REAL DEFAULT NULL,
             cancel_hours REAL DEFAULT NULL,
             name TEXT DEFAULT NULL,
-            court_names TEXT
+            court_names TEXT,
+            billing_deferred INTEGER DEFAULT 0
         )");
 
         $db->exec("CREATE TABLE courts_new (
@@ -938,13 +941,14 @@ function handle_player_create(): void {
     
     // HENNE-EI: Check if DB is empty
     $count = $db->query("SELECT COUNT(*) FROM players")->fetchColumn();
-    
+    $emoji = isset($b['emoji']) && !empty($b['emoji']) ? (string)$b['emoji'] : null;
+
     if ($count == 0) {
         // First player ever - no auth required, auto-make admin
         $id = gid();
         $pin_hash = isset($b['pin']) && $b['pin'] ? password_hash($b['pin'], PASSWORD_DEFAULT) : null;
-        $stmt = $db->prepare("INSERT INTO players (id,name,contact,pin_hash,created_at,admin) VALUES (?,?,?,?,?,1)");
-        $stmt->execute([$id, $b['name'], $b['contact'] ?? null, $pin_hash, date('c')]);
+        $stmt = $db->prepare("INSERT INTO players (id,name,contact,pin_hash,created_at,admin,emoji) VALUES (?,?,?,?,?,1,?)");
+        $stmt->execute([$id, $b['name'], $b['contact'] ?? null, $pin_hash, date('c'), $emoji]);
         json_out(['id' => $id, 'name' => $b['name'], 'admin' => true], 201);
     } else {
         // Normal flow - require admin
@@ -952,8 +956,8 @@ function handle_player_create(): void {
         $id = gid();
         $pin_hash = isset($b['pin']) && $b['pin'] ? password_hash($b['pin'], PASSWORD_DEFAULT) : null;
         $admin_flag = isset($b['admin']) && $b['admin'] ? 1 : 0;
-        $stmt = $db->prepare("INSERT INTO players (id,name,contact,pin_hash,created_at,admin) VALUES (?,?,?,?,?,?)");
-        $stmt->execute([$id, $b['name'], $b['contact'] ?? null, $pin_hash, date('c'), $admin_flag]);
+        $stmt = $db->prepare("INSERT INTO players (id,name,contact,pin_hash,created_at,admin,emoji) VALUES (?,?,?,?,?,?,?)");
+        $stmt->execute([$id, $b['name'], $b['contact'] ?? null, $pin_hash, date('c'), $admin_flag, $emoji]);
         json_out(['id' => $id, 'name' => $b['name']], 201);
     }
 }
@@ -1164,6 +1168,7 @@ function handle_sessions_list(): void {
             'cancelHours'    => isset($s['cancel_hours']) && $s['cancel_hours'] !== null ? (float)$s['cancel_hours'] : null,
             'name'           => $s['name'] ?? null,
             'courtNames'     => json_decode($s['court_names'] ?? '[]', true) ?: [],
+            'billingDeferred'=> (bool)($s['billing_deferred'] ?? 0),
         ];
     }
     json_out($out);
@@ -1262,7 +1267,7 @@ function handle_session_update(string $idOrDate): void {
         $hasMutations = isset($b['timeStart']) || isset($b['timeEnd']) || isset($b['newDate'])
             || isset($b['disabledCourts']) || isset($b['waitlist']) || isset($b['note'])
             || isset($b['location']) || isset($b['courts']) || isset($b['cancelled']) || isset($b['price'])
-            || isset($b['name']) || isset($b['courtNames']);
+            || isset($b['name']) || isset($b['courtNames']) || isset($b['billingDeferred']);
         if ($hasMutations) {
             err('This session has already been charged. No more changes are possible.', 403);
         }
@@ -1282,8 +1287,8 @@ function handle_session_update(string $idOrDate): void {
 
     // Upsert session row if not exists
     if (!$sess) {
-        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names)
-            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?)")
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, ?)")
            ->execute([
                $sessId,
                $sessDate,
@@ -1293,7 +1298,8 @@ function handle_session_update(string $idOrDate): void {
                isset($b['price']) && $b['price'] !== null ? (float)$b['price'] : null,
                isset($b['cancelHours']) && $b['cancelHours'] !== null ? (float)$b['cancelHours'] : null,
                $b['name'] ?? null,
-               isset($b['courtNames']) && is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : '[]'
+               isset($b['courtNames']) && is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : '[]',
+               !empty($b['billingDeferred']) ? 1 : 0
            ]);
     }
 
@@ -1408,6 +1414,10 @@ function handle_session_update(string $idOrDate): void {
 
     if (isset($b['cancelled'])) {
         $db->prepare("UPDATE sessions SET cancelled=? WHERE id=?")->execute([$b['cancelled'] ? 1 : 0, $sessId]);
+    }
+
+    if (isset($b['billingDeferred'])) {
+        $db->prepare("UPDATE sessions SET billing_deferred=? WHERE id=?")->execute([$b['billingDeferred'] ? 1 : 0, $sessId]);
     }
 
     json_out(['ok' => true, 'id' => $sessId, 'date' => $sessDate]);
@@ -1594,7 +1604,7 @@ function charge_session(PDO $db, array $sess, array $paidPids, string $now, stri
         $expStmt->execute([gid(), $expAmt, $date, "Session $date$timeLabel", $now, $sessId, null]);
     }
 
-    $db->prepare("UPDATE sessions SET charged=1 WHERE id=?")->execute([$sessId]);
+    $db->prepare("UPDATE sessions SET charged=1, billing_deferred=0 WHERE id=?")->execute([$sessId]);
     log_session_history($db, $sessId, null, 'charged', null, null, $performedBy,
         json_encode([
             'players' => count($counts),
@@ -1842,7 +1852,7 @@ function handle_import(): void {
     }
     foreach (($b['sessions'] ?? []) as $s) {
         $sessId = $s['id'] ?? uuid_v4();
-        $db->prepare("INSERT OR IGNORE INTO sessions (id,date,charged,disabled_courts,waitlist,note,time_start,time_end,cancelled,location,price,cancel_hours,name,court_names) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        $db->prepare("INSERT OR IGNORE INTO sessions (id,date,charged,disabled_courts,waitlist,note,time_start,time_end,cancelled,location,price,cancel_hours,name,court_names,billing_deferred) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
             ->execute([
                 $sessId,
                 $s['date'],
@@ -1857,7 +1867,8 @@ function handle_import(): void {
                 isset($s['price']) && $s['price'] !== null ? (float)$s['price'] : null,
                 isset($s['cancel_hours']) && $s['cancel_hours'] !== null ? (float)$s['cancel_hours'] : null,
                 $s['name'] ?? null,
-                $s['court_names'] ?? '[]'
+                $s['court_names'] ?? '[]',
+                !empty($s['billing_deferred']) ? 1 : 0
             ]);
     }
     foreach (($b['courts'] ?? []) as $c) {
@@ -1961,8 +1972,8 @@ function handle_session_book(string $idOrDate): void {
         $name = $b['name'] ?? ($series['name'] ?? null);
         $cn = isset($b['courtNames']) ? (is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null) : ($series['court_names'] ?? '[]');
 
-        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names)
-            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?)")
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, 0)")
            ->execute([$sessId, $date, $timeStart, $timeEnd, $loc, $pr, $ch, $name, $cn]);
     }
 
@@ -2206,8 +2217,8 @@ function handle_session_join_waitlist(string $idOrDate): void {
         $name = $b['name'] ?? ($series['name'] ?? null);
         $cn = isset($b['courtNames']) ? (is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null) : ($series['court_names'] ?? '[]');
 
-        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names)
-            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?)")
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, 0)")
            ->execute([$sessId, $date, $timeStart, $timeEnd, $loc, $pr, $ch, $name, $cn]);
     }
 
