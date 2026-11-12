@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:495-->
+<!--built:496-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=495">
+<link rel="stylesheet" href="style.css?build=496">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=495" defer></script>
-<script src="app.js?build=495" defer></script>
+<script src="i18n.js?build=496" defer></script>
+<script src="app.js?build=496" defer></script>
 
 <div class="app-shell">
 
@@ -831,7 +831,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 495)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 496)</span>
 
 </footer>
 
@@ -1417,7 +1417,7 @@ if ('serviceWorker' in navigator) {
     <div class="fg mb4"><label class="fl" data-i18n="setup.pin">PIN (4 Ziffern)</label><input type="password" id="setup-pin" class="fi" maxlength="4" inputmode="numeric" placeholder="••••" style="max-width:140px;letter-spacing:.35em"></div>
     <div class="fg mb4"><label class="fl" data-i18n="setup.pin_confirm">PIN wiederholen</label><input type="password" id="setup-pin2" class="fi" maxlength="4" inputmode="numeric" placeholder="••••" style="max-width:140px;letter-spacing:.35em"></div>
     <div id="setup-err" class="txsm" style="color:var(--err);text-align:center;min-height:1.4em"></div>
-    <button class="welcome-skip" onclick="setupFirstAdmin()" data-i18n="setup.save">Speichern</button>
+    <button class="btn btn-pri welcome-skip" onclick="setupFirstAdmin()" style="width:100%;margin-top:var(--sp2)" data-i18n="setup.save">Speichern</button>
   </div>
 </div>
 <!-- ── SERIES EDIT MODAL ── -->
@@ -1604,8 +1604,11 @@ if ('serviceWorker' in navigator) {
 
 <!-- ── SESSION DETAILS MODAL ── -->
 <div class="mo" id="mo-session-details" onclick="if(event.target===this)closeMo('mo-session-details')">
-  <div class="mo-box" style="max-width:540px;width:95%;position:relative">
-    <button class="mo-close btn-icon" style="position:absolute;top:var(--sp5);right:var(--sp5);z-index:10" onclick="closeMo('mo-session-details')"><i data-lucide="x"></i></button>
+  <div class="mo-box" style="max-width:540px;width:95%">
+    <div class="mo-head" style="margin-bottom:var(--sp2)">
+      <h2 class="mo-title" id="mo-session-details-title" data-i18n="session.session">Session</h2>
+      <button class="mo-close btn-icon" onclick="closeMo('mo-session-details')"><i data-lucide="x"></i></button>
+    </div>
     <div id="mo-sd-body" style="display:flex;flex-direction:column;gap:var(--sp4);padding:var(--sp1) 0">
       <!-- Dynamically filled in app.js -->
     </div>

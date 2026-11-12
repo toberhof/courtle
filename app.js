@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:495
-const CLIENT_BUILD = 495;
+// built:496
+const CLIENT_BUILD = 496;
 let S = {
   players: [],
   transactions: [],
@@ -2573,7 +2573,7 @@ function renderAdminPlan(keepDetailsOpen) {
   } else if (sess.charged) {
     primaryActionBtn = `<button class="btn-nav" onclick="setBillingTab('charged');showView('billing')"><i data-lucide="arrow-up-right"></i> ${t('planner.view_in_billing')}</button>`;
   } else if (isAwaiting) {
-    primaryActionBtn = `<button class="btn btn-pri btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="receipt"></i> ${t('session.billing_charge')}</button>`;
+    primaryActionBtn = `<button class="btn btn-gld btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="receipt"></i> ${t('session.billing_charge')}</button>`;
   } else if (filled > 0) {
     primaryActionBtn = `<button class="btn btn-sec btn-sm" onclick="openBillingModal(['${sessId}'])"><i data-lucide="credit-card"></i> ${t('session.billing_charge')}</button>`;
   }
@@ -2702,7 +2702,7 @@ function renderAdminPlan(keepDetailsOpen) {
           <div class="settings-row">
             <div class="settings-meta">
               <label class="settings-title" for="plan-price-input">${t('session.price')} (${t('session.per_slot')})</label>
-              <div class="settings-desc">${t('session.price_desc', 'Kostenbeitrag pro Platz')}</div>
+              <div class="settings-desc">${t('session.price_desc', 'Kostenbeitrag pro Slot')}</div>
             </div>
             <div class="settings-control">
               <div class="ios-input-wrap plan-edit-control">
@@ -2982,16 +2982,24 @@ async function confirmCancelCourt() {
 }
 
 async function deleteCourt(date, ci) {
-  if (!confirm(t('session.confirm_delete_court').replace('{n}', ci + 1))) return;
-  const sess = getOrSess(date);
-  sess.courts.splice(ci, 1);
-  if (sess.courtNames && sess.courtNames.length > ci) {
-    sess.courtNames.splice(ci, 1);
-  }
-  sess.disabledCourts = sess.disabledCourts.filter(i => i !== ci).map(i => i > ci ? i - 1 : i);
-  await persistSession(sess);
-  renderAdminPlan(); renderSessions();
-  showToast(t('toast.court_deleted', { n: ci + 1 }));
+  const courtNum = ci + 1;
+  showConfirmModal(
+    t('session.confirm_delete_court').replace('{n}', courtNum),
+    t('court.cancel_desc', 'Willst du diesen Court wirklich entfernen?'),
+    '<i data-lucide="trash-2"></i> ' + t('misc.delete', 'Löschen'),
+    'btn-dan',
+    async () => {
+      const sess = getOrSess(date);
+      sess.courts.splice(ci, 1);
+      if (sess.courtNames && sess.courtNames.length > ci) {
+        sess.courtNames.splice(ci, 1);
+      }
+      sess.disabledCourts = sess.disabledCourts.filter(i => i !== ci).map(i => i > ci ? i - 1 : i);
+      await persistSession(sess);
+      renderAdminPlan(); renderSessions();
+      showToast(t('toast.court_deleted', { n: courtNum }));
+    }
+  );
 }
 
 async function toggleSessionCancel() {
@@ -3404,7 +3412,7 @@ function renderBilling() {
               <div class="bi-meta">${billingSessionHeader(s)}</div>
               <div class="bi-meta">${t('billing.session_meta').replace('{slots}', tot.slots).replace('{players}', tot.players)}</div>
               <div class="bi-actions">
-                <button class="btn btn-pri btn-sm" onclick="openBillingModal(['${s.id}'])">${t('billing.review')}</button>
+                <button class="btn btn-sec btn-sm" onclick="openBillingModal(['${s.id}'])">${t('billing.review')}</button>
                 <button class="btn btn-sec btn-sm" onclick="deferBillingSession('${s.id}', false)"><i data-lucide="rotate-ccw"></i> ${t('billing.undefer')}</button>
                 <button class="btn-nav" onclick="openBillingInPlanner('${s.id}')"><i data-lucide="arrow-up-right"></i> ${t('billing.open_in_planner')}</button>
               </div>
