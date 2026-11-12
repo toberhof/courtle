@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:496
-const CLIENT_BUILD = 496;
+// built:497
+const CLIENT_BUILD = 497;
 let S = {
   players: [],
   transactions: [],
@@ -3380,7 +3380,10 @@ function renderBilling() {
           return `<div class="billing-item ${sel ? 'sel' : ''}">
             <input type="checkbox" ${sel ? 'checked' : ''} onchange="toggleBillingItem('${s.id}', this.checked)" aria-label="${esc(getSessionName(s))}">
             <div class="bi-main">
-              <div class="bi-title">${esc(getSessionName(s))}</div>
+              <div class="bi-head">
+                <div class="bi-title">${esc(getSessionName(s))}</div>
+                <div class="bi-sum">${fmtE(tot.sum)}</div>
+              </div>
               <div class="bi-meta">${billingSessionHeader(s)}</div>
               <div class="bi-meta">${t('billing.session_meta').replace('{slots}', tot.slots).replace('{players}', tot.players)}</div>
               <div class="bi-actions">
@@ -3389,7 +3392,6 @@ function renderBilling() {
                 <button class="btn-nav" onclick="openBillingInPlanner('${s.id}')"><i data-lucide="arrow-up-right"></i> ${t('billing.open_in_planner')}</button>
               </div>
             </div>
-            <div class="bi-sum">${fmtE(tot.sum)}</div>
           </div>`;
         }).join('')}
       </div>`;
@@ -3408,7 +3410,10 @@ function renderBilling() {
           const tot = billingSessionTotals(s);
           return `<div class="billing-item">
             <div class="bi-main">
-              <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('billing.badge_deferred')}</span></div>
+              <div class="bi-head">
+                <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('billing.badge_deferred')}</span></div>
+                <div class="bi-sum">${fmtE(tot.sum)}</div>
+              </div>
               <div class="bi-meta">${billingSessionHeader(s)}</div>
               <div class="bi-meta">${t('billing.session_meta').replace('{slots}', tot.slots).replace('{players}', tot.players)}</div>
               <div class="bi-actions">
@@ -3417,7 +3422,6 @@ function renderBilling() {
                 <button class="btn-nav" onclick="openBillingInPlanner('${s.id}')"><i data-lucide="arrow-up-right"></i> ${t('billing.open_in_planner')}</button>
               </div>
             </div>
-            <div class="bi-sum">${fmtE(tot.sum)}</div>
           </div>`;
         }).join('')}
       </div>`;
@@ -3434,14 +3438,16 @@ function renderBilling() {
         const sum = legacy ? billingSessionTotals(s).sum : txs.filter(x => !x.credit).reduce((a, x) => a + x.amount, 0);
         return `<div class="billing-item">
           <div class="bi-main">
-            <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('session.charged')}</span></div>
+            <div class="bi-head">
+              <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('session.charged')}</span></div>
+              <div class="bi-sum">${fmtE(sum)}</div>
+            </div>
             <div class="bi-meta">${billingSessionHeader(s)}</div>
             <div class="bi-actions">
               <button class="btn btn-dan btn-sm" ${legacy ? `disabled title="${esc(t('billing.legacy_no_revert'))}"` : ''} onclick="revertBilling('${s.id}')"><i data-lucide="undo-2"></i> ${t('billing.revert')}</button>
             </div>
             ${legacy ? `<div class="bi-meta" style="margin-top:var(--sp1)">${t('billing.legacy_no_revert')}</div>` : ''}
           </div>
-          <div class="bi-sum">${fmtE(sum)}</div>
         </div>`;
       }).join('')}
       ${chargedList.length > shown.length ? `<button class="btn btn-sec btn-sm" onclick="billingChargedLimit+=20;renderBilling()">…</button>` : ''}

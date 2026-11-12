@@ -3087,14 +3087,15 @@ body:has(.pin-modal-overlay.open) {
 .btn-nav:active{transform:scale(.97)}
 .btn-nav i,.btn-nav svg{width:14px;height:14px;flex-shrink:0}
 .billing-list{display:flex;flex-direction:column;gap:var(--sp3);padding-bottom:96px}
-.billing-item{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp3) var(--sp4);border-radius:var(--r-lg);background:var(--sur);border:1px solid var(--bor);transition:border-color var(--tr),transform var(--tr)}
+.billing-item{display:flex;align-items:flex-start;gap:var(--sp3);padding:var(--sp3) var(--sp4);border-radius:var(--r-lg);background:var(--sur);border:1px solid var(--bor);transition:border-color var(--tr),transform var(--tr)}
 .billing-item.sel{border-color:var(--pri)}
-.billing-item input[type=checkbox]{width:20px;height:20px;flex-shrink:0;cursor:pointer}
+.billing-item input[type=checkbox]{width:20px;height:20px;flex-shrink:0;cursor:pointer;margin-top:2px}
 .billing-item .bi-main{flex:1;min-width:0}
-.billing-item .bi-title{font-weight:700}
+.billing-item .bi-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--sp2)}
+.billing-item .bi-title{font-weight:700;display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}
 .billing-item .bi-meta{font-size:var(--text-xs);color:var(--txm)}
-.billing-item .bi-sum{font-weight:700;white-space:nowrap}
-.billing-item .bi-actions{display:flex;gap:var(--sp2);flex-wrap:wrap;margin-top:var(--sp2)}
+.billing-item .bi-sum{font-weight:700;font-size:var(--text-base);white-space:nowrap;flex-shrink:0}
+.billing-item .bi-actions{display:flex;gap:var(--sp2);flex-wrap:wrap;margin-top:var(--sp2);align-items:center}
 .billing-footer{position:fixed;left:0;right:0;bottom:calc(56px + env(safe-area-inset-bottom,0px));z-index:40;display:flex;align-items:center;justify-content:space-between;gap:var(--sp3);padding:var(--sp3) var(--sp4);background:oklch(from var(--bg) l c h / .85);backdrop-filter:blur(14px);border-top:1px solid var(--bor)}
 .billing-footer[hidden]{display:none}
 @media(min-width:900px){.billing-footer{bottom:0}}
