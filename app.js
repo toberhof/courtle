@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:474
-const CLIENT_BUILD = 474;
+// built:475
+const CLIENT_BUILD = 475;
 let S = {
   players: [],
   transactions: [],
@@ -6730,12 +6730,12 @@ function shuffleTeams() {
     const name = p ? esc(p.name) : '?';
     const isGuest = pid.includes('|');
     const isMe = guestId && (pid === guestId || (isGuest && pid.startsWith(guestId + '|')));
-    const youTag = isMe && !isGuest ? ` <span style="opacity:.6;font-size:var(--text-xs);font-weight:400">(${t('misc.you')})</span>` : '';
-    const guestTag = isGuest ? ` <span style="opacity:.6;font-size:var(--text-xs);font-weight:400">(${t('misc.guest')})</span>` : '';
+    const youTag = isMe && !isGuest ? ` <span class="cm-tag">(${t('misc.you')})</span>` : '';
+    const guestTag = isGuest ? ` <span class="cm-tag">(${t('misc.guest')})</span>` : '';
     const iconName = p ? playerIcon(p, isGuest) : 'user';
 
     return `<div class="court-mixer-player ${isMe ? 'me' : ''}">
-      <div class="av"><i data-lucide="${iconName}" style="width:13px;height:13px"></i></div>
+      <div class="av" style="width:22px;height:22px;font-size:10px;flex-shrink:0"><i data-lucide="${iconName}" style="width:12px;height:12px"></i></div>
       <span class="court-mixer-player-name">${name}${youTag}${guestTag}</span>
     </div>`;
   }
@@ -6748,23 +6748,27 @@ function shuffleTeams() {
     return `<div class="court-mixer-card">
       <div class="court-mixer-head">
         <span class="court-mixer-title"><i data-lucide="map-pin" style="width:12px;height:12px"></i> ${esc(courtName)}</span>
-        <span class="badge bg-neu" style="font-size:10px">${players.length} ${t('players.count', 'Spieler')}</span>
+        <span class="badge bg-neu" style="font-size:10px;padding:1px 6px">${players.length} ${t('players.count', 'Spieler')}</span>
       </div>
       <div class="court-mixer-match">
-        <div class="court-mixer-team">${teamA.map(playerLabel).join('')}</div>
+        <div class="court-mixer-row">
+          <span class="court-mixer-tag team-a">A</span>
+          <div class="court-mixer-pair">${teamA.map(playerLabel).join('')}</div>
+        </div>
         ${teamB.length > 0 ? `
-          <div class="court-mixer-vs-divider">
-            <span class="court-mixer-vs-line"></span>
-            <div class="court-mixer-vs">${t('teams.vs', 'VS')}</div>
-            <span class="court-mixer-vs-line"></span>
+          <div class="court-mixer-divider">
+            <span class="court-mixer-vs-pill">${t('teams.vs', 'vs')}</span>
           </div>
-          <div class="court-mixer-team">${teamB.map(playerLabel).join('')}</div>
+          <div class="court-mixer-row">
+            <span class="court-mixer-tag team-b">B</span>
+            <div class="court-mixer-pair">${teamB.map(playerLabel).join('')}</div>
+          </div>
         ` : ''}
       </div>
     </div>`;
   }).join('') + (benchPlayers.length > 0 ? `
     <div class="court-mixer-bench">
-      <div class="court-mixer-bench-title"><i data-lucide="clock" style="width:14px;height:14px"></i> ${t('teams.bench', 'Pausiert / Nächste Runde')} (${benchPlayers.length})</div>
+      <div class="court-mixer-bench-title"><i data-lucide="clock" style="width:12px;height:12px"></i> ${t('teams.bench', 'Pausiert / Nächste Runde')} (${benchPlayers.length})</div>
       <div class="court-mixer-bench-list">${benchPlayers.map(playerLabel).join('')}</div>
     </div>
   ` : '');
