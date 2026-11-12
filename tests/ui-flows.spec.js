@@ -90,9 +90,10 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     // Navigate to admin players view
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
+    await page.click('#players-tab-balance');
 
     // Find Alice's card (players sorted alphabetically, "Admin" first)
-    const pc = page.locator('.pc').filter({ hasText: 'Alice' });
+    const pc = page.locator('#players-balance-grid .pc').filter({ hasText: 'Alice' });
     await expect(pc).toBeVisible();
     await pc.locator('button.btn-ok').click();
     await expect(page.locator('#mo-tx')).toHaveClass(/open/);
@@ -105,7 +106,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // Wait for renderAll and verify balance updated (100 + 75 = 175)
     await page.waitForTimeout(500);
-    const aliceCard = page.locator('.pc').filter({ hasText: 'Alice' });
+    const aliceCard = page.locator('#players-balance-grid .pc').filter({ hasText: 'Alice' });
     await expect(aliceCard).toContainText(/175/);
   });
 
@@ -141,10 +142,9 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
 
-    // Click pencil (edit) button on Alice's card (expand card row first)
-    const pc = page.locator('.pc').filter({ hasText: 'Alice' });
+    // Click pencil (edit) button directly on Alice's card in #players-grid
+    const pc = page.locator('#players-grid .pc').filter({ hasText: 'Alice' });
     await expect(pc).toBeVisible();
-    await pc.locator('.pc-row').click();
     await pc.locator('button.btn-sec').first().click();
     await expect(page.locator('#mo-player')).toHaveClass(/open/);
 
@@ -155,18 +155,17 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('#mo-player')).not.toHaveClass(/open/, { timeout: 5000 });
 
     await page.waitForTimeout(500);
-    await expect(page.locator('.pc').filter({ hasText: 'Alice Cooper' })).toBeVisible();
+    await expect(page.locator('#players-grid .pc').filter({ hasText: 'Alice Cooper' })).toBeVisible();
   });
 
   test('04 — Player deactivate + reactivate via UI', async ({ page }) => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
 
-    // Click trash button on Alice's card (expand card row first)
-    const pc = page.locator('.pc').filter({ hasText: 'Alice' });
+    // Click trash button directly on Alice's card in #players-grid
+    const pc = page.locator('#players-grid .pc').filter({ hasText: 'Alice' });
     await expect(pc).toBeVisible();
-    await pc.locator('.pc-row').click();
-    await pc.locator('button.btn-dan').click();
+    await pc.locator('button.btn-dan').first().click();
 
     // Confirm modal appears
     const confirmBtn = page.locator('#mo-confirm button.btn-pri, #mo-confirm button.btn-dan').first();
@@ -293,15 +292,16 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // Wait for render
     await page.waitForTimeout(500);
-    await expect(page.locator('.pc').filter({ hasText: 'Bob' })).toBeVisible();
+    await expect(page.locator('#players-grid .pc').filter({ hasText: 'Bob' })).toBeVisible();
   });
 
   test('08 — Debit via UI: Abbuchen reduces player balance', async ({ page }) => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
+    await page.click('#players-tab-balance');
 
     // Click charge button on Alice
-    const pc = page.locator('.pc').filter({ hasText: 'Alice' });
+    const pc = page.locator('#players-balance-grid .pc').filter({ hasText: 'Alice' });
     await pc.locator('button.btn-ok').click();
     await expect(page.locator('#mo-tx')).toHaveClass(/open/);
 
@@ -312,7 +312,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // Balance should be 100 - 30 = 70
     await page.waitForTimeout(500);
-    await expect(page.locator('.pc').filter({ hasText: 'Alice' })).toContainText(/70/);
+    await expect(page.locator('#players-balance-grid .pc').filter({ hasText: 'Alice' })).toContainText(/70/);
   });
 
   test('09 — Admin slot management: assign player to slot', async ({ page }) => {
@@ -853,6 +853,56 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     // Switch back to "Offen" tab and verify 2 items
     await page.click('#billing-tab-open');
     await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
+  });
+
+  test('27 — Player edit modal: change PIN and choose icon', async ({ page, request }) => {
+    await navigateAdmin(page, 'players');
+    await expect(page.locator('#view-players')).toHaveClass(/active/);
+
+    // Open edit modal for Alice
+    const pc = page.locator('#players-grid .pc').filter({ hasText: 'Alice' });
+    await expect(pc).toBeVisible();
+    await pc.locator('button.btn-sec').first().click();
+    await expect(page.locator('#mo-player')).toHaveClass(/open/);
+
+    // Verify PIN hint for existing player
+    await expect(page.locator('#p-pin-hint')).toContainText('4-stellige');
+
+    // Fill new PIN
+    await page.fill('#p-pin', '5678');
+
+    // Click icon chooser button
+    await page.click('#mo-player button:has-text("Icon wählen")');
+    await expect(page.locator('#mo-emoji')).toHaveClass(/open/);
+
+    // Select 'rocket' icon
+    const rocketBtn = page.locator('#emoji-grid button:has([data-lucide="rocket"])');
+    await rocketBtn.click();
+    await expect(page.locator('#mo-emoji')).not.toHaveClass(/open/);
+
+    // Preview inside #mo-player should now show rocket
+    await expect(page.locator('#p-avatar-preview-icon')).toHaveAttribute('data-lucide', 'rocket');
+
+    // Save player
+    await page.locator('#mo-player button:has-text("Speichern")').click();
+    await expect(page.locator('#mo-player')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Verify player card has rocket icon
+    const updatedPc = page.locator('#players-grid .pc').filter({ hasText: 'Alice' });
+    await expect(updatedPc.locator('.pc-av [data-lucide="rocket"]')).toBeVisible();
+
+    // Verify API player data via request
+    const players = await (await request.get('/api.php/players')).json();
+    const alice = players.find(p => p.name.includes('Alice'));
+    expect(alice.emoji).toBe('rocket');
+
+    // Verify login with new PIN (5678) works via /api.php/auth
+    const loginRes = await request.post('/api.php/auth', {
+      data: { player_id: alice.id, pin: '5678' }
+    });
+    expect(loginRes.status()).toBe(200);
+    const loginData = await loginRes.json();
+    expect(loginData.token).toBeTruthy();
   });
 });
 
