@@ -1127,4 +1127,39 @@ test.describe('API Handler Integration Suite', () => {
     expect(parseFloat(exp.amount)).toBe(40);
     expect(exp.paidBy || exp.paid_by).toBeNull();
   });
+
+  test('Billing — individual guest direct payment (paid_slots)', async ({ request }) => {
+    const setupRes = await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } });
+    const admin = await setupRes.json();
+    const auth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const H = { 'X-Token': auth.token, 'Content-Type': 'application/json' };
+
+    await request.put('/api.php/config', { headers: H, data: { cost: '10', courts: '1' } });
+    const alice = await (await request.post('/api.php/players', { headers: H, data: { name: 'Alice', pin: '2222' } })).json();
+    const bob = await (await request.post('/api.php/players', { headers: H, data: { name: 'Bob', pin: '3333' } })).json();
+
+    const sRes = await (await request.put('/api.php/sessions/new', {
+      headers: H,
+      data: { date: '2099-04-01', courts: [[null, null, null, null]], timeStart: '18:00', timeEnd: '20:00' }
+    })).json();
+    const sid = sRes.id;
+
+    // Alice books herself + 2 guests; Bob books himself
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: alice.id } });
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 1, player_id: `${alice.id}|g1` } });
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 2, player_id: `${alice.id}|g2` } });
+    await request.post(`/api.php/sessions/${sid}/book`, { headers: H, data: { court_index: 0, slot_index: 3, player_id: bob.id } });
+
+    // Only Guest 1 of Alice paid directly
+    const chargeRes = await request.post('/api.php/charge', {
+      headers: H,
+      data: { items: [{ id: sid, total_price: 40, paid_slots: [`${alice.id}|g1`] }] }
+    });
+    expect(chargeRes.ok()).toBeTruthy();
+
+    const players = await (await request.get('/api.php/players', { headers: H })).json();
+    // Alice: -30 (3 slots) + 10 (1 guest direct) = -20; Bob: -10
+    expect(players.find(p => p.id === alice.id).balance).toBe(-20);
+    expect(players.find(p => p.id === bob.id).balance).toBe(-10);
+  });
 });

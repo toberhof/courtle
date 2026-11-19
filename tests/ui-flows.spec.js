@@ -865,6 +865,60 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
   });
 
+  test('26b — Billing: mark player guests individually as directly paid', async ({ page, request }) => {
+    const H = { 'Content-Type': 'application/json', 'X-Token': aToken };
+    const aliceRes = await request.get('/api.php/players', { headers: H });
+    const players = await aliceRes.json();
+    const alice = players.find(p => p.name === 'Alice');
+    expect(alice).toBeTruthy();
+
+    const pastDate = '2020-04-05';
+    const sRes = await request.put('/api.php/sessions/new', {
+      headers: H,
+      data: {
+        date: pastDate,
+        timeStart: '1800',
+        timeEnd: '2000',
+        courts: [[alice.id, `${alice.id}|g1`, `${alice.id}|g2`, null]],
+      },
+    });
+    const sess = await sRes.json();
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await navigateAdmin(page, 'billing');
+    await expect(page.locator('#view-billing')).toHaveClass(/active/);
+
+    // Open billing modal for the session
+    const item = page.locator('.billing-item', { hasText: '5. Apr' }).first();
+    await item.locator('button', { hasText: 'Prüfen' }).click();
+    await expect(page.locator('#mo-billing')).toHaveClass(/open/);
+
+    // Verify Alice has 3 separate rows: own slot + Gast 1 + Gast 2
+    const rows = page.locator('#mo-billing-body .billing-p-row');
+    await expect(rows).toHaveCount(3);
+    await expect(page.locator('#mo-billing-body .billing-p-row.is-guest')).toHaveCount(2);
+
+    // Mark only Gast 1 as directly paid
+    const g1Row = page.locator(`[id="billing-p-row-${sess.id}-${alice.id}|g1"]`);
+    await g1Row.locator('input[type="checkbox"]').check();
+    await expect(g1Row).toHaveClass(/is-direct/);
+
+    // Step 2: verify debit 30,00 € and direct 10,00 €
+    await page.locator('#mo-billing-foot .btn-pri').click();
+    await expect(page.locator('#mo-billing-body')).toContainText('30,00 €');
+    await expect(page.locator('#mo-billing-body')).toContainText('Direkt bezahlt: +10,00 €');
+
+    // Finish billing
+    await page.locator('#mo-billing-foot .btn-pri').click();
+    await expect(page.locator('#mo-billing')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Verify Alice's balance reflects -30 + 10 = -20 delta
+    const pAfter = await (await request.get('/api.php/players', { headers: H })).json();
+    const aliceAfter = pAfter.find(p => p.id === alice.id);
+    expect(aliceAfter.balance).toBe(alice.balance - 20);
+  });
+
   test('27 — Player edit modal: change PIN and choose icon', async ({ page, request }) => {
     await navigateAdmin(page, 'players');
     await expect(page.locator('#view-players')).toHaveClass(/active/);
@@ -913,6 +967,89 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     expect(loginRes.status()).toBe(200);
     const loginData = await loginRes.json();
     expect(loginData.token).toBeTruthy();
+  });
+
+  test('28 — Invoice-Session Linking: uninvoiced sessions, batch invoice creation & badges', async ({ request, page }) => {
+    const H = { 'Content-Type': 'application/json', 'X-Token': aToken };
+    const players = await (await request.get('/api.php/players', { headers: H })).json();
+    const alice = players.find(p => p.name === 'Alice');
+    expect(alice).toBeTruthy();
+
+    // Create two past sessions with Alice booked
+    const s1 = await (await request.put('/api.php/sessions/new', {
+      headers: H,
+      data: { date: '2025-05-01', timeStart: '19:00', timeEnd: '21:00', courts: [[alice.id, null, null, null]] },
+    })).json();
+    const s2 = await (await request.put('/api.php/sessions/new', {
+      headers: H,
+      data: { date: '2025-05-08', timeStart: '19:00', timeEnd: '21:00', courts: [[alice.id, null, null, null]] },
+    })).json();
+
+    // Charge session 1 via team_abo (leaves no expense/invoice linked yet)
+    const chRes = await request.post('/api.php/charge', {
+      headers: H,
+      data: { items: [{ id: s1.id, paid_pids: [] }] },
+    });
+    expect(chRes.status()).toBe(200);
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await navigateAdmin(page, 'billing');
+    await expect(page.locator('#view-billing')).toHaveClass(/active/);
+
+    // Both past sessions should show under "Rechnung offen (2)"
+    const uninvTab = page.locator('#billing-tab-uninvoiced');
+    await expect(uninvTab).toContainText('Rechnung offen (2)');
+    await uninvTab.click();
+
+    await expect(page.locator('#billing-content')).toContainText('1. Mai 25');
+    await expect(page.locator('#billing-content')).toContainText('8. Mai 25');
+
+    // Select both uninvoiced sessions and open invoice modal
+    const selectAll = page.locator('#billing-content input[type="checkbox"]').first();
+    await selectAll.check();
+    await expect(page.locator('#billing-footer-btn')).toBeEnabled();
+    await expect(page.locator('#billing-footer-btn')).toContainText('Rechnung für Auswahl erfassen');
+    await page.click('#billing-footer-btn');
+
+    await expect(page.locator('#mo-expense')).toHaveClass(/open/);
+    await expect(page.locator('#ex-amount')).toHaveValue('20.00');
+    await expect(page.locator('#ex-reconcile-bar')).toContainText('2 Sessions ausgewählt');
+    await expect(page.locator('#ex-reconcile-bar')).toContainText('Entspricht Rechnungsbetrag');
+
+    await page.fill('#ex-note', 'Rechnung Mai 2025');
+    await page.locator('#mo-expense button:has-text("Speichern")').click();
+    await expect(page.locator('#mo-expense')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // API should persist session_ids on the created expense
+    const expenses = await (await request.get('/api.php/expenses', { headers: H })).json();
+    const maiExp = expenses.find(e => e.note === 'Rechnung Mai 2025');
+    expect(maiExp).toBeTruthy();
+    expect(maiExp.session_ids).toEqual(expect.arrayContaining([s1.id, s2.id]));
+
+    // Tab count drops to 0 and empty state renders
+    await expect(uninvTab).toContainText('Rechnung offen (0)');
+    await expect(page.locator('#billing-content')).toContainText('Alle Sessions abgedeckt');
+
+    // Charged & Open tabs show the green invoice badge on those sessions
+    await page.click('#billing-tab-charged');
+    await expect(page.locator('#billing-content')).toContainText('Rechnung: Rechnung Mai 2025');
+    await page.click('#billing-tab-open');
+    await expect(page.locator('#billing-content')).toContainText('Rechnung: Rechnung Mai 2025');
+
+    // Finances ledger shows the invoice with "2 Sessions" badge
+    await navigateAdmin(page, 'history');
+    await page.click('#hist-tab-expenses');
+    await expect(page.locator('#expenses-container')).toContainText('Rechnung Mai 2025');
+    await expect(page.locator('#expenses-container')).toContainText('2 Sessions');
+
+    // Reverting session 1 player charge must NOT delete the multi-session operator invoice
+    const revRes = await request.delete(`/api.php/charge/${s1.id}`, { headers: H });
+    expect(revRes.status()).toBe(200);
+    const expensesAfterRev = await (await request.get('/api.php/expenses', { headers: H })).json();
+    const stillThere = expensesAfterRev.find(e => e.id === maiExp.id);
+    expect(stillThere).toBeTruthy();
+    expect(stillThere.session_ids).toEqual(expect.arrayContaining([s1.id, s2.id]));
   });
 });
 

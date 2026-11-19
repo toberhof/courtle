@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:511-->
+<!--built:512-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=511">
+<link rel="stylesheet" href="style.css?build=512">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=511" defer></script>
-<script src="app.js?build=511" defer></script>
+<script src="i18n.js?build=512" defer></script>
+<script src="app.js?build=512" defer></script>
 
 <div class="app-shell">
 
@@ -239,6 +239,7 @@ if ('serviceWorker' in navigator) {
     <div class="seg-tabs mb4" role="tablist">
       <button class="seg-tab active" id="billing-tab-open" role="tab" aria-selected="true" onclick="setBillingTab('open')"></button>
       <button class="seg-tab" id="billing-tab-deferred" role="tab" aria-selected="false" onclick="setBillingTab('deferred')"></button>
+      <button class="seg-tab" id="billing-tab-uninvoiced" role="tab" aria-selected="false" onclick="setBillingTab('uninvoiced')"></button>
       <button class="seg-tab" id="billing-tab-charged" role="tab" aria-selected="false" onclick="setBillingTab('charged')"></button>
     </div>
     <div id="billing-content"></div>
@@ -827,7 +828,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 511)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 512)</span>
 
 </footer>
 
@@ -1004,15 +1005,32 @@ if ('serviceWorker' in navigator) {
 <div class="mo" id="mo-edit-expense">
   <div class="mo-box">
     <div class="mo-head"><h2 class="mo-title" data-i18n="expenses.edit_title">Court-Kosten bearbeiten</h2><button class="mo-close btn-icon" onclick="closeMo('mo-edit-expense')"><i data-lucide="x"></i></button></div>
-    <div class="fg"><label class="fl" data-i18n="expenses.amount">Betrag</label><input type="number" id="eex-amount" class="fi" data-i18n-placeholder="expenses.amount_placeholder" placeholder="3000" min="1" step="0.01"></div>
-    <div class="fg"><label class="fl" data-i18n="expenses.date">Datum</label><input type="date" id="eex-date" class="fi"></div>
-    <div class="fg"><label class="fl" data-i18n="expenses.note">Notiz</label><input type="text" id="eex-note" class="fi" data-i18n-placeholder="expenses.note_placeholder" placeholder="z.B. Rechnung Halle 2026"></div>
-    <div class="fg"><label class="fl" data-i18n="expenses.paid_by">Bezahlt von</label>
-      <div class="billing-select-wrap">
-        <select id="eex-paid-by" class="billing-payer-select">
-          <option value="" data-i18n="billing.paid_by_team">Teamkasse</option>
-        </select>
-        <i data-lucide="chevron-down" class="billing-select-arrow"></i>
+    <div class="mo-body">
+      <div class="fg"><label class="fl" data-i18n="expenses.amount">Betrag</label><input type="number" id="eex-amount" class="fi" data-i18n-placeholder="expenses.amount_placeholder" placeholder="3000" min="1" step="0.01" oninput="updateExpenseReconcile('eex')"></div>
+      <div class="fg"><label class="fl" data-i18n="expenses.date">Datum</label><input type="date" id="eex-date" class="fi" onchange="onExpenseDateChange('eex')"></div>
+      <div class="fg"><label class="fl" data-i18n="expenses.note">Notiz</label><input type="text" id="eex-note" class="fi" data-i18n-placeholder="expenses.note_placeholder" placeholder="z.B. Rechnung Halle 2026"></div>
+      <div class="fg"><label class="fl" data-i18n="expenses.paid_by">Bezahlt von</label>
+        <div class="billing-select-wrap">
+          <select id="eex-paid-by" class="billing-payer-select">
+            <option value="" data-i18n="billing.paid_by_team">Teamkasse</option>
+          </select>
+          <i data-lucide="chevron-down" class="billing-select-arrow"></i>
+        </div>
+      </div>
+      <div class="fg">
+        <div class="flex items-c just-b mb1 wrap g1">
+          <label class="fl" style="margin-bottom:0" data-i18n="expenses.linked_sessions">Verknüpfte Sessions</label>
+          <div class="flex items-c g1">
+            <button type="button" class="btn btn-sec btn-xs" onclick="autoMatchExpenseSessions('eex')"><i data-lucide="wand-2" style="width:12px;height:12px"></i> <span data-i18n="expenses.auto_match">Passende wählen</span></button>
+          </div>
+        </div>
+        <div class="player-filter-pills mb2" id="eex-session-filter-pills">
+          <button type="button" class="pf-pill active" data-filter="likely" onclick="setExpenseSessionFilter('eex', 'likely')" data-i18n="expenses.filter_likely">Rechnung offen</button>
+          <button type="button" class="pf-pill" data-filter="upcoming" onclick="setExpenseSessionFilter('eex', 'upcoming')" data-i18n="expenses.filter_upcoming">Geplant</button>
+          <button type="button" class="pf-pill" data-filter="all" onclick="setExpenseSessionFilter('eex', 'all')" data-i18n="expenses.filter_all">Alle</button>
+        </div>
+        <div class="expense-sessions-picker" id="eex-sessions-list"></div>
+        <div class="expense-reconcile-bar" id="eex-reconcile-bar"></div>
       </div>
     </div>
     <div class="mo-foot">
@@ -1025,16 +1043,33 @@ if ('serviceWorker' in navigator) {
 <div class="mo" id="mo-expense">
   <div class="mo-box">
     <div class="mo-head"><h2 class="mo-title" data-i18n="expenses.title">Court-Kosten erfassen</h2><button class="mo-close btn-icon" onclick="closeMo('mo-expense')"><i data-lucide="x"></i></button></div>
-    <p class="txsm txm mb4" data-i18n="expenses.desc">Trage hier Rechnungen ein, die du aus eigener Tasche für die Courts bezahlt hast.</p>
-    <div class="fg"><label class="fl" data-i18n="expenses.amount">Betrag</label><input type="number" id="ex-amount" class="fi" data-i18n-placeholder="expenses.amount_placeholder" placeholder="3000" min="1" step="0.01"></div>
-    <div class="fg"><label class="fl" data-i18n="expenses.date">Datum</label><input type="date" id="ex-date" class="fi"></div>
-    <div class="fg"><label class="fl" data-i18n="expenses.note">Notiz</label><input type="text" id="ex-note" class="fi" data-i18n-placeholder="expenses.note_placeholder" placeholder="z.B. Rechnung Halle 2026"></div>
-    <div class="fg"><label class="fl" data-i18n="expenses.paid_by">Bezahlt von</label>
-      <div class="billing-select-wrap">
-        <select id="ex-paid-by" class="billing-payer-select">
-          <option value="" data-i18n="billing.paid_by_team">Teamkasse</option>
-        </select>
-        <i data-lucide="chevron-down" class="billing-select-arrow"></i>
+    <div class="mo-body">
+      <p class="txsm txm mb4" data-i18n="expenses.desc">Trage hier Rechnungen ein, die du aus eigener Tasche für die Courts bezahlt hast.</p>
+      <div class="fg"><label class="fl" data-i18n="expenses.amount">Betrag</label><input type="number" id="ex-amount" class="fi" data-i18n-placeholder="expenses.amount_placeholder" placeholder="3000" min="1" step="0.01" oninput="updateExpenseReconcile('ex')"></div>
+      <div class="fg"><label class="fl" data-i18n="expenses.date">Datum</label><input type="date" id="ex-date" class="fi" onchange="onExpenseDateChange('ex')"></div>
+      <div class="fg"><label class="fl" data-i18n="expenses.note">Notiz</label><input type="text" id="ex-note" class="fi" data-i18n-placeholder="expenses.note_placeholder" placeholder="z.B. Rechnung Halle 2026"></div>
+      <div class="fg"><label class="fl" data-i18n="expenses.paid_by">Bezahlt von</label>
+        <div class="billing-select-wrap">
+          <select id="ex-paid-by" class="billing-payer-select">
+            <option value="" data-i18n="billing.paid_by_team">Teamkasse</option>
+          </select>
+          <i data-lucide="chevron-down" class="billing-select-arrow"></i>
+        </div>
+      </div>
+      <div class="fg">
+        <div class="flex items-c just-b mb1 wrap g1">
+          <label class="fl" style="margin-bottom:0" data-i18n="expenses.linked_sessions">Verknüpfte Sessions</label>
+          <div class="flex items-c g1">
+            <button type="button" class="btn btn-sec btn-xs" onclick="autoMatchExpenseSessions('ex')"><i data-lucide="wand-2" style="width:12px;height:12px"></i> <span data-i18n="expenses.auto_match">Passende wählen</span></button>
+          </div>
+        </div>
+        <div class="player-filter-pills mb2" id="ex-session-filter-pills">
+          <button type="button" class="pf-pill active" data-filter="likely" onclick="setExpenseSessionFilter('ex', 'likely')" data-i18n="expenses.filter_likely">Rechnung offen</button>
+          <button type="button" class="pf-pill" data-filter="upcoming" onclick="setExpenseSessionFilter('ex', 'upcoming')" data-i18n="expenses.filter_upcoming">Geplant</button>
+          <button type="button" class="pf-pill" data-filter="all" onclick="setExpenseSessionFilter('ex', 'all')" data-i18n="expenses.filter_all">Alle</button>
+        </div>
+        <div class="expense-sessions-picker" id="ex-sessions-list"></div>
+        <div class="expense-reconcile-bar" id="ex-reconcile-bar"></div>
       </div>
     </div>
     <div class="mo-foot">

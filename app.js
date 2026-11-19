@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:511
-const CLIENT_BUILD = 511;
+// built:512
+const CLIENT_BUILD = 512;
 let S = {
   players: [],
   transactions: [],
@@ -1713,6 +1713,7 @@ function renderExpenses() {
     note: ex.note || '',
     paidBy: ex.paidBy,
     sessionId: ex.sessionId,
+    sessionIds: Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId ? [ex.sessionId] : []),
     timestamp: ex.date + 'T12:00:00'
   }));
 
@@ -1770,7 +1771,15 @@ function renderExpenses() {
         const p = S.players.find(x => x.id === it.paidBy);
         badgesHtml += `<span class="badge bg-pri" style="font-size:10px;padding:1px 6px"><i data-lucide="user" style="width:10px;height:10px"></i> ${esc(p ? p.name : t('billing.outlay_badge', 'Auslage'))}</span>`;
       }
+      const linkedSess = (it.sessionIds || []).map(sid => (S.sessions || []).find(s => s.id === sid)).filter(Boolean).sort((a, b) => a.date.localeCompare(b.date));
+      if (it.sessionIds && it.sessionIds.length > 0) {
+        badgesHtml += `<span class="badge bg-suc" style="font-size:10px;padding:1px 6px"><i data-lucide="calendar-check-2" style="width:10px;height:10px"></i> ${it.sessionIds.length} ${it.sessionIds.length === 1 ? 'Session' : 'Sessions'}</span>`;
+      } else {
+        badgesHtml += `<span class="badge bg-neu" style="font-size:10px;padding:1px 6px"><i data-lucide="file-question" style="width:10px;height:10px"></i> ${esc(t('expenses.unlinked_badge', 'Ohne Session'))}</span>`;
+      }
+      const sessPreview = linkedSess.slice(0, 3).map(s => fmtD(s.date)).join(', ') + (linkedSess.length > 3 ? ` +${linkedSess.length - 3}` : '');
       const metaSource = it.paidBy ? t('billing.outlay_badge', 'Auslage') : t('billing.paid_by_team', 'Teamkasse');
+      const metaLine = `${fmtD(it.date)} · ${esc(metaSource)}${sessPreview ? ` · ${esc(sessPreview)}` : ''}`;
       return `<div class="expense-card">
         <div class="expense-date-badge">
           <div class="month">${esc(monthStr)}</div>
@@ -1778,7 +1787,7 @@ function renderExpenses() {
         </div>
         <div class="expense-card-details">
           <div class="expense-card-note"><span>${esc(expTitle)}</span>${badgesHtml}</div>
-          <div class="expense-card-meta">${fmtD(it.date)} · ${esc(metaSource)}</div>
+          <div class="expense-card-meta">${metaLine}</div>
         </div>
         <div class="expense-card-right">
           <div class="expense-card-amount db">– ${fmtE(it.amount)}</div>
@@ -1829,11 +1838,246 @@ function populateExpensePayerSelect(selId, selectedPid = '') {
   sel.value = selectedPid || '';
 }
 
-function openExpenseModal() {
+let expModalState = {
+  ex: { selected: new Set(), filter: 'likely', editingId: null },
+  eex: { selected: new Set(), filter: 'all', editingId: null }
+};
+
+function getSessionExpenses(sessionId) {
+  if (!sessionId) return [];
+  return (S.expenses || []).filter(ex =>
+    (Array.isArray(ex.sessionIds) && ex.sessionIds.includes(sessionId)) || ex.sessionId === sessionId
+  );
+}
+
+function getSessionExpectedInvoiceCost(s) {
+  if (!s) return 0;
+  if (s.charged) {
+    const txs = (S.transactions || []).filter(x => x.sessionId === s.id && !x.credit);
+    if (txs.length > 0) return txs.reduce((a, x) => a + parseFloat(x.amount || 0), 0);
+  }
+  const tot = billingSessionTotals(s);
+  if (tot.sum > 0) return tot.sum;
+  const activeCourts = (s.courts || []).filter((_, i) => !(s.disabledCourts || []).includes(i)).length || 2;
+  return activeCourts * 4 * getSessionCost(s);
+}
+
+function getSessionInvoiceInfo(s) {
+  const exps = getSessionExpenses(s.id);
+  if (s.cancelled) return { state: 'cancelled', expenses: exps, amount: 0 };
+  const amount = getSessionExpectedInvoiceCost(s);
+  if (exps.length > 0) return { state: 'invoiced', expenses: exps, amount };
+  const ended = sessionEndDate(s) < new Date();
+  const hasBookings = Object.keys(sessionChargeMap(s)).length > 0;
+  if (s.charged || s.billingDeferred || (ended && hasBookings)) {
+    return { state: 'likely', expenses: [], amount };
+  }
+  return { state: 'upcoming', expenses: [], amount };
+}
+
+function renderSessionInvoiceBadge(s) {
+  const info = getSessionInvoiceInfo(s);
+  if (info.state === 'cancelled') return '';
+  if (info.state === 'invoiced') {
+    const ex = info.expenses[0];
+    const label = ex.note || t('history.filter_expenses', 'Court-Kosten');
+    const extra = info.expenses.length > 1 ? ` (+${info.expenses.length - 1})` : '';
+    const text = t('expenses.paid_by_invoice', 'Rechnung: {name}').replace('{name}', label + extra);
+    if (isAdmin) {
+      return `<button type="button" class="invoice-pill bg-suc" style="border:none;cursor:pointer" onclick="event.stopPropagation();editExpense('${esc(ex.id)}')" title="${esc(fmtE(ex.amount))}"><i data-lucide="file-check-2" style="width:11px;height:11px"></i> ${esc(text)}</button>`;
+    }
+    return `<span class="invoice-pill bg-suc"><i data-lucide="file-check-2" style="width:11px;height:11px"></i> ${esc(text)}</span>`;
+  }
+  if (info.state === 'likely') {
+    return `<span class="invoice-pill bg-war"><i data-lucide="file-clock" style="width:11px;height:11px"></i> ${esc(t('expenses.awaiting_invoice', 'Rechnung offen'))}</span>`;
+  }
+  return `<span class="invoice-pill bg-neu"><i data-lucide="calendar-clock" style="width:11px;height:11px"></i> ${esc(t('expenses.upcoming_invoice', 'Geplant (ohne Rechnung)'))}</span>`;
+}
+
+function setExpenseSessionFilter(prefix, filter) {
+  expModalState[prefix].filter = filter;
+  renderExpenseSessionPicker(prefix);
+}
+
+function toggleExpenseSessionLink(prefix, sid, checked) {
+  const sel = expModalState[prefix].selected;
+  if (checked) sel.add(sid); else sel.delete(sid);
+  updateExpenseReconcile(prefix);
+}
+
+function onExpenseDateChange(prefix) {
+  renderExpenseSessionPicker(prefix);
+}
+
+function applyExpenseSelectedSum(prefix) {
+  const selIds = [...expModalState[prefix].selected];
+  const selSum = selIds.reduce((sum, sid) => {
+    const s = (S.sessions || []).find(x => x.id === sid);
+    return sum + (s ? getSessionExpectedInvoiceCost(s) : 0);
+  }, 0);
+  const inp = document.getElementById(prefix + '-amount');
+  if (inp) inp.value = selSum.toFixed(2);
+  updateExpenseReconcile(prefix);
+}
+
+function autoMatchExpenseSessions(prefix) {
+  const st = expModalState[prefix];
+  const dateVal = document.getElementById(prefix + '-date')?.value || toDS(new Date());
+  const amtInput = document.getElementById(prefix + '-amount');
+  const amt = parseFloat(amtInput?.value || '0') || 0;
+
+  const candidates = (S.sessions || [])
+    .filter(s => !s.cancelled && s.date <= dateVal)
+    .filter(s => {
+      const info = getSessionInvoiceInfo(s);
+      if (info.state === 'likely') return true;
+      if (st.editingId && info.expenses.some(ex => ex.id === st.editingId)) return true;
+      return false;
+    })
+    .sort((a, b) => a.date.localeCompare(b.date) || (a.timeStart || '').localeCompare(b.timeStart || ''));
+
+  const nextSel = new Set();
+  if (amt > 0) {
+    let running = 0;
+    for (const s of candidates) {
+      const cost = getSessionExpectedInvoiceCost(s);
+      if (cost <= 0) continue;
+      if (running + cost <= amt + 0.01) {
+        nextSel.add(s.id);
+        running += cost;
+      }
+    }
+  } else {
+    let running = 0;
+    for (const s of candidates) {
+      nextSel.add(s.id);
+      running += getSessionExpectedInvoiceCost(s);
+    }
+    if (amtInput && running > 0) {
+      amtInput.value = running.toFixed(2);
+    }
+  }
+
+  st.selected = nextSel;
+  renderExpenseSessionPicker(prefix);
+  updateExpenseReconcile(prefix);
+}
+
+function renderExpenseSessionPicker(prefix) {
+  const st = expModalState[prefix];
+  const pillsWrap = document.getElementById(`${prefix}-session-filter-pills`);
+  if (pillsWrap) {
+    pillsWrap.querySelectorAll('.pf-pill').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.filter === st.filter);
+    });
+  }
+  const listEl = document.getElementById(`${prefix}-sessions-list`);
+  if (!listEl) return;
+
+  const allCandidates = (S.sessions || [])
+    .filter(s => !s.cancelled)
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.timeStart || '').localeCompare(a.timeStart || ''));
+
+  const filtered = allCandidates.filter(s => {
+    if (st.selected.has(s.id)) return true;
+    const info = getSessionInvoiceInfo(s);
+    if (st.filter === 'likely') return info.state === 'likely';
+    if (st.filter === 'upcoming') return info.state === 'upcoming';
+    return true;
+  });
+
+  if (!filtered.length) {
+    listEl.innerHTML = `<div class="txxs txm" style="padding:var(--sp3);text-align:center">${esc(t('expenses.no_sessions_to_link', 'Keine passenden Sessions gefunden.'))}</div>`;
+    return;
+  }
+
+  listEl.innerHTML = filtered.map(s => {
+    const checked = st.selected.has(s.id);
+    const info = getSessionInvoiceInfo(s);
+    const otherExps = info.expenses.filter(ex => ex.id !== st.editingId);
+    const statusPill = otherExps.length
+      ? `<span class="badge bg-suc" style="font-size:10px;padding:1px 5px">${esc(otherExps[0].note || t('history.filter_expenses', 'Court-Kosten'))}</span>`
+      : (s.charged
+        ? `<span class="badge bg-neu" style="font-size:10px;padding:1px 5px">${esc(t('session.charged', 'Abgerechnet'))}</span>`
+        : (info.state === 'likely'
+          ? `<span class="badge bg-war" style="font-size:10px;padding:1px 5px">${esc(t('expenses.awaiting_invoice', 'Rechnung offen'))}</span>`
+          : `<span class="badge bg-neu" style="font-size:10px;padding:1px 5px">${esc(t('expenses.upcoming_invoice', 'Geplant (ohne Rechnung)'))}</span>`));
+
+    const { start } = getSessionTime(s);
+    const timeLabel = start ? ` · ${fmtTime(start)}` : '';
+    return `<label class="expense-session-row ${checked ? 'is-selected' : ''}">
+      <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleExpenseSessionLink('${prefix}', '${s.id}', this.checked)">
+      <div class="expense-session-info">
+        <div class="expense-session-title">${esc(getSessionName(s))} ${statusPill}</div>
+        <div class="expense-session-meta">${esc(fmtD(s.date))}${esc(timeLabel)}</div>
+      </div>
+      <div class="expense-session-amt">${fmtE(info.amount)}</div>
+    </label>`;
+  }).join('');
+  if (window.lucide) lucide.createIcons();
+}
+
+function updateExpenseReconcile(prefix) {
+  const bar = document.getElementById(`${prefix}-reconcile-bar`);
+  if (!bar) return;
+  const selIds = [...expModalState[prefix].selected];
+  const selSum = selIds.reduce((sum, sid) => {
+    const s = (S.sessions || []).find(x => x.id === sid);
+    return sum + (s ? getSessionExpectedInvoiceCost(s) : 0);
+  }, 0);
+  const amt = parseFloat(document.getElementById(`${prefix}-amount`)?.value || '0') || 0;
+
+  if (!selIds.length) {
+    bar.innerHTML = `<span class="txxs txm">${esc(t('expenses.reconcile_summary', '{n} Sessions ausgewählt ({sum})').replace('{n}', '0').replace('{sum}', fmtE(0)))}</span>`;
+    return;
+  }
+
+  const diff = amt - selSum;
+  const isMatch = amt > 0 && Math.abs(diff) < 0.01;
+  const summaryText = t('expenses.reconcile_summary', '{n} Sessions ausgewählt ({sum})')
+    .replace('{n}', String(selIds.length))
+    .replace('{sum}', fmtE(selSum));
+
+  let statusHtml = '';
+  if (amt > 0) {
+    if (isMatch) {
+      statusHtml = `<span class="badge bg-suc" style="font-size:10px">${esc(t('expenses.reconcile_match', '✓ Entspricht Rechnungsbetrag'))}</span>`;
+    } else {
+      const sign = diff > 0 ? '+' : '–';
+      statusHtml = `<span class="badge bg-war" style="font-size:10px">${esc(t('expenses.reconcile_diff', 'Differenz: {diff}').replace('{diff}', sign + fmtE(Math.abs(diff))))}</span>`;
+    }
+  }
+
+  const applyBtn = Math.abs(amt - selSum) > 0.009 && selSum > 0
+    ? `<button type="button" class="btn btn-sec btn-xs" onclick="applyExpenseSelectedSum('${prefix}')">${esc(t('expenses.apply_sum', 'Betrag übernehmen'))} (${fmtE(selSum)})</button>`
+    : '';
+
+  bar.innerHTML = `<div class="expense-reconcile-left"><span class="txxs fw6">${esc(summaryText)}</span>${statusHtml}</div>${applyBtn}`;
+}
+
+function openExpenseModal(preselectedSessionIds = []) {
+  const preIds = Array.isArray(preselectedSessionIds) ? preselectedSessionIds : [];
   document.getElementById('ex-amount').value = '';
   document.getElementById('ex-date').value = toDS(new Date());
   document.getElementById('ex-note').value = '';
   populateExpensePayerSelect('ex-paid-by', '');
+
+  expModalState.ex.editingId = null;
+  expModalState.ex.selected = new Set(preIds);
+  expModalState.ex.filter = preIds.length ? 'all' : 'likely';
+
+  if (preIds.length > 0) {
+    const preSum = preIds.reduce((sum, sid) => {
+      const s = (S.sessions || []).find(x => x.id === sid);
+      return sum + (s ? getSessionExpectedInvoiceCost(s) : 0);
+    }, 0);
+    if (preSum > 0) {
+      document.getElementById('ex-amount').value = preSum.toFixed(2);
+    }
+  }
+
+  renderExpenseSessionPicker('ex');
+  updateExpenseReconcile('ex');
   openMo('mo-expense');
   setTimeout(() => document.getElementById('ex-amount').focus(), 100);
 }
@@ -1843,10 +2087,11 @@ async function saveExpense() {
   const date = document.getElementById('ex-date').value || toDS(new Date());
   const note = document.getElementById('ex-note').value.trim();
   const paidBy = document.getElementById('ex-paid-by')?.value || null;
+  const sessionIds = [...expModalState.ex.selected];
   try {
-    const res = await apiFetch('POST', '/expenses', { amount: amt, date, note, paid_by: paidBy });
-    if (!S.expenses) S.expenses = [];
-    S.expenses.push({ id: res.id, amount: amt, date, note, paidBy, createdAt: new Date().toISOString() });
+    await apiFetch('POST', '/expenses', { amount: amt, date, note, paid_by: paidBy, session_ids: sessionIds });
+    await loadState();
+    billingUninvoicedSelected.clear();
     closeMo('mo-expense');
     renderAll();
     showToast(t('toast.expense_saved'));
@@ -1866,6 +2111,13 @@ function editExpense(exId) {
   document.getElementById('eex-date').value = ex.date;
   document.getElementById('eex-note').value = ex.note || '';
   populateExpensePayerSelect('eex-paid-by', ex.paidBy || '');
+
+  expModalState.eex.editingId = exId;
+  expModalState.eex.selected = new Set(Array.isArray(ex.sessionIds) ? ex.sessionIds : (ex.sessionId ? [ex.sessionId] : []));
+  expModalState.eex.filter = 'all';
+  renderExpenseSessionPicker('eex');
+  updateExpenseReconcile('eex');
+
   openMo('mo-edit-expense');
   setTimeout(() => document.getElementById('eex-amount').focus(), 100);
 }
@@ -1877,12 +2129,10 @@ async function saveEditedExpense() {
   const date = document.getElementById('eex-date').value || toDS(new Date());
   const note = document.getElementById('eex-note').value.trim();
   const paidBy = document.getElementById('eex-paid-by')?.value || null;
+  const sessionIds = [...expModalState.eex.selected];
   try {
-    await apiFetch('PUT', '/expenses/' + editExpenseId, { amount: amt, date, note, paid_by: paidBy });
-    const idx = S.expenses.findIndex(x => x.id === editExpenseId);
-    if (idx >= 0) {
-      S.expenses[idx] = { ...S.expenses[idx], amount: amt, date, note, paidBy };
-    }
+    await apiFetch('PUT', '/expenses/' + editExpenseId, { amount: amt, date, note, paid_by: paidBy, session_ids: sessionIds });
+    await loadState();
     editExpenseId = null;
     closeMo('mo-edit-expense');
     renderAll();
@@ -2626,6 +2876,11 @@ function renderAdminPlan(keepDetailsOpen) {
             <i data-lucide="tag"></i>
             <span>${fmtE(sessCost)} / Slot</span>
           </div>` : ''}
+          ${!isCancelled ? `
+          <div class="plan-meta-row">
+            <i data-lucide="receipt"></i>
+            <span>${renderSessionInvoiceBadge(sess)}</span>
+          </div>` : ''}
           ${sess.note ? `
           <div class="plan-meta-row plan-note-highlight">
             <i data-lucide="message-square"></i>
@@ -3302,6 +3557,8 @@ function getChargeMap(sess) {
 let billingTab = 'open';
 let billingDeselected = new Set();
 let billingChargedLimit = 20;
+let billingUninvoicedSelected = new Set();
+let uninvoicedShowUpcoming = false;
 let isCharging = false;
 let billingModal = { ids: [], paid: {}, step: 1 };
 
@@ -3342,6 +3599,51 @@ function getChargedSessions() {
   return (S.sessions || [])
     .filter(s => s.charged)
     .sort((a, b) => b.date.localeCompare(a.date) || (b.timeStart || '').localeCompare(a.timeStart || ''));
+}
+
+function getLikelyUninvoicedSessions() {
+  return (S.sessions || [])
+    .filter(s => getSessionInvoiceInfo(s).state === 'likely')
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.timeStart || '').localeCompare(a.timeStart || ''));
+}
+
+function getAllUninvoicedSessions() {
+  return (S.sessions || [])
+    .filter(s => {
+      const st = getSessionInvoiceInfo(s).state;
+      return st === 'likely' || st === 'upcoming';
+    })
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.timeStart || '').localeCompare(a.timeStart || ''));
+}
+
+function getUninvoicedSessions() {
+  return uninvoicedShowUpcoming ? getAllUninvoicedSessions() : getLikelyUninvoicedSessions();
+}
+
+function setUninvoicedFilter(showUpcoming) {
+  uninvoicedShowUpcoming = !!showUpcoming;
+  renderBilling();
+}
+
+function toggleUninvoicedItem(id, checked) {
+  if (checked) billingUninvoicedSelected.add(id); else billingUninvoicedSelected.delete(id);
+  renderBilling();
+}
+
+function toggleUninvoicedAll(checked) {
+  const ids = getUninvoicedSessions().map(s => s.id);
+  if (checked) {
+    ids.forEach(id => billingUninvoicedSelected.add(id));
+  } else {
+    ids.forEach(id => billingUninvoicedSelected.delete(id));
+  }
+  renderBilling();
+}
+
+function openExpenseModalForUninvoicedSelection() {
+  const validIds = new Set(getUninvoicedSessions().map(s => s.id));
+  const ids = [...billingUninvoicedSelected].filter(id => validIds.has(id));
+  if (ids.length) openExpenseModal(ids);
 }
 
 function billingSessionTotals(sess) {
@@ -3397,8 +3699,10 @@ function renderBilling() {
   const openList = getOpenBillingSessions();
   const deferredList = getDeferredBillingSessions();
   const chargedList = getChargedSessions();
+  const likelyUninvoiced = getLikelyUninvoicedSessions();
   const tabOpen = document.getElementById('billing-tab-open');
   const tabDef = document.getElementById('billing-tab-deferred');
+  const tabUninv = document.getElementById('billing-tab-uninvoiced');
   const tabCh = document.getElementById('billing-tab-charged');
   if (tabOpen) {
     tabOpen.textContent = `${t('billing.tab_open')} (${openList.length})`;
@@ -3409,6 +3713,11 @@ function renderBilling() {
     tabDef.textContent = `${t('billing.tab_deferred')} (${deferredList.length})`;
     tabDef.classList.toggle('active', billingTab === 'deferred');
     tabDef.setAttribute('aria-selected', billingTab === 'deferred');
+  }
+  if (tabUninv) {
+    tabUninv.textContent = `${t('billing.tab_uninvoiced', 'Rechnung offen')} (${likelyUninvoiced.length})`;
+    tabUninv.classList.toggle('active', billingTab === 'uninvoiced');
+    tabUninv.setAttribute('aria-selected', billingTab === 'uninvoiced');
   }
   if (tabCh) {
     tabCh.textContent = t('billing.tab_charged');
@@ -3427,6 +3736,7 @@ function renderBilling() {
   }
 
   const footer = document.getElementById('billing-footer');
+  const footerBtn = document.getElementById('billing-footer-btn');
   if (billingTab === 'open') {
     if (!openList.length) {
       root.innerHTML = `<div class="empty"><i data-lucide="party-popper"></i><h3>${t('billing.empty_title')}</h3><p class="txsm">${t('billing.empty_text')}</p></div>`;
@@ -3443,7 +3753,7 @@ function renderBilling() {
             <input type="checkbox" ${sel ? 'checked' : ''} onchange="toggleBillingItem('${s.id}', this.checked)" aria-label="${esc(getSessionName(s))}">
             <div class="bi-main">
               <div class="bi-head">
-                <div class="bi-title">${esc(getSessionName(s))}</div>
+                <div class="bi-title">${esc(getSessionName(s))} ${renderSessionInvoiceBadge(s)}</div>
                 <div class="bi-sum">${fmtE(tot.sum)}</div>
               </div>
               <div class="bi-meta">${billingSessionHeader(s)}</div>
@@ -3459,7 +3769,11 @@ function renderBilling() {
       </div>`;
       const sum = selected.reduce((a, s) => a + billingSessionTotals(s).sum, 0);
       document.getElementById('billing-footer-sum').textContent = t('billing.selected_summary').replace('{n}', selected.length).replace('{sum}', fmtE(sum));
-      document.getElementById('billing-footer-btn').disabled = selected.length === 0;
+      if (footerBtn) {
+        footerBtn.onclick = openBillingModalForSelection;
+        footerBtn.innerHTML = `<i data-lucide="credit-card"></i> <span>${esc(t('billing.charge_selected'))}</span>`;
+        footerBtn.disabled = selected.length === 0;
+      }
       footer.hidden = false;
     }
   } else if (billingTab === 'deferred') {
@@ -3473,7 +3787,7 @@ function renderBilling() {
           return `<div class="billing-item">
             <div class="bi-main">
               <div class="bi-head">
-                <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('billing.badge_deferred')}</span></div>
+                <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('billing.badge_deferred')}</span> ${renderSessionInvoiceBadge(s)}</div>
                 <div class="bi-sum">${fmtE(tot.sum)}</div>
               </div>
               <div class="bi-meta">${billingSessionHeader(s)}</div>
@@ -3488,6 +3802,58 @@ function renderBilling() {
         }).join('')}
       </div>`;
     }
+  } else if (billingTab === 'uninvoiced') {
+    const allUninv = getAllUninvoicedSessions();
+    const uninvList = getUninvoicedSessions();
+    const filterBar = `
+      <div class="player-filter-pills mb3">
+        <button type="button" class="pf-pill ${!uninvoicedShowUpcoming ? 'active' : ''}" onclick="setUninvoicedFilter(false)">${esc(t('expenses.filter_likely', 'Rechnung offen'))} <span class="pf-cnt">${likelyUninvoiced.length}</span></button>
+        <button type="button" class="pf-pill ${uninvoicedShowUpcoming ? 'active' : ''}" onclick="setUninvoicedFilter(true)">${esc(t('expenses.filter_all', 'Alle'))} <span class="pf-cnt">${allUninv.length}</span></button>
+      </div>`;
+    if (!uninvList.length) {
+      root.innerHTML = filterBar + `<div class="empty"><i data-lucide="file-check-2"></i><h3>${esc(t('billing.uninvoiced_empty_title', 'Alle Sessions abgedeckt'))}</h3><p class="txsm">${esc(t('billing.uninvoiced_empty_text', 'Aktuell sind alle gespielten Sessions einer Rechnung zugeordnet.'))}</p></div>`;
+      footer.hidden = true;
+    } else {
+      const selected = uninvList.filter(s => billingUninvoicedSelected.has(s.id));
+      const allSel = selected.length === uninvList.length;
+      root.innerHTML = filterBar + `<div class="billing-list">
+        <label class="flex items-c g2 txsm fw6" style="cursor:pointer"><input type="checkbox" style="width:20px;height:20px" ${allSel ? 'checked' : ''} onchange="toggleUninvoicedAll(this.checked)"> ${t('billing.select_all')}</label>
+        ${uninvList.map(s => {
+          const info = getSessionInvoiceInfo(s);
+          const sel = billingUninvoicedSelected.has(s.id);
+          const tot = billingSessionTotals(s);
+          const playerStatus = s.charged
+            ? `<span class="badge bg-neu">${esc(t('session.charged', 'Abgerechnet'))}</span>`
+            : (s.billingDeferred
+              ? `<span class="badge bg-neu">${esc(t('billing.badge_deferred', 'Zurückgestellt'))}</span>`
+              : (tot.slots > 0
+                ? `<span class="badge bg-pri">${t('billing.session_meta').replace('{slots}', tot.slots).replace('{players}', tot.players)}</span>`
+                : ''));
+          return `<div class="billing-item ${sel ? 'sel' : ''}">
+            <input type="checkbox" ${sel ? 'checked' : ''} onchange="toggleUninvoicedItem('${s.id}', this.checked)" aria-label="${esc(getSessionName(s))}">
+            <div class="bi-main">
+              <div class="bi-head">
+                <div class="bi-title">${esc(getSessionName(s))} ${renderSessionInvoiceBadge(s)} ${playerStatus}</div>
+                <div class="bi-sum">${fmtE(info.amount)}</div>
+              </div>
+              <div class="bi-meta">${billingSessionHeader(s)}</div>
+              <div class="bi-actions">
+                <button class="btn btn-ok btn-sm" onclick="openExpenseModal(['${s.id}'])" type="button"><i data-lucide="plus-circle"></i> ${esc(t('expenses.create_for_session', 'Rechnung erfassen'))}</button>
+                <button class="btn-nav" onclick="openBillingInPlanner('${s.id}')" type="button"><i data-lucide="arrow-up-right"></i> ${t('billing.open_in_planner')}</button>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+      const sum = selected.reduce((a, s) => a + getSessionInvoiceInfo(s).amount, 0);
+      document.getElementById('billing-footer-sum').textContent = t('billing.selected_summary').replace('{n}', selected.length).replace('{sum}', fmtE(sum));
+      if (footerBtn) {
+        footerBtn.onclick = openExpenseModalForUninvoicedSelection;
+        footerBtn.innerHTML = `<i data-lucide="receipt"></i> <span>${esc(t('expenses.create_for_selected', 'Rechnung für Auswahl erfassen'))}</span>`;
+        footerBtn.disabled = selected.length === 0;
+      }
+      footer.hidden = false;
+    }
   } else {
     footer.hidden = true;
     if (!chargedList.length) {
@@ -3501,7 +3867,7 @@ function renderBilling() {
         return `<div class="billing-item">
           <div class="bi-main">
             <div class="bi-head">
-              <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('session.charged')}</span></div>
+              <div class="bi-title">${esc(getSessionName(s))} <span class="badge bg-neu">${t('session.charged')}</span> ${renderSessionInvoiceBadge(s)}</div>
               <div class="bi-sum">${fmtE(sum)}</div>
             </div>
             <div class="bi-meta">${billingSessionHeader(s)}</div>
@@ -3548,6 +3914,69 @@ function openChargeModal() {
   const sess = getOrSess(planDate);
   if (sess.charged) { showToast(t('misc.already_charged')); return; }
   openBillingModal([sess.id || planDate]);
+}
+
+function sessionBillingSlots(sess) {
+  const activeCourts = (sess.courts || []).filter((_, i) => !(sess.disabledCourts || []).includes(i));
+  const byPid = {};
+  activeCourts.flat().filter(Boolean).forEach(v => {
+    const base = v.split('|')[0];
+    if (!byPid[base]) byPid[base] = [];
+    byPid[base].push(v);
+  });
+  Object.keys(byPid).forEach(pid => {
+    byPid[pid].sort((a, b) => {
+      if (a === pid) return -1;
+      if (b === pid) return 1;
+      return a.localeCompare(b);
+    });
+  });
+  const counts = {};
+  let slots = 0;
+  Object.entries(byPid).forEach(([pid, list]) => {
+    counts[pid] = list.length;
+    slots += list.length;
+  });
+  return { byPid, counts, slots };
+}
+
+function computeIndividualSlotShares(totalPrice, byPid, roundingMode, paidByPid) {
+  const totalSlots = Object.values(byPid).reduce((a, list) => a + list.length, 0);
+  if (totalSlots <= 0) return {};
+
+  const totalCents = Math.round(totalPrice * 100);
+  const slotShares = {};
+
+  if (roundingMode === 'exact') {
+    const baseCents = Math.floor(totalCents / totalSlots);
+    const remCents = totalCents % totalSlots;
+
+    const slotOrder = [];
+    if (paidByPid && byPid[paidByPid]) {
+      byPid[paidByPid].forEach(sid => slotOrder.push(sid));
+    }
+    Object.entries(byPid).forEach(([pid, list]) => {
+      if (pid === paidByPid) return;
+      list.forEach(sid => slotOrder.push(sid));
+    });
+
+    for (let i = 0; i < slotOrder.length; i++) {
+      const extra = i < remCents ? 1 : 0;
+      slotShares[slotOrder[i]] = (baseCents + extra) / 100;
+    }
+  } else if (roundingMode === 'ceil') {
+    const slotCents = Math.ceil(totalCents / totalSlots);
+    Object.values(byPid).flat().forEach(sid => {
+      slotShares[sid] = slotCents / 100;
+    });
+  } else {
+    const slotCents = Math.round(totalCents / totalSlots);
+    Object.values(byPid).flat().forEach(sid => {
+      slotShares[sid] = slotCents / 100;
+    });
+  }
+
+  return slotShares;
 }
 
 function computeSessionSlotShares(totalPrice, counts, roundingMode, paidByPid) {
@@ -3604,7 +4033,8 @@ function openBillingModal(ids) {
   sessions.forEach(s => {
     const tot = billingSessionTotals(s);
     totalPriceMap[s.id] = tot.sum;
-    payerMap[s.id] = 'team_abo'; // default
+    const linkedExps = getSessionExpenses(s.id);
+    payerMap[s.id] = linkedExps.length ? ('expense:' + linkedExps[0].id) : 'team_abo';
   });
 
   billingModal = { ids: sessions.map(s => s.id), paid: {}, totalPrice: totalPriceMap, payer: payerMap, step: 1 };
@@ -3635,14 +4065,21 @@ function getBillingPayerPlayerId(sid) {
   return null;
 }
 
+function toggleBillingSlotPaid(sid, slotId, checked) {
+  billingModal.paid[sid + ':' + slotId] = checked;
+  const row = document.getElementById(`billing-p-row-${sid}-${slotId}`);
+  if (row) row.classList.toggle('is-direct', checked);
+}
+
 function updateBillingBlockLive(sid) {
   const s = S.sessions.find(x => x.id === sid);
   if (!s) return;
   const tot = billingSessionTotals(s);
+  const { byPid } = sessionBillingSlots(s);
   const curTot = billingModal.totalPrice[sid] !== undefined ? billingModal.totalPrice[sid] : tot.sum;
   const rounding = S.cfg.billing_rounding || 'exact';
   const paidByPid = getBillingPayerPlayerId(sid);
-  const shares = computeSessionSlotShares(curTot, tot.counts, rounding, paidByPid);
+  const slotShares = computeIndividualSlotShares(curTot, byPid, rounding, paidByPid);
 
   const slotCost = tot.slots > 0 ? (curTot / tot.slots) : 0;
   const hintEl = document.getElementById(`billing-price-hint-${sid}`);
@@ -3657,9 +4094,9 @@ function updateBillingBlockLive(sid) {
   }
 
   // Update rows in review list
-  Object.entries(tot.counts).forEach(([pid, n]) => {
-    const amtEl = document.getElementById(`billing-amt-${sid}-${pid}`);
-    if (amtEl) amtEl.textContent = fmtE(shares[pid] || 0);
+  Object.values(byPid).flat().forEach(slotId => {
+    const amtEl = document.getElementById(`billing-amt-${sid}-${slotId}`);
+    if (amtEl) amtEl.textContent = fmtE(slotShares[slotId] || 0);
   });
 }
 
@@ -3674,10 +4111,11 @@ function renderBillingModal() {
   if (billingModal.step === 1) {
     body.innerHTML = sessions.map(s => {
       const tot = billingSessionTotals(s);
+      const { byPid } = sessionBillingSlots(s);
       const curTot = billingModal.totalPrice[s.id] !== undefined ? billingModal.totalPrice[s.id] : tot.sum;
       const payerVal = billingModal.payer[s.id] || 'team_abo';
       const paidByPid = getBillingPayerPlayerId(s.id);
-      const shares = computeSessionSlotShares(curTot, tot.counts, rounding, paidByPid);
+      const slotShares = computeIndividualSlotShares(curTot, byPid, rounding, paidByPid);
       const slotCost = tot.slots > 0 ? (curTot / tot.slots) : 0;
 
       // Build payer select
@@ -3691,32 +4129,61 @@ function renderBillingModal() {
         return a.name.localeCompare(b.name);
       });
 
+      const existingExps = (S.expenses || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+      const expenseOptGroup = existingExps.length ? [
+        `<optgroup label="${esc(t('billing.link_existing_invoice_group', 'Bestehende Rechnung zuordnen'))}">`,
+        ...existingExps.map(ex => {
+          const val = 'expense:' + ex.id;
+          const label = `${ex.note || t('history.filter_expenses', 'Court-Kosten')} (${fmtD(ex.date)} · ${fmtE(ex.amount)})`;
+          return `<option value="${val}" ${payerVal === val ? 'selected' : ''}>${esc(label)}</option>`;
+        }),
+        `</optgroup>`
+      ] : [];
+
       const payerOpts = [
         `<option value="team_abo" ${payerVal === 'team_abo' ? 'selected' : ''}>${t('billing.paid_by_team_abo', 'Teamkasse · Abo (bereits erfasst)')}</option>`,
         `<option value="team_single" ${payerVal === 'team_single' ? 'selected' : ''}>${t('billing.paid_by_team_single', 'Teamkasse · Einzelbuchung (neu als Ausgabe)')}</option>`,
+        ...expenseOptGroup,
         `<optgroup label="${t('billing.paid_by_player_group', 'Auslage durch Spieler')}">`,
         ...sortedPlayers.map(p => `<option value="player:${p.id}" ${payerVal === 'player:' + p.id ? 'selected' : ''}>${esc(p.name)}</option>`),
         `</optgroup>`
       ].join('');
 
-      const rows = Object.entries(tot.counts).map(([pid, n]) => {
-        const isPaid = !!billingModal.paid[s.id + ':' + pid];
-        const slotLabel = n > 1 ? `${n} Slots` : `1 Slot`;
-        return `
-          <div class="billing-p-row ${isPaid ? 'is-direct' : ''}" id="billing-p-row-${s.id}-${pid}">
-            <div class="billing-p-info">
-              <span class="billing-p-name">${billingPlayerName(pid, n)}</span>
-              <span class="billing-p-slots-badge">${slotLabel}</span>
+      const rows = Object.entries(byPid).map(([pid, slotIds]) => {
+        const hasMain = slotIds.includes(pid);
+        const guestIds = slotIds.filter(id => id !== pid);
+        const pObj = S.players.find(x => x.id === pid);
+        const pName = esc(pObj ? pObj.name : '?');
+
+        const renderSlotRow = (slotId, isGuest) => {
+          const isPaid = !!billingModal.paid[s.id + ':' + slotId];
+          let labelHtml;
+          if (!isGuest) {
+            labelHtml = `<span class="billing-p-name">${pName}</span><span class="billing-p-slots-badge">1 Slot</span>`;
+          } else {
+            const gNum = slotId.includes('|g') ? slotId.split('|g')[1] : '';
+            const gLabel = guestIds.length > 1 && gNum ? `${t('session.guest')} ${gNum}` : t('session.guest');
+            const namePart = hasMain ? `↳ ${esc(gLabel)}` : `${pName} · ${esc(gLabel)}`;
+            labelHtml = `<span class="billing-p-name">${namePart}</span><span class="billing-p-slots-badge is-guest">${esc(t('session.guest'))}</span>`;
+          }
+          return `
+            <div class="billing-p-row ${isGuest ? 'is-guest' : ''} ${isPaid ? 'is-direct' : ''}" id="billing-p-row-${s.id}-${slotId}">
+              <div class="billing-p-info">${labelHtml}</div>
+              <div class="billing-p-right">
+                <span class="billing-p-amt" id="billing-amt-${s.id}-${slotId}">${fmtE(slotShares[slotId] || 0)}</span>
+                <label class="billing-direct-toggle" title="${esc(t('billing.direct_paid_hint'))}">
+                  <input type="checkbox" ${isPaid ? 'checked' : ''} onchange="toggleBillingSlotPaid('${s.id}','${slotId}',this.checked)">
+                  <span>${t('billing.direct_paid')}</span>
+                </label>
+              </div>
             </div>
-            <div class="billing-p-right">
-              <span class="billing-p-amt" id="billing-amt-${s.id}-${pid}">${fmtE(shares[pid] || 0)}</span>
-              <label class="billing-direct-toggle" title="${esc(t('billing.direct_paid_hint'))}">
-                <input type="checkbox" ${isPaid ? 'checked' : ''} onchange="billingModal.paid['${s.id}:${pid}']=this.checked;document.getElementById('billing-p-row-${s.id}-${pid}')?.classList.toggle('is-direct', this.checked)">
-                <span>${t('billing.direct_paid')}</span>
-              </label>
-            </div>
-          </div>
-        `;
+          `;
+        };
+
+        if (slotIds.length === 1 && hasMain) {
+          return renderSlotRow(pid, false);
+        }
+        return `<div class="billing-p-group">${slotIds.map(slotId => renderSlotRow(slotId, slotId !== pid)).join('')}</div>`;
       }).join('');
 
       return `<details class="billing-block" ${sessions.length === 1 ? 'open' : ''}>
@@ -3767,20 +4234,24 @@ function renderBillingModal() {
     let totalSlots = 0, totalDebit = 0, totalDirect = 0;
     sessions.forEach(s => {
       const tot = billingSessionTotals(s);
+      const { byPid } = sessionBillingSlots(s);
       const curTot = billingModal.totalPrice[s.id] !== undefined ? billingModal.totalPrice[s.id] : tot.sum;
       const paidByPid = getBillingPayerPlayerId(s.id);
-      const shares = computeSessionSlotShares(curTot, tot.counts, rounding, paidByPid);
+      const slotShares = computeIndividualSlotShares(curTot, byPid, rounding, paidByPid);
 
-      Object.entries(tot.counts).forEach(([pid, n]) => {
-        const amt = shares[pid] || 0;
+      Object.entries(byPid).forEach(([pid, slotIds]) => {
+        const amt = slotIds.reduce((a, sid) => a + (slotShares[sid] || 0), 0);
         per[pid] = per[pid] || { debit: 0, direct: 0, outlay: 0 };
         per[pid].debit += amt;
-        totalSlots += n;
+        totalSlots += slotIds.length;
         totalDebit += amt;
-        if (billingModal.paid[s.id + ':' + pid]) {
-          per[pid].direct += amt;
-          totalDirect += amt;
-        }
+        slotIds.forEach(slotId => {
+          if (billingModal.paid[s.id + ':' + slotId]) {
+            const sAmt = slotShares[slotId] || 0;
+            per[pid].direct += sAmt;
+            totalDirect += sAmt;
+          }
+        });
       });
 
       // If outlay by player
@@ -3826,9 +4297,10 @@ function renderBillingModal() {
 function billingMarkAllPaid(sid) {
   const s = S.sessions.find(x => x.id === sid);
   if (!s) return;
-  const pids = Object.keys(sessionChargeMap(s));
-  const all = pids.every(pid => billingModal.paid[sid + ':' + pid]);
-  pids.forEach(pid => { billingModal.paid[sid + ':' + pid] = !all; });
+  const { byPid } = sessionBillingSlots(s);
+  const slotIds = Object.values(byPid).flat();
+  const all = slotIds.every(slotId => billingModal.paid[sid + ':' + slotId]);
+  slotIds.forEach(slotId => { billingModal.paid[sid + ':' + slotId] = !all; });
   renderBillingModal();
   document.querySelectorAll('#mo-billing-body details').forEach(d => d.open = true);
 }
@@ -3839,18 +4311,24 @@ async function doCharge() {
   try {
     const items = billingModal.ids.map(id => {
       const s = S.sessions.find(x => x.id === id);
-      const pids = Object.keys(sessionChargeMap(s)).filter(pid => billingModal.paid[id + ':' + pid]);
+      const { byPid } = sessionBillingSlots(s);
+      const allSlotIds = Object.values(byPid).flat();
+      const paidSlots = allSlotIds.filter(slotId => billingModal.paid[id + ':' + slotId]);
+      const pids = Object.keys(byPid).filter(pid => byPid[pid].every(slotId => billingModal.paid[id + ':' + slotId]));
       const curTot = billingModal.totalPrice && billingModal.totalPrice[id] !== undefined ? billingModal.totalPrice[id] : null;
       const payerVal = billingModal.payer ? billingModal.payer[id] : 'team_abo';
       const paidByPlayerId = payerVal && payerVal.startsWith('player:') ? payerVal.slice(7) : null;
       const recordTeamExpense = payerVal === 'team_single';
+      const linkExpenseId = payerVal && payerVal.startsWith('expense:') ? payerVal.slice(8) : null;
 
       return {
         id,
         paid_pids: pids,
+        paid_slots: paidSlots,
         total_price: curTot,
         paid_by_player_id: paidByPlayerId,
-        record_team_expense: recordTeamExpense
+        record_team_expense: recordTeamExpense,
+        link_expense_id: linkExpenseId
       };
     });
     await apiFetch('POST', '/charge', { items });
@@ -6313,7 +6791,15 @@ async function loadState() {
     }
 
     if (expenses) {
-      S.expenses = expenses.map(e => ({ ...e, amount: parseFloat(e.amount) }));
+      S.expenses = expenses.map(e => ({
+        ...e,
+        amount: parseFloat(e.amount),
+        paidBy: e.paid_by !== undefined ? e.paid_by : (e.paidBy || null),
+        sessionId: e.session_id !== undefined ? e.session_id : (e.sessionId || null),
+        sessionIds: Array.isArray(e.session_ids)
+          ? e.session_ids
+          : (Array.isArray(e.sessionIds) ? e.sessionIds : (e.session_id ? [e.session_id] : []))
+      }));
     } else {
       S.expenses = [];
     }
