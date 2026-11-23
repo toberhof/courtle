@@ -1150,8 +1150,10 @@ function notify_waitlist_promotions(PDO $db, string $sessId, array $promotions):
         if ($location === '' && $series && !empty($series['location'])) $location = (string)$series['location'];
         if ($location === '') $location = trim((string)($cfgRows['srlocation'] ?? ''));
 
-        $courtNames = json_decode((string)($sess['court_names'] ?? '[]'), true);
-        if (!is_array($courtNames)) $courtNames = [];
+        $sessCourtNames = json_decode((string)($sess['court_names'] ?? '[]'), true);
+        if (!is_array($sessCourtNames)) $sessCourtNames = [];
+        $seriesCourtNames = ($series && !empty($series['court_names'])) ? json_decode((string)$series['court_names'], true) : [];
+        if (!is_array($seriesCourtNames)) $seriesCourtNames = [];
 
         $appUrl = get_app_instance_url();
         $pStmt = $db->prepare("SELECT id, name, contact, language, COALESCE(notify_email, 0) AS notify_email FROM players WHERE id=?");
@@ -1172,8 +1174,15 @@ function notify_waitlist_promotions(PDO $db, string $sessId, array $promotions):
             $courtLabel = '';
             if ($courtIndex !== null) {
                 $ci = (int)$courtIndex;
-                $customName = isset($courtNames[$ci]) ? trim((string)$courtNames[$ci]) : '';
-                $courtLabel = $customName !== '' ? $customName : ('Court ' . ($ci + 1));
+                $customName = isset($sessCourtNames[$ci]) ? trim((string)$sessCourtNames[$ci]) : '';
+                if ($customName === '' && isset($seriesCourtNames[$ci])) {
+                    $customName = trim((string)$seriesCourtNames[$ci]);
+                }
+                if ($customName !== '') {
+                    $courtLabel = ctype_digit($customName) ? ('Court ' . $customName) : $customName;
+                } else {
+                    $courtLabel = 'Court ' . ($ci + 1);
+                }
             }
 
             $mail = build_waitlist_promotion_email($lang, [
