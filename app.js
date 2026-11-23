@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:515
-const CLIENT_BUILD = 515;
+// built:516
+const CLIENT_BUILD = 516;
 let S = {
   players: [],
   transactions: [],
@@ -628,25 +628,32 @@ function getSessionTime(dateOrId) {
   return { start: fmt(start), end: fmt(end) };
 }
 
+function getSeriesCourtName(dateOrSess, ci) {
+  if (!S.series || S.cfg.sr_enabled === '0') return '';
+  const sess = typeof dateOrSess === 'string' ? (S.sessions?.find(s => s.id === dateOrSess || s.date === dateOrSess)) : dateOrSess;
+  const date = typeof dateOrSess === 'string' ? (sess?.date || dateOrSess) : dateOrSess?.date;
+  if (!date) return '';
+  const dObj = new Date(date + 'T00:00:00');
+  const dayOfWeek = dObj.getDay();
+  const matching = S.series.filter(series => {
+    if (!series.enabled) return false;
+    const days = series.daysOfWeek || [2];
+    return days.includes(dayOfWeek) || generateSeriesDates(series).includes(date);
+  });
+  const sessTime = sess?.timeStart || null;
+  if (sessTime) {
+    const exact = matching.find(sr => sr.timeStart === sessTime && sr.courtNames?.[ci]);
+    if (exact) return String(exact.courtNames[ci]).trim();
+  }
+  const fallback = matching.find(sr => sr.courtNames?.[ci]);
+  return fallback ? String(fallback.courtNames[ci]).trim() : '';
+}
+
 function getCourtLabel(dateOrSess, ci) {
-  let sess = typeof dateOrSess === 'string' ? (S.sessions?.find(s => s.id === dateOrSess || s.date === dateOrSess)) : dateOrSess;
+  const sess = typeof dateOrSess === 'string' ? (S.sessions?.find(s => s.id === dateOrSess || s.date === dateOrSess)) : dateOrSess;
   let customName = sess?.courtNames?.[ci];
-  if (!customName && S.series && S.cfg.sr_enabled !== '0') {
-    const date = typeof dateOrSess === 'string' ? dateOrSess : dateOrSess?.date;
-    if (date) {
-      const dObj = new Date(date + 'T00:00:00');
-      const dayOfWeek = dObj.getDay();
-      for (const series of S.series) {
-        if (!series.enabled) continue;
-        const days = series.daysOfWeek || [2];
-        if (days.includes(dayOfWeek) || generateSeriesDates(series).includes(date)) {
-          if (series.courtNames?.[ci]) {
-            customName = series.courtNames[ci];
-            break;
-          }
-        }
-      }
-    }
+  if (!customName || String(customName).trim() === '') {
+    customName = getSeriesCourtName(sess || dateOrSess, ci);
   }
   if (customName && String(customName).trim() !== '') {
     const trimmed = String(customName).trim();
@@ -3066,11 +3073,12 @@ function renderAdminPlan(keepDetailsOpen) {
   let html = '';
   sess.courts.forEach((slots, ci) => {
     const isDisabled = sess.disabledCourts.includes(ci);
-    const customName = (sess.courtNames && sess.courtNames[ci]) ? sess.courtNames[ci] : '';
+    const inheritedName = getSeriesCourtName(sess, ci);
+    const customName = (sess.courtNames && sess.courtNames[ci]) ? sess.courtNames[ci] : inheritedName;
     html += `<div class="court-sep just-b" style="align-items:center;margin-top:var(--sp4);margin-bottom:var(--sp2);gap:var(--sp2)">
       <div class="flex items-c g2" style="flex:1;min-width:0;flex-wrap:wrap">
         <i data-lucide="map-pin" style="width:14px;height:14px;color:var(--pri);flex-shrink:0"></i>
-        <span style="font-weight:700;font-size:var(--text-xs);text-transform:uppercase;letter-spacing:.06em;color:var(--txm)">${t('session.court')} ${ci + 1}</span>
+        <span style="font-weight:700;font-size:var(--text-xs);text-transform:uppercase;letter-spacing:.06em;color:var(--txm)">${esc(getCourtLabel(sess, ci))}</span>
         <input type="text"
                id="court-name-input-${ci}"
                class="fi court-name-input"
@@ -3250,12 +3258,14 @@ async function changeCourtName(date, ci, val) {
     sess.courtNames.push('');
   }
   sess.courtNames[ci] = val.trim();
-  const inMemory = S.sessions?.find(s => s.date === date);
+  const inMemory = S.sessions?.find(s => s.id === date || s.date === date);
   if (inMemory) {
     inMemory.courtNames = [...sess.courtNames];
   }
   try {
     await apiFetch('PUT', '/sessions/' + date, { courtNames: sess.courtNames });
+    await loadState();
+    renderAdminPlan(true);
     renderSessions();
     showToast(t('toast.saved'));
   } catch(e) {

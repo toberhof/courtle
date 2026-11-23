@@ -3200,7 +3200,8 @@ function handle_session_book(string $idOrDate): void {
         $pr = isset($b['price']) && $b['price'] !== null ? (float)$b['price'] : (isset($series['price']) && $series['price'] !== null ? (float)$series['price'] : null);
         $ch = isset($b['cancelHours']) && $b['cancelHours'] !== null ? (float)$b['cancelHours'] : (isset($series['cancel_hours']) && $series['cancel_hours'] !== null ? (float)$series['cancel_hours'] : null);
         $name = $b['name'] ?? ($series['name'] ?? null);
-        $cn = isset($b['courtNames']) ? (is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null) : ($series['court_names'] ?? '[]');
+        $hasCustomCourtNames = isset($b['courtNames']) && is_array($b['courtNames']) && count(array_filter($b['courtNames'], fn($v) => trim((string)$v) !== '')) > 0;
+        $cn = $hasCustomCourtNames ? json_encode(array_values($b['courtNames'])) : ($series['court_names'] ?? '[]');
 
         $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
             VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, 0)")
@@ -3468,7 +3469,8 @@ function handle_session_join_waitlist(string $idOrDate): void {
         $pr = isset($b['price']) && $b['price'] !== null ? (float)$b['price'] : (isset($series['price']) && $series['price'] !== null ? (float)$series['price'] : null);
         $ch = isset($b['cancelHours']) && $b['cancelHours'] !== null ? (float)$b['cancelHours'] : (isset($series['cancel_hours']) && $series['cancel_hours'] !== null ? (float)$series['cancel_hours'] : null);
         $name = $b['name'] ?? ($series['name'] ?? null);
-        $cn = isset($b['courtNames']) ? (is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null) : ($series['court_names'] ?? '[]');
+        $hasCustomCourtNames = isset($b['courtNames']) && is_array($b['courtNames']) && count(array_filter($b['courtNames'], fn($v) => trim((string)$v) !== '')) > 0;
+        $cn = $hasCustomCourtNames ? json_encode(array_values($b['courtNames'])) : ($series['court_names'] ?? '[]');
 
         $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
             VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, 0)")
