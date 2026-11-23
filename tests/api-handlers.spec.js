@@ -770,12 +770,24 @@ test.describe('API Handler Integration Suite', () => {
     });
     expect(b2.status()).toBe(200);
 
-    // Bob tries to remove Alice's guest -> 403 Forbidden
+    // Bob tries to remove Alice's guest (with guestPid, without player_id, or spoofing bob.id) -> 403 Forbidden
     const bobLeaveGuest = await request.post(`/api.php/sessions/${testDate}/leave`, {
       headers: bobToken,
       data: { court_index: 0, slot_index: 1, player_id: guestPid }
     });
     expect(bobLeaveGuest.status()).toBe(403);
+
+    const bobLeaveNoPid = await request.post(`/api.php/sessions/${testDate}/leave`, {
+      headers: bobToken,
+      data: { court_index: 0, slot_index: 1 }
+    });
+    expect(bobLeaveNoPid.status()).toBe(403);
+
+    const bobLeaveSpoof = await request.post(`/api.php/sessions/${testDate}/leave`, {
+      headers: bobToken,
+      data: { court_index: 0, slot_index: 1, player_id: bob.id }
+    });
+    expect(bobLeaveSpoof.status()).toBe(403);
 
     // Alice removes her guest specifically via court_index and slot_index
     const aliceLeaveGuest = await request.post(`/api.php/sessions/${testDate}/leave`, {
@@ -785,10 +797,31 @@ test.describe('API Handler Integration Suite', () => {
     expect(aliceLeaveGuest.status()).toBe(200);
 
     // Verify slot 1 is now empty while Alice (slot 0) remains
-    const sessRes = await request.get('/api.php/sessions');
-    const sess = (await sessRes.json()).find(s => s.date === testDate);
+    let sessRes = await request.get('/api.php/sessions');
+    let sess = (await sessRes.json()).find(s => s.date === testDate);
     expect(sess.courts[0][0]).toBe(alice.id);
     expect(sess.courts[0][1]).toBeNull();
+
+    // Alice re-books her guest, Bob joins waitlist, Alice removes guest WITHOUT player_id -> 200 + Bob promoted
+    await request.post(`/api.php/sessions/${testDate}/book`, {
+      headers: aliceToken,
+      data: { court_index: 0, slot_index: 1, player_id: `${alice.id}|g1` }
+    });
+    await request.post(`/api.php/sessions/${testDate}/join-waitlist`, {
+      headers: bobToken,
+      data: { player_id: bob.id }
+    });
+    const aliceLeaveNoPid = await request.post(`/api.php/sessions/${testDate}/leave`, {
+      headers: aliceToken,
+      data: { court_index: 0, slot_index: 1 }
+    });
+    expect(aliceLeaveNoPid.status()).toBe(200);
+
+    sessRes = await request.get('/api.php/sessions');
+    sess = (await sessRes.json()).find(s => s.date === testDate);
+    expect(sess.courts[0][0]).toBe(alice.id);
+    expect(sess.courts[0][1]).toBe(bob.id);
+    expect(sess.waitlist).toEqual([]);
   });
 
   test('16 — Cancellation Deadline Enforcement & Admin Override', async ({ request }) => {

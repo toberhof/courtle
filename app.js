@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:514
-const CLIENT_BUILD = 514;
+// built:515
+const CLIENT_BUILD = 515;
 let S = {
   players: [],
   transactions: [],
@@ -1581,6 +1581,7 @@ async function removeGuestSlot(idOrDate, ci, si) {
     const sess = getOrSess(idOrDate);
     const id = sess.id || sess.date;
     await apiFetch('POST', `/sessions/${id}/leave`, {
+      player_id: guestId,
       court_index: ci,
       slot_index: si
     });
@@ -1589,7 +1590,7 @@ async function removeGuestSlot(idOrDate, ci, si) {
     renderSessions();
     if (isAdmin) renderAdminPlan();
   } catch(e) {
-    showToast('Fehler beim Entfernen des Gastes.');
+    showToast((e && e.message) ? e.message : 'Fehler beim Entfernen des Gastes.');
   }
 }
 
