@@ -1168,7 +1168,7 @@ test.describe('API Handler Integration Suite', () => {
     const auth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
     const H = { 'X-Token': auth.token, 'Content-Type': 'application/json' };
 
-    await request.put('/api.php/config', { headers: H, data: { courts: '1', cancel_hours: '0' } });
+    await request.put('/api.php/config', { headers: H, data: { courts: '1', cancel_hours: '0', team_name: 'Padel-Frechen' } });
 
     const p1 = await (await request.post('/api.php/players', { headers: H, data: { name: 'Player1', pin: '1001' } })).json();
     const p2 = await (await request.post('/api.php/players', { headers: H, data: { name: 'Player2', pin: '1002' } })).json();
@@ -1236,7 +1236,9 @@ test.describe('API Handler Integration Suite', () => {
 
     emails = await (await request.get('/api.php/test-emails')).json();
     expect(emails.length).toBe(1);
+    expect(emails[0].from).toBe('Padel-Frechen <noreply@test.local>');
     expect(emails[0].to).toEqual(['yes@example.com']);
+    expect(emails[0].subject).toContain('[Padel-Frechen]');
     expect(emails[0].subject).toContain('You got a spot: Friday Event');
     expect(emails[0].text).toContain('Hall A');
     expect(emails[0].text).toContain('18:00');

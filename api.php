@@ -917,15 +917,36 @@ function build_waitlist_promotion_email(string $lang, array $data): array {
     return ['subject' => $subject, 'html' => $html, 'text' => $text];
 }
 
-function send_resend_email(string $to, string $subject, string $html, string $text): bool {
+function format_resend_from(string $rawFrom, string $senderName): string {
+    $rawFrom = trim($rawFrom);
+    if ($rawFrom === '') return '';
+    if (preg_match('/<([^<>]+)>/', $rawFrom, $m)) {
+        $email = trim($m[1]);
+    } else {
+        $email = $rawFrom;
+    }
+    if ($email === '') return '';
+
+    $cleanName = trim(str_replace(["\r", "\n", '<', '>', '"'], '', $senderName));
+    if ($cleanName === '') {
+        $cleanName = 'Courtle';
+    }
+    if (preg_match('/[,;:()]/', $cleanName)) {
+        $cleanName = '"' . $cleanName . '"';
+    }
+    return $cleanName . ' <' . $email . '>';
+}
+
+function send_resend_email(string $to, string $subject, string $html, string $text, string $senderName = 'Courtle'): bool {
     $apiKey = trim((string)(getenv('RESEND_API_KEY') ?: ''));
-    $from = trim((string)(getenv('RESEND_FROM') ?: ''));
+    $rawFrom = trim((string)(getenv('RESEND_FROM') ?: ''));
     $replyTo = trim((string)(getenv('RESEND_REPLY_TO') ?: ''));
 
     $isTestEnv = strpos(DB_PATH, 'test') !== false;
     if ($isTestEnv && ($apiKey === '' || $apiKey === 'test-mock')) {
+        $from = format_resend_from($rawFrom !== '' ? $rawFrom : 'noreply@test.local', $senderName);
         $payload = [
-            'from' => $from !== '' ? $from : 'Courtle <noreply@test.local>',
+            'from' => $from,
             'to' => [$to],
             'subject' => $subject,
             'html' => $html,
@@ -940,6 +961,7 @@ function send_resend_email(string $to, string $subject, string $html, string $te
         return true;
     }
 
+    $from = format_resend_from($rawFrom, $senderName);
     if ($apiKey === '' || $from === '') {
         if ($apiKey !== '' && $from === '') {
             error_log('Resend skipped: RESEND_FROM is not configured.');
@@ -1011,9 +1033,9 @@ function notify_waitlist_promotions(PDO $db, string $sessId, array $promotions):
         $sess = $sStmt->fetch();
         if (!$sess) return;
 
-        $cfgRows = $db->query("SELECT key, value FROM config WHERE key IN ('language','club','srlocation','srtimestart','srtimeend')")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $cfgRows = $db->query("SELECT key, value FROM config WHERE key IN ('language','team_name','srlocation','srtimestart','srtimeend')")->fetchAll(PDO::FETCH_KEY_PAIR);
         $defaultLang = in_array($cfgRows['language'] ?? '', ['de', 'en', 'es', 'it', 'fr', 'pt'], true) ? $cfgRows['language'] : 'de';
-        $clubName = trim((string)($cfgRows['club'] ?? '')) ?: 'Courtle';
+        $teamName = trim((string)($cfgRows['team_name'] ?? '')) ?: 'Courtle';
 
         $date = (string)$sess['date'];
         $series = get_series_for_date($db, $date, $sess['time_start'] ?? null) ?? get_series_by_weekday($db, $date);
@@ -1072,10 +1094,10 @@ function notify_waitlist_promotions(PDO $db, string $sessId, array $promotions):
                 'location' => $location,
                 'court_label' => $courtLabel,
                 'app_url' => $appUrl,
-                'club_name' => $clubName,
+                'club_name' => $teamName,
             ]);
 
-            send_resend_email($email, $mail['subject'], $mail['html'], $mail['text']);
+            send_resend_email($email, $mail['subject'], $mail['html'], $mail['text'], $teamName);
         }
     } catch (Throwable $e) {
         error_log('Waitlist promotion notification error: ' . $e->getMessage());
