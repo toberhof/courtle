@@ -1238,8 +1238,8 @@ test.describe('API Handler Integration Suite', () => {
     expect(emails.length).toBe(1);
     expect(emails[0].from).toBe('Padel-Frechen <noreply@test.local>');
     expect(emails[0].to).toEqual(['yes@example.com']);
-    expect(emails[0].subject).toContain('[Padel-Frechen]');
-    expect(emails[0].subject).toContain('You got a spot: Friday Event');
+    expect(emails[0].subject).not.toContain('[Padel-Frechen]');
+    expect(emails[0].subject).toMatch(/^You got a spot: Friday Event/);
     expect(emails[0].text).toContain('Hall A');
     expect(emails[0].text).toContain('18:00');
     // Root app instance URL only (no deep-link path/query)

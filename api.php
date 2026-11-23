@@ -777,14 +777,14 @@ function get_app_instance_url(): string {
 function build_waitlist_promotion_email(string $lang, array $data): array {
     $templates = [
         'de' => [
-            'subject' => '[{club}] Du bist nachgerückt: {session} ({date})',
+            'subject' => 'Du bist nachgerückt: {session} ({date})',
             'title' => 'Platz frei geworden!',
             'greeting' => 'Hallo {player},',
             'body' => 'gute Nachrichten: Du bist von der Warteliste nachgerückt und hast jetzt einen festen Platz.',
-            'subject_guest' => '[{club}] Dein Gast ist nachgerückt: {session} ({date})',
+            'subject_guest' => 'Dein Gast ist nachgerückt: {session} ({date})',
             'title_guest' => 'Platz für deinen Gast frei geworden!',
             'body_guest' => 'gute Nachrichten: Dein Gast ist von der Warteliste nachgerückt und hat jetzt einen festen Platz.',
-            'subject_guests' => '[{club}] Deine Gäste sind nachgerückt: {session} ({date})',
+            'subject_guests' => 'Deine Gäste sind nachgerückt: {session} ({date})',
             'title_guests' => 'Plätze für deine Gäste frei geworden!',
             'body_guests' => 'gute Nachrichten: Deine {count} Gäste sind von der Warteliste nachgerückt und haben jetzt feste Plätze.',
             'lbl_session' => 'Termin',
@@ -796,14 +796,14 @@ function build_waitlist_promotion_email(string $lang, array $data): array {
             'footer' => 'Du erhältst diese Nachricht, weil du E-Mail-Benachrichtigungen in deinem Profil aktiviert hast.',
         ],
         'en' => [
-            'subject' => '[{club}] You got a spot: {session} ({date})',
+            'subject' => 'You got a spot: {session} ({date})',
             'title' => 'You moved up from the waitlist!',
             'greeting' => 'Hi {player},',
             'body' => 'good news: a spot opened up and you have been moved from the waitlist onto a court.',
-            'subject_guest' => '[{club}] Your guest got a spot: {session} ({date})',
+            'subject_guest' => 'Your guest got a spot: {session} ({date})',
             'title_guest' => 'Your guest moved up from the waitlist!',
             'body_guest' => 'good news: a spot opened up and your guest has been moved from the waitlist onto a court.',
-            'subject_guests' => '[{club}] Your guests got spots: {session} ({date})',
+            'subject_guests' => 'Your guests got spots: {session} ({date})',
             'title_guests' => 'Your guests moved up from the waitlist!',
             'body_guests' => 'good news: spots opened up and your {count} guests have been moved from the waitlist onto a court.',
             'lbl_session' => 'Session',
@@ -815,14 +815,14 @@ function build_waitlist_promotion_email(string $lang, array $data): array {
             'footer' => 'You are receiving this email because email notifications are enabled in your profile.',
         ],
         'es' => [
-            'subject' => '[{club}] Tienes plaza: {session} ({date})',
+            'subject' => 'Tienes plaza: {session} ({date})',
             'title' => '¡Has subido desde la lista de espera!',
             'greeting' => 'Hola {player},',
             'body' => 'buenas noticias: se ha liberado una plaza y has pasado de la lista de espera a la pista.',
-            'subject_guest' => '[{club}] Tu invitado tiene plaza: {session} ({date})',
+            'subject_guest' => 'Tu invitado tiene plaza: {session} ({date})',
             'title_guest' => '¡Tu invitado ha subido desde la lista de espera!',
             'body_guest' => 'buenas noticias: se ha liberado una plaza y tu invitado ha pasado de la lista de espera a la pista.',
-            'subject_guests' => '[{club}] Tus invitados tienen plaza: {session} ({date})',
+            'subject_guests' => 'Tus invitados tienen plaza: {session} ({date})',
             'title_guests' => '¡Tus invitados han subido desde la lista de espera!',
             'body_guests' => 'buenas noticias: se han liberado plazas y tus {count} invitados han pasado de la lista de espera a la pista.',
             'lbl_session' => 'Sesión',
@@ -834,14 +834,14 @@ function build_waitlist_promotion_email(string $lang, array $data): array {
             'footer' => 'Recibes este correo porque tienes activadas las notificaciones por correo en tu perfil.',
         ],
         'it' => [
-            'subject' => '[{club}] Posto confermato: {session} ({date})',
+            'subject' => 'Posto confermato: {session} ({date})',
             'title' => 'Sei salito dalla lista d\'attesa!',
             'greeting' => 'Ciao {player},',
             'body' => 'buone notizie: si è liberato un posto e sei stato spostato dalla lista d\'attesa in campo.',
-            'subject_guest' => '[{club}] Posto confermato per il tuo ospite: {session} ({date})',
+            'subject_guest' => 'Posto confermato per il tuo ospite: {session} ({date})',
             'title_guest' => 'Il tuo ospite è salito dalla lista d\'attesa!',
             'body_guest' => 'buone notizie: si è liberato un posto e il tuo ospite è stato spostato dalla lista d\'attesa in campo.',
-            'subject_guests' => '[{club}] Posti confermati per i tuoi ospiti: {session} ({date})',
+            'subject_guests' => 'Posti confermati per i tuoi ospiti: {session} ({date})',
             'title_guests' => 'I tuoi ospiti sono saliti dalla lista d\'attesa!',
             'body_guests' => 'buone notizie: si sono liberati dei posti e i tuoi {count} ospiti sono stati spostati dalla lista d\'attesa in campo.',
             'lbl_session' => 'Sessione',
@@ -853,14 +853,14 @@ function build_waitlist_promotion_email(string $lang, array $data): array {
             'footer' => 'Ricevi questa email perché hai attivato le notifiche email nel tuo profilo.',
         ],
         'fr' => [
-            'subject' => '[{club}] Place confirmée : {session} ({date})',
+            'subject' => 'Place confirmée : {session} ({date})',
             'title' => 'Vous avez quitté la liste d\'attente !',
             'greeting' => 'Bonjour {player},',
             'body' => 'bonne nouvelle : une place s\'est libérée et vous êtes passé de la liste d\'attente au terrain.',
-            'subject_guest' => '[{club}] Place confirmée pour votre invité : {session} ({date})',
+            'subject_guest' => 'Place confirmée pour votre invité : {session} ({date})',
             'title_guest' => 'Votre invité a quitté la liste d\'attente !',
             'body_guest' => 'bonne nouvelle : une place s\'est libérée et votre invité est passé de la liste d\'attente au terrain.',
-            'subject_guests' => '[{club}] Places confirmées pour vos invités : {session} ({date})',
+            'subject_guests' => 'Places confirmées pour vos invités : {session} ({date})',
             'title_guests' => 'Vos invités ont quitté la liste d\'attente !',
             'body_guests' => 'bonne nouvelle : des places se sont libérées et vos {count} invités sont passés de la liste d\'attente au terrain.',
             'lbl_session' => 'Session',
@@ -872,14 +872,14 @@ function build_waitlist_promotion_email(string $lang, array $data): array {
             'footer' => 'Vous recevez cet e-mail car les notifications par e-mail sont activées dans votre profil.',
         ],
         'pt' => [
-            'subject' => '[{club}] Vaga confirmada: {session} ({date})',
+            'subject' => 'Vaga confirmada: {session} ({date})',
             'title' => 'Você saiu da lista de espera!',
             'greeting' => 'Olá {player},',
             'body' => 'boas notícias: abriu uma vaga e você avançou da lista de espera para a quadra.',
-            'subject_guest' => '[{club}] Vaga confirmada para seu convidado: {session} ({date})',
+            'subject_guest' => 'Vaga confirmada para seu convidado: {session} ({date})',
             'title_guest' => 'Seu convidado saiu da lista de espera!',
             'body_guest' => 'boas notícias: abriu uma vaga e seu convidado avançou da lista de espera para a quadra.',
-            'subject_guests' => '[{club}] Vagas confirmadas para seus convidados: {session} ({date})',
+            'subject_guests' => 'Vagas confirmadas para seus convidados: {session} ({date})',
             'title_guests' => 'Seus convidados saíram da lista de espera!',
             'body_guests' => 'boas notícias: abriram vagas e seus {count} convidados avançaram da lista de espera para a quadra.',
             'lbl_session' => 'Sessão',
@@ -924,7 +924,6 @@ function build_waitlist_promotion_email(string $lang, array $data): array {
     }
 
     $subject = strtr($subjectTpl, [
-        '{club}' => $club,
         '{session}' => $sessionName,
         '{date}' => $formattedDate,
     ]);
@@ -1262,7 +1261,7 @@ function render_courtle_email_card(array $p): array {
 function build_session_charge_email(string $lang, array $data): array {
     $templates = [
         'de' => [
-            'subject' => '[{club}] Abrechnung: {session} ({date})',
+            'subject' => 'Abrechnung: {session} ({date})',
             'title' => 'Session abgerechnet',
             'greeting' => 'Hallo {player},',
             'body' => 'deine Teilnahme an der folgenden Session wurde abgerechnet.',
@@ -1283,7 +1282,7 @@ function build_session_charge_email(string $lang, array $data): array {
             'footer' => 'Du erhältst diese Nachricht, weil du E-Mail-Benachrichtigungen für Abrechnungen aktiviert hast.',
         ],
         'en' => [
-            'subject' => '[{club}] Session charged: {session} ({date})',
+            'subject' => 'Session charged: {session} ({date})',
             'title' => 'Session charged',
             'greeting' => 'Hi {player},',
             'body' => 'your participation in the following session has been charged.',
@@ -1304,7 +1303,7 @@ function build_session_charge_email(string $lang, array $data): array {
             'footer' => 'You are receiving this email because you enabled session billing notifications.',
         ],
         'es' => [
-            'subject' => '[{club}] Sesión cobrada: {session} ({date})',
+            'subject' => 'Sesión cobrada: {session} ({date})',
             'title' => 'Sesión cobrada',
             'greeting' => 'Hola {player},',
             'body' => 'se ha cobrado tu participación en la siguiente sesión.',
@@ -1325,7 +1324,7 @@ function build_session_charge_email(string $lang, array $data): array {
             'footer' => 'Recibes este correo porque activaste las notificaciones de cobro de sesiones.',
         ],
         'it' => [
-            'subject' => '[{club}] Sessione addebitata: {session} ({date})',
+            'subject' => 'Sessione addebitata: {session} ({date})',
             'title' => 'Sessione addebitata',
             'greeting' => 'Ciao {player},',
             'body' => 'la tua partecipazione alla seguente sessione è stata addebitata.',
@@ -1346,7 +1345,7 @@ function build_session_charge_email(string $lang, array $data): array {
             'footer' => 'Ricevi questa email perché hai attivato le notifiche per gli addebiti delle sessioni.',
         ],
         'fr' => [
-            'subject' => '[{club}] Session facturée : {session} ({date})',
+            'subject' => 'Session facturée : {session} ({date})',
             'title' => 'Session facturée',
             'greeting' => 'Bonjour {player},',
             'body' => 'votre participation à la session suivante a été facturée.',
@@ -1367,7 +1366,7 @@ function build_session_charge_email(string $lang, array $data): array {
             'footer' => 'Vous recevez cet e-mail car vous avez activé les notifications de facturation.',
         ],
         'pt' => [
-            'subject' => '[{club}] Sessão faturada: {session} ({date})',
+            'subject' => 'Sessão faturada: {session} ({date})',
             'title' => 'Sessão faturada',
             'greeting' => 'Olá {player},',
             'body' => 'sua participação na seguinte sessão foi faturada.',
@@ -1422,7 +1421,7 @@ function build_session_charge_email(string $lang, array $data): array {
 
     return render_courtle_email_card([
         'club' => $club,
-        'subject' => strtr($t['subject'], ['{club}' => $club, '{session}' => $sessionName, '{date}' => $formattedDate]),
+        'subject' => strtr($t['subject'], ['{session}' => $sessionName, '{date}' => $formattedDate]),
         'title' => $t['title'],
         'greeting' => strtr($t['greeting'], ['{player}' => (string)($data['player_name'] ?? '')]),
         'body' => $t['body'],
@@ -1436,7 +1435,7 @@ function build_session_charge_email(string $lang, array $data): array {
 function build_deposit_email(string $lang, array $data): array {
     $templates = [
         'de' => [
-            'subject' => '[{club}] Einzahlung verbucht ({amount})',
+            'subject' => 'Einzahlung verbucht ({amount})',
             'title' => 'Einzahlung eingegangen',
             'greeting' => 'Hallo {player},',
             'body' => 'auf deinem Konto wurde eine Einzahlung verbucht.',
@@ -1448,7 +1447,7 @@ function build_deposit_email(string $lang, array $data): array {
             'footer' => 'Du erhältst diese Nachricht, weil du E-Mail-Benachrichtigungen für Einzahlungen aktiviert hast.',
         ],
         'en' => [
-            'subject' => '[{club}] Deposit credited ({amount})',
+            'subject' => 'Deposit credited ({amount})',
             'title' => 'Deposit received',
             'greeting' => 'Hi {player},',
             'body' => 'a deposit has been credited to your account.',
@@ -1460,7 +1459,7 @@ function build_deposit_email(string $lang, array $data): array {
             'footer' => 'You are receiving this email because you enabled deposit notifications.',
         ],
         'es' => [
-            'subject' => '[{club}] Depósito registrado ({amount})',
+            'subject' => 'Depósito registrado ({amount})',
             'title' => 'Depósito recibido',
             'greeting' => 'Hola {player},',
             'body' => 'se ha registrado un depósito en tu cuenta.',
@@ -1472,7 +1471,7 @@ function build_deposit_email(string $lang, array $data): array {
             'footer' => 'Recibes este correo porque activaste las notificaciones de depósitos.',
         ],
         'it' => [
-            'subject' => '[{club}] Ricarica registrata ({amount})',
+            'subject' => 'Ricarica registrata ({amount})',
             'title' => 'Ricarica ricevuta',
             'greeting' => 'Ciao {player},',
             'body' => 'è stato accreditato un versamento sul tuo conto.',
@@ -1484,7 +1483,7 @@ function build_deposit_email(string $lang, array $data): array {
             'footer' => 'Ricevi questa email perché hai attivato le notifiche per i versamenti.',
         ],
         'fr' => [
-            'subject' => '[{club}] Dépôt crédité ({amount})',
+            'subject' => 'Dépôt crédité ({amount})',
             'title' => 'Dépôt reçu',
             'greeting' => 'Bonjour {player},',
             'body' => 'un dépôt a été crédité sur votre compte.',
@@ -1496,7 +1495,7 @@ function build_deposit_email(string $lang, array $data): array {
             'footer' => 'Vous recevez cet e-mail car vous avez activé les notifications de dépôt.',
         ],
         'pt' => [
-            'subject' => '[{club}] Depósito creditado ({amount})',
+            'subject' => 'Depósito creditado ({amount})',
             'title' => 'Depósito recebido',
             'greeting' => 'Olá {player},',
             'body' => 'um depósito foi creditado na sua conta.',
@@ -1527,7 +1526,7 @@ function build_deposit_email(string $lang, array $data): array {
 
     return render_courtle_email_card([
         'club' => $club,
-        'subject' => strtr($t['subject'], ['{club}' => $club, '{amount}' => $amountStr]),
+        'subject' => strtr($t['subject'], ['{amount}' => $amountStr]),
         'title' => $t['title'],
         'greeting' => strtr($t['greeting'], ['{player}' => (string)($data['player_name'] ?? '')]),
         'body' => $t['body'],
