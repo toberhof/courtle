@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:513
-const CLIENT_BUILD = 513;
+// built:514
+const CLIENT_BUILD = 514;
 let S = {
   players: [],
   transactions: [],
@@ -809,6 +809,8 @@ function openChangeUserContactModal() {
   const p = S.players.find(x => x.id == guestId);
   document.getElementById('cuc-contact').value = p ? (p.contact || '') : '';
   document.getElementById('cuc-notify-email').checked = Boolean(p && Number(p.notify_email));
+  document.getElementById('cuc-notify-charge').checked = Boolean(p && Number(p.notify_charge));
+  document.getElementById('cuc-notify-deposit').checked = Boolean(p && Number(p.notify_deposit));
   openMo('mo-user-contact');
   setTimeout(() => document.getElementById('cuc-contact').focus(), 100);
 }
@@ -816,10 +818,17 @@ async function saveOwnContact() {
   if (!guestId) { showToast('Kein Profil aktiv.'); return; }
   const contact = document.getElementById('cuc-contact').value.trim();
   const notifyEmail = document.getElementById('cuc-notify-email').checked;
+  const notifyCharge = document.getElementById('cuc-notify-charge').checked;
+  const notifyDeposit = document.getElementById('cuc-notify-deposit').checked;
   if (contact && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) { showToast(t('toast.valid_email')); return; }
-  if (notifyEmail && !contact) { showToast(t('toast.notify_email_required')); return; }
+  if ((notifyEmail || notifyCharge || notifyDeposit) && !contact) { showToast(t('toast.notify_email_required')); return; }
   try {
-    await apiFetch('PUT', '/players/' + guestId, { contact: contact || null, notify_email: notifyEmail ? 1 : 0 });
+    await apiFetch('PUT', '/players/' + guestId, {
+      contact: contact || null,
+      notify_email: notifyEmail ? 1 : 0,
+      notify_charge: notifyCharge ? 1 : 0,
+      notify_deposit: notifyDeposit ? 1 : 0,
+    });
     closeMo('mo-user-contact');
     showToast(t('toast.email_saved'));
     await loadState();
@@ -7464,10 +7473,23 @@ function openLeaveConfirm(idOrDate) {
   let msg;
   if (hasWL) {
     const nextId = sess.waitlist[0];
-    const nextP = S.players.find(x => x.id === nextId);
+    const isGuestWl = String(nextId).includes('|');
+    const nextP = S.players.find(x => x.id === baseId(nextId));
     const nextName = nextP ? nextP.name : 'Unbekannt';
     const nameTag = '<strong style="font-size:1.15em">' + esc(nextName) + '</strong>';
-    document.getElementById('mo-leave-desc').innerHTML = (t('leave.warn').replace('%%N%%', nameTag) + '<br><br><span style="font-size:0.9em;opacity:0.7">' + t('session.leave') + ' ' + t('session.possible') + ' ' + t('session.until') + ': ' + esc(deadlineStr) + '</span>');
+    const emailConfigured = S.cfg.email_notifications_configured === true || S.cfg.email_notifications_configured === '1';
+    const willBeEmailed = Boolean(
+      emailConfigured &&
+      nextP &&
+      Number(nextP.notify_email) === 1 &&
+      nextP.contact &&
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(nextP.contact).trim())
+    );
+    const warnKey = isGuestWl
+      ? (willBeEmailed ? 'leave.warn_guest_notified' : 'leave.warn_guest')
+      : (willBeEmailed ? 'leave.warn_notified' : 'leave.warn');
+    const warnHtml = t(warnKey).replaceAll('%%N%%', nameTag);
+    document.getElementById('mo-leave-desc').innerHTML = (warnHtml + '<br><br><span style="font-size:0.9em;opacity:0.7">' + t('session.leave') + ' ' + t('session.possible') + ' ' + t('session.until') + ': ' + esc(deadlineStr) + '</span>');
     openMo('mo-leave-confirm');
     return;
   } else {

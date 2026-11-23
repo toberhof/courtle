@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!--built:513-->
+<!--built:514-->
 <html lang="de" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -50,11 +50,11 @@ if ('serviceWorker' in navigator) {
 <meta name="robots" content="noindex, nofollow">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Courtle</title>
-<link rel="stylesheet" href="style.css?build=513">
+<link rel="stylesheet" href="style.css?build=514">
 <link rel="apple-touch-icon" href="courtle-icon-180.png">
 <script src="/vendor/lucide/lucide.js" defer></script>
-<script src="i18n.js?build=513" defer></script>
-<script src="app.js?build=513" defer></script>
+<script src="i18n.js?build=514" defer></script>
+<script src="app.js?build=514" defer></script>
 
 <div class="app-shell">
 
@@ -130,7 +130,7 @@ if ('serviceWorker' in navigator) {
           <i data-lucide="key-round" style="width:16px;height:16px"></i><span data-i18n="nav.pin_change">PIN ändern</span>
         </button>
         <button class="nav-dd-item" onclick="openChangeUserContactModal();closeProfileDD()">
-          <i data-lucide="mail" style="width:16px;height:16px"></i><span data-i18n="nav.email_change">E-Mail ändern</span>
+          <i data-lucide="mail" style="width:16px;height:16px"></i><span data-i18n="nav.email_change">E-Mail-Einstellungen</span>
         </button>
         <button class="nav-dd-item" onclick="openIconPickerModal();closeProfileDD()">
           <i data-lucide="image" style="width:16px;height:16px"></i><span data-i18n="nav.icon_change">Icon ändern</span>
@@ -828,7 +828,7 @@ if ('serviceWorker' in navigator) {
     Courtle
   </span><br>
   <span data-i18n="footer.tagline">Buchen · Spielen · Teilen</span><br>
-  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 513)</span>
+  <span style="font-size:7px;color:var(--txf);cursor:pointer" onclick="forceAppUpdate()" title="App aktualisieren">(build 514)</span>
 
 </footer>
 
@@ -858,7 +858,7 @@ if ('serviceWorker' in navigator) {
     <i data-lucide="key-round" style="width:16px;height:16px"></i><span data-i18n="nav.pin_change">PIN ändern</span>
   </button>
   <button onclick="openChangeUserContactModal();closeProfileMenu()">
-    <i data-lucide="mail" style="width:16px;height:16px"></i><span data-i18n="nav.email_change">E-Mail ändern</span>
+    <i data-lucide="mail" style="width:16px;height:16px"></i><span data-i18n="nav.email_change">E-Mail-Einstellungen</span>
   </button>
   <button onclick="openIconPickerModal();closeProfileMenu()">
     <i data-lucide="image" style="width:16px;height:16px"></i><span data-i18n="nav.icon_change">Icon ändern</span>
@@ -1185,17 +1185,41 @@ if ('serviceWorker' in navigator) {
 <!-- ── CHANGE USER CONTACT MODAL ── -->
 <div class="mo" id="mo-user-contact">
   <div class="mo-box">
-    <div class="mo-head"><h2 class="mo-title" data-i18n="own_email.title">E-Mail-Adresse ändern</h2><button class="mo-close btn-icon" onclick="closeMo('mo-user-contact')"><i data-lucide="x"></i></button></div>
-    <p class="txsm txm mb4" data-i18n="own_email.desc">Trage hier deine E-Mail-Adresse ein, um bei Änderungen benachrichtigt zu werden.</p>
+    <div class="mo-head"><h2 class="mo-title" data-i18n="own_email.title">E-Mail-Einstellungen</h2><button class="mo-close btn-icon" onclick="closeMo('mo-user-contact')"><i data-lucide="x"></i></button></div>
+    <p class="txsm txm mb4" data-i18n="own_email.desc">Verwalte hier deine E-Mail-Adresse und deine E-Mail-Benachrichtigungen.</p>
     <div class="fg"><label class="fl" data-i18n="own_email.label">E-Mail-Adresse</label><input type="email" id="cuc-contact" class="fi" data-i18n-placeholder="own_email.placeholder" placeholder="max@mail.de"></div>
-    <div class="settings-row" style="padding:10px 0 14px;border:none;">
+    <div class="settings-row" style="padding:10px 0;border:none;">
       <div class="settings-label">
-        <label class="settings-title" for="cuc-notify-email" data-i18n="own_email.notify_label">E-Mail-Benachrichtigungen</label>
+        <label class="settings-title" for="cuc-notify-email" data-i18n="own_email.notify_label">Warteliste-Nachrücken</label>
         <p class="settings-desc" data-i18n="own_email.notify_desc">Benachrichtige mich per E-Mail, wenn ich von der Warteliste nachrücke.</p>
       </div>
       <div class="settings-control">
         <label class="switch">
           <input type="checkbox" id="cuc-notify-email">
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="settings-row" style="padding:10px 0;border:none;">
+      <div class="settings-label">
+        <label class="settings-title" for="cuc-notify-charge" data-i18n="own_email.notify_charge_label">Session-Abrechnung</label>
+        <p class="settings-desc" data-i18n="own_email.notify_charge_desc">Benachrichtige mich per E-Mail, wenn eine meiner Sessions abgerechnet wird.</p>
+      </div>
+      <div class="settings-control">
+        <label class="switch">
+          <input type="checkbox" id="cuc-notify-charge">
+          <span class="switch-slider"></span>
+        </label>
+      </div>
+    </div>
+    <div class="settings-row" style="padding:10px 0 14px;border:none;">
+      <div class="settings-label">
+        <label class="settings-title" for="cuc-notify-deposit" data-i18n="own_email.notify_deposit_label">Einzahlungen</label>
+        <p class="settings-desc" data-i18n="own_email.notify_deposit_desc">Benachrichtige mich per E-Mail, wenn eine Einzahlung auf mein Konto verbucht wird.</p>
+      </div>
+      <div class="settings-control">
+        <label class="switch">
+          <input type="checkbox" id="cuc-notify-deposit">
           <span class="switch-slider"></span>
         </label>
       </div>
