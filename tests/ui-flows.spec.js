@@ -1490,4 +1490,108 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     await expect(desc).toContainText('WhatsApp');
   });
 
+  test('24 — Guest Removal Confirmation Modal with Waitlist Promotion', async ({ page, request }) => {
+    const pageErrors = [];
+    page.on('pageerror', err => pageErrors.push(err.message));
+
+    const players = await (await request.get('/api.php/players')).json();
+    const admin = players.find(p => p.name === 'Admin');
+    const alice = players.find(p => p.name === 'Alice');
+    const auth = await (await request.post('/api.php/auth', {
+      data: { player_id: admin.id, pin: '1111' },
+    })).json();
+    const H = { 'Content-Type': 'application/json', 'X-Token': auth.token };
+
+    const thomas = await (await request.post('/api.php/players', {
+      headers: H,
+      data: { name: 'Thomas', pin: '3333', admin: false },
+    })).json();
+
+    await request.put(`/api.php/sessions/${TOMORROW}`, {
+      headers: H,
+      data: {
+        courts: [[alice.id, `${alice.id}|g1`, null, null], [null, null, null, null]],
+        waitlist: [thomas.id],
+      },
+    });
+
+    // Login as Alice (PIN 2222)
+    await page.click('#player-pick-grid button:has-text("Alice")');
+    await expect(page.locator('#upin-overlay')).toHaveClass(/open/);
+    const key2 = page.locator('.pkey', { hasText: '2' }).first();
+    await key2.click(); await key2.click(); await key2.click(); await key2.click();
+    await expect(page.locator('#upin-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    await page.evaluate(async () => { await loadState(); renderSessions(); });
+
+    const removeGuestBtn = page.locator('.slot-guest-remove').first();
+    await expect(removeGuestBtn).toBeVisible({ timeout: 5000 });
+
+    // 1. Thomas has notify_email = 0 -> modal shows guest title/desc + WhatsApp waitlist warning
+    await removeGuestBtn.click();
+    const modal = page.locator('#mo-leave-confirm');
+    const title = page.locator('#mo-leave-title');
+    const desc = page.locator('#mo-leave-desc');
+    await expect(modal).toHaveClass(/open/);
+    await expect(title).toHaveText('Gast abmelden');
+    await expect(desc).toContainText('Bist du sicher, dass du deinen Gast abmelden möchtest?');
+    await expect(desc).not.toContainText('%%N%%');
+    await expect(desc).toContainText('Thomas');
+    await expect(desc).toContainText('WhatsApp');
+
+    // 2. Cancel keeps guest slot booked
+    await page.click('#mo-leave-confirm .btn-sec');
+    await expect(modal).not.toHaveClass(/open/);
+    await expect(removeGuestBtn).toBeVisible();
+
+    // 3. Thomas enables email notifications -> modal reflects automatic email
+    await request.put(`/api.php/players/${thomas.id}`, {
+      headers: H,
+      data: { contact: 'thomas@example.com', notify_email: 1 },
+    });
+    await page.evaluate(async () => { await loadState(); renderSessions(); });
+    await removeGuestBtn.click();
+    await expect(modal).toHaveClass(/open/);
+    await expect(desc).toContainText('automatisch per E-Mail');
+    await expect(desc).not.toContainText('WhatsApp');
+
+    // 4. Confirm removes guest slot and promotes Thomas while keeping Alice
+    await page.click('#mo-leave-confirm-btn');
+    await expect(modal).not.toHaveClass(/open/);
+    await expect(page.locator('.slot-guest-remove')).toHaveCount(0);
+
+    const sessionsAfter = await (await request.get('/api.php/sessions')).json();
+    const updatedSess = sessionsAfter.find(s => s.date === TOMORROW);
+    expect(updatedSess.waitlist).toEqual([]);
+    expect(updatedSess.courts[0]).toContain(alice.id);
+    expect(updatedSess.courts[0]).toContain(thomas.id);
+    expect(updatedSess.courts[0]).not.toContain(`${alice.id}|g1`);
+
+    // 5. Empty waitlist -> still shows confirmation modal without waitlist warning
+    await request.put(`/api.php/sessions/${TOMORROW}`, {
+      headers: H,
+      data: {
+        courts: [[alice.id, `${alice.id}|g1`, thomas.id, null], [null, null, null, null]],
+        waitlist: [],
+      },
+    });
+    await page.evaluate(async () => { await loadState(); renderSessions(); });
+    await expect(removeGuestBtn).toBeVisible({ timeout: 5000 });
+    await removeGuestBtn.click();
+    await expect(modal).toHaveClass(/open/);
+    await expect(title).toHaveText('Gast abmelden');
+    await expect(desc).toContainText('Bist du sicher, dass du deinen Gast abmelden möchtest?');
+    await expect(desc).not.toContainText('Warteliste');
+
+    await page.click('#mo-leave-confirm-btn');
+    await expect(modal).not.toHaveClass(/open/);
+    await expect(page.locator('.slot-guest-remove')).toHaveCount(0);
+
+    const sessionsFinal = await (await request.get('/api.php/sessions')).json();
+    const finalSess = sessionsFinal.find(s => s.date === TOMORROW);
+    expect(finalSess.courts[0]).toContain(alice.id);
+    expect(finalSess.courts[0]).not.toContain(`${alice.id}|g1`);
+    expect(pageErrors).toEqual([]);
+  });
+
 });

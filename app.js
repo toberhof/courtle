@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:516
-const CLIENT_BUILD = 516;
+// built:517
+const CLIENT_BUILD = 517;
 let S = {
   players: [],
   transactions: [],
@@ -1322,7 +1322,7 @@ function buildSessionCard(dateOrSess, isNextSession = false) {
           nameHtml = `<div class="slot-name slot-name-col">
             <div class="slot-guest-title">
               <span>${t('session.guest')}</span>
-              ${isMyGuest ? `<button onclick="removeGuestSlot('${sessId}',${ci},${si})" class="slot-guest-remove" title="${t('misc.guest')} entfernen">×</button>` : ''}
+              ${isMyGuest && !past && !sess.charged ? `<button onclick="openRemoveGuestConfirm('${sessId}',${ci},${si})" class="slot-guest-remove" title="${esc(t('leave.guest_title'))}">×</button>` : ''}
             </div>
             <div class="slot-guest-sub">${t('session.guest_of').replace('{name}', esc(p ? p.name : '?'))}</div>
           </div>`;
@@ -1596,8 +1596,12 @@ async function removeGuestSlot(idOrDate, ci, si) {
     await loadState();
     renderSessions();
     if (isAdmin) renderAdminPlan();
+    showToast(t('toast.guest_removed'));
   } catch(e) {
-    showToast((e && e.message) ? e.message : 'Fehler beim Entfernen des Gastes.');
+    await loadState();
+    renderSessions();
+    if (isAdmin) renderAdminPlan();
+    showToast((e && e.message) ? '❌ ' + e.message : t('toast.guest_removed_error'));
   }
 }
 
@@ -7467,21 +7471,30 @@ function shuffleTeams() {
 }
 
 let pendingLeaveId = null;
+let pendingLeaveGuestSlot = null;
 
-function openLeaveConfirm(idOrDate) {
+function openRemoveGuestConfirm(idOrDate, ci, si) {
+  openLeaveConfirm(idOrDate, { ci, si });
+}
+
+function openLeaveConfirm(idOrDate, guestSlot = null) {
   const sess = getOrSess(idOrDate);
   if (!sess) return;
-  if (!isWithinCancelWindow(sess)) {
+  if (!isAdmin && !isWithinCancelWindow(sess)) {
     const deadline = getCancelDeadline(sess);
     const deadlineStr = fmtDateTime(deadline);
     showToast(t('toast.leave_failed') + ' (' + t('session.cancel_deadline') + ' ' + t('session.until') + ': ' + deadlineStr + ')');
     return;
   }
   pendingLeaveId = sess.id || sess.date;
+  pendingLeaveGuestSlot = guestSlot || null;
+  const titleEl = document.getElementById('mo-leave-title');
+  if (titleEl) titleEl.textContent = guestSlot ? t('leave.guest_title') : t('leave.title');
   const hasWL = sess.waitlist && sess.waitlist.length > 0;
   const deadline = getCancelDeadline(sess);
   const deadlineStr = fmtDateTime(deadline);
-  let msg;
+  const deadlineHtml = '<span style="font-size:0.9em;opacity:0.7">' + esc(t('session.leave') + ' ' + t('session.possible') + ' ' + t('session.until') + ': ' + deadlineStr) + '</span>';
+  const descEl = document.getElementById('mo-leave-desc');
   if (hasWL) {
     const nextId = sess.waitlist[0];
     const isGuestWl = String(nextId).includes('|');
@@ -7500,23 +7513,29 @@ function openLeaveConfirm(idOrDate) {
       ? (willBeEmailed ? 'leave.warn_guest_notified' : 'leave.warn_guest')
       : (willBeEmailed ? 'leave.warn_notified' : 'leave.warn');
     const warnHtml = t(warnKey).replaceAll('%%N%%', nameTag);
-    document.getElementById('mo-leave-desc').innerHTML = (warnHtml + '<br><br><span style="font-size:0.9em;opacity:0.7">' + t('session.leave') + ' ' + t('session.possible') + ' ' + t('session.until') + ': ' + esc(deadlineStr) + '</span>');
+    descEl.innerHTML = guestSlot
+      ? esc(t('leave.guest_desc')) + '<br><br>' + warnHtml + '<br><br>' + deadlineHtml
+      : warnHtml + '<br><br>' + deadlineHtml;
     openMo('mo-leave-confirm');
     return;
-  } else {
-    msg = t('leave.desc') + '\n\n' + t('session.leave') + ' ' + t('session.possible') + ' ' + t('session.until') + ': ' + deadlineStr;
   }
-  document.getElementById('mo-leave-desc').textContent = msg;
+  descEl.innerHTML = esc(guestSlot ? t('leave.guest_desc') : t('leave.desc')) + '<br><br>' + deadlineHtml;
   openMo('mo-leave-confirm');
 }
 
-function confirmLeave() {
+async function confirmLeave() {
   closeMo('mo-leave-confirm');
-  if (pendingLeaveId) {
-    leaveSession(pendingLeaveId);
-    renderMyHistory();
-    pendingLeaveId = null;
+  const id = pendingLeaveId;
+  const guestSlot = pendingLeaveGuestSlot;
+  pendingLeaveId = null;
+  pendingLeaveGuestSlot = null;
+  if (!id) return;
+  if (guestSlot) {
+    await removeGuestSlot(id, guestSlot.ci, guestSlot.si);
+  } else {
+    await leaveSession(id);
   }
+  renderMyHistory();
 }
 
 let editTxId = null;
