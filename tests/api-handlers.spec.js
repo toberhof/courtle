@@ -1238,7 +1238,21 @@ test.describe('API Handler Integration Suite', () => {
     expect(players.find(p => p.id === wlOptedIn.id).notify_email).toBe(1);
     expect(players.find(p => p.id === wlOptedOut.id).notify_email).toBe(0);
 
-    // 4. Create session and fill 4 slots + 2 waitlist entries
+    // 4. Create a series with custom numeric courtNames and a session without session-level courtNames
+    await request.post('/api.php/series', {
+      headers: H,
+      data: {
+        name: 'Friday Series',
+        enabled: true,
+        daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
+        occurrences: 4,
+        timeStart: '18:00',
+        timeEnd: '20:00',
+        courts: 1,
+        courtNames: ['5']
+      }
+    });
+
     const sRes = await (await request.put('/api.php/sessions/new', {
       headers: H,
       data: {
@@ -1275,6 +1289,7 @@ test.describe('API Handler Integration Suite', () => {
     expect(emails[0].subject).toMatch(/^You got a spot: Friday Event/);
     expect(emails[0].text).toContain('Hall A');
     expect(emails[0].text).toContain('18:00');
+    expect(emails[0].text).toContain('Court: Court 5');
     // Root app instance URL only (no deep-link path/query)
     expect(emails[0].text).toMatch(/https?:\/\/[^/\s]+$/m);
 
