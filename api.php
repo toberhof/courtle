@@ -3241,9 +3241,12 @@ function handle_session_leave(string $idOrDate): void {
     $si = $b['slot_index'] ?? null;
     
     // Nur für sich selbst abmelden (oder Admin)
+    $isAdmin = token_valid(true);
     $callerId = token_player($_SERVER['HTTP_X_TOKEN'] ?? '');
     $targetBase = $baseId ? explode('|', $baseId)[0] : null;
-    if (!token_valid(true) && (!$targetBase || $callerId !== $targetBase)) {
+    // Bei gezielter Slot-Abmeldung (Fall 1) prüfen wir den tatsächlichen Slot-Inhaber in der DB;
+    // bei allgemeiner Abmeldung (Fall 2) muss player_id direkt zum Caller passen.
+    if (!$isAdmin && ($ci === null || $si === null) && (!$targetBase || $callerId !== $targetBase)) {
         err('You can only remove yourself.', 403);
     }
     
@@ -3282,11 +3285,19 @@ function handle_session_leave(string $idOrDate): void {
         $stmt->execute([$sessId, $ci, $si]);
         $slot_data = $stmt->fetch();
         if ($slot_data && $slot_data['player_id']) {
+            $slotOwnerBase = explode('|', (string)$slot_data['player_id'])[0];
+            if (!$isAdmin && (!$callerId || $callerId !== $slotOwnerBase)) {
+                $db->exec('ROLLBACK');
+                err('You can only remove yourself.', 403);
+            }
             $freed_slots[] = [
                 'court_index' => $ci, 
                 'slot_index' => $si,
                 'player_id' => $slot_data['player_id']
             ];
+        } elseif (!$isAdmin && $targetBase && $callerId !== $targetBase) {
+            $db->exec('ROLLBACK');
+            err('You can only remove yourself.', 403);
         }
         $db->prepare("UPDATE courts SET player_id = NULL WHERE session_id=? AND court_index=? AND slot_index=?")->execute([$sessId, $ci, $si]);
     } 
