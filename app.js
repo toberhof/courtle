@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:512
-const CLIENT_BUILD = 512;
+// built:513
+const CLIENT_BUILD = 513;
 let S = {
   players: [],
   transactions: [],
@@ -808,15 +808,18 @@ function openChangeUserContactModal() {
   if (!guestId) { showToast('Bitte zuerst Profil wählen.'); return; }
   const p = S.players.find(x => x.id == guestId);
   document.getElementById('cuc-contact').value = p ? (p.contact || '') : '';
+  document.getElementById('cuc-notify-email').checked = Boolean(p && Number(p.notify_email));
   openMo('mo-user-contact');
   setTimeout(() => document.getElementById('cuc-contact').focus(), 100);
 }
 async function saveOwnContact() {
   if (!guestId) { showToast('Kein Profil aktiv.'); return; }
   const contact = document.getElementById('cuc-contact').value.trim();
-  if (contact && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) { showToast('Bitte gültige E-Mail-Adresse eingeben.'); return; }
+  const notifyEmail = document.getElementById('cuc-notify-email').checked;
+  if (contact && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) { showToast(t('toast.valid_email')); return; }
+  if (notifyEmail && !contact) { showToast(t('toast.notify_email_required')); return; }
   try {
-    await apiFetch('PUT', '/players/' + guestId, { contact: contact || null });
+    await apiFetch('PUT', '/players/' + guestId, { contact: contact || null, notify_email: notifyEmail ? 1 : 0 });
     closeMo('mo-user-contact');
     showToast(t('toast.email_saved'));
     await loadState();

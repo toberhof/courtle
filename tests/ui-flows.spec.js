@@ -1341,4 +1341,53 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     await expect(banner).not.toBeVisible({ timeout: 3000 });
   });
 
+  test('22 — Profile Email & Waitlist Notification Toggle Persistence', async ({ page }) => {
+    // Login as Alice (PIN 2222)
+    await page.click('#player-pick-grid button:has-text("Alice")');
+    await expect(page.locator('#upin-overlay')).toHaveClass(/open/);
+    const key2 = page.locator('.pkey', { hasText: '2' }).first();
+    await key2.click(); await key2.click(); await key2.click(); await key2.click();
+    await expect(page.locator('#upin-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Open profile email modal
+    await page.evaluate(() => openChangeUserContactModal());
+    await expect(page.locator('#mo-user-contact')).toHaveClass(/open/);
+
+    // Default toggle is OFF
+    const toggleInput = page.locator('#cuc-notify-email');
+    const toggleSwitch = page.locator('#mo-user-contact label.switch');
+    await expect(toggleInput).not.toBeChecked();
+
+    // Toggling ON without email shows validation toast and keeps modal open
+    await page.fill('#cuc-contact', '');
+    await toggleSwitch.click();
+    await expect(toggleInput).toBeChecked();
+    await page.click('#mo-user-contact button.btn-pri');
+    await expect(page.locator('#mo-user-contact')).toHaveClass(/open/);
+
+    // Enter valid email and save
+    await page.fill('#cuc-contact', 'alice@example.com');
+    await page.click('#mo-user-contact button.btn-pri');
+    await expect(page.locator('#mo-user-contact')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Reload and verify persistence
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => openChangeUserContactModal());
+    await expect(page.locator('#mo-user-contact')).toHaveClass(/open/);
+    await expect(page.locator('#cuc-contact')).toHaveValue('alice@example.com');
+    await expect(toggleInput).toBeChecked();
+
+    // Toggle OFF and save
+    await toggleSwitch.click();
+    await expect(toggleInput).not.toBeChecked();
+    await page.click('#mo-user-contact button.btn-pri');
+    await expect(page.locator('#mo-user-contact')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => openChangeUserContactModal());
+    await expect(toggleInput).not.toBeChecked();
+  });
+
 });
