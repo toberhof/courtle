@@ -613,7 +613,7 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
 
     // 3. Open profile menu and change email
     await openProfileMenu(page);
-    const changeEmailBtn = page.locator('button:has-text("E-Mail ändern"):visible');
+    const changeEmailBtn = page.locator('button:has-text("E-Mail-Einstellungen"):visible');
     await expect(changeEmailBtn).toBeVisible({ timeout: 5000 });
     await changeEmailBtn.click();
 
@@ -1339,6 +1339,155 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     // Test dismiss button
     await banner.locator('.courtle-update-banner-close').click();
     await expect(banner).not.toBeVisible({ timeout: 3000 });
+  });
+
+  test('22 — Profile Email & Waitlist Notification Toggle Persistence', async ({ page }) => {
+    // Login as Alice (PIN 2222)
+    await page.click('#player-pick-grid button:has-text("Alice")');
+    await expect(page.locator('#upin-overlay')).toHaveClass(/open/);
+    const key2 = page.locator('.pkey', { hasText: '2' }).first();
+    await key2.click(); await key2.click(); await key2.click(); await key2.click();
+    await expect(page.locator('#upin-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Open profile email modal
+    await page.evaluate(() => openChangeUserContactModal());
+    await expect(page.locator('#mo-user-contact')).toHaveClass(/open/);
+
+    // Default toggles are OFF
+    const wlInput = page.locator('#cuc-notify-email');
+    const chargeInput = page.locator('#cuc-notify-charge');
+    const depositInput = page.locator('#cuc-notify-deposit');
+    const wlSwitch = page.locator('#mo-user-contact label.switch:has(#cuc-notify-email)');
+    const chargeSwitch = page.locator('#mo-user-contact label.switch:has(#cuc-notify-charge)');
+    const depositSwitch = page.locator('#mo-user-contact label.switch:has(#cuc-notify-deposit)');
+    await expect(wlInput).not.toBeChecked();
+    await expect(chargeInput).not.toBeChecked();
+    await expect(depositInput).not.toBeChecked();
+
+    // Toggling ON without email shows validation toast and keeps modal open
+    await page.fill('#cuc-contact', '');
+    await chargeSwitch.click();
+    await expect(chargeInput).toBeChecked();
+    await page.click('#mo-user-contact button.btn-pri');
+    await expect(page.locator('#mo-user-contact')).toHaveClass(/open/);
+
+    // Enter valid email, enable all 3 toggles, and save
+    await wlSwitch.click();
+    await depositSwitch.click();
+    await page.fill('#cuc-contact', 'alice@example.com');
+    await page.click('#mo-user-contact button.btn-pri');
+    await expect(page.locator('#mo-user-contact')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Reload and verify persistence
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => openChangeUserContactModal());
+    await expect(page.locator('#mo-user-contact')).toHaveClass(/open/);
+    await expect(page.locator('#cuc-contact')).toHaveValue('alice@example.com');
+    await expect(wlInput).toBeChecked();
+    await expect(chargeInput).toBeChecked();
+    await expect(depositInput).toBeChecked();
+
+    // Toggle all OFF and save
+    await wlSwitch.click();
+    await chargeSwitch.click();
+    await depositSwitch.click();
+    await expect(wlInput).not.toBeChecked();
+    await expect(chargeInput).not.toBeChecked();
+    await expect(depositInput).not.toBeChecked();
+    await page.click('#mo-user-contact button.btn-pri');
+    await expect(page.locator('#mo-user-contact')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => openChangeUserContactModal());
+    await expect(wlInput).not.toBeChecked();
+    await expect(chargeInput).not.toBeChecked();
+    await expect(depositInput).not.toBeChecked();
+  });
+
+  test('23 — Leave Confirm Modal Waitlist Notification Message', async ({ page, request }) => {
+    const players = await (await request.get('/api.php/players')).json();
+    const admin = players.find(p => p.name === 'Admin');
+    const alice = players.find(p => p.name === 'Alice');
+    const auth = await (await request.post('/api.php/auth', {
+      data: { player_id: admin.id, pin: '1111' },
+    })).json();
+    const H = { 'Content-Type': 'application/json', 'X-Token': auth.token };
+
+    const thomas = await (await request.post('/api.php/players', {
+      headers: H,
+      data: { name: 'Thomas', pin: '3333', admin: false },
+    })).json();
+
+    await request.put(`/api.php/sessions/${TOMORROW}`, {
+      headers: H,
+      data: {
+        courts: [[alice.id, null, null, null], [null, null, null, null]],
+        waitlist: [thomas.id],
+      },
+    });
+
+    // Login as Alice (PIN 2222)
+    await page.click('#player-pick-grid button:has-text("Alice")');
+    await expect(page.locator('#upin-overlay')).toHaveClass(/open/);
+    const key2 = page.locator('.pkey', { hasText: '2' }).first();
+    await key2.click(); await key2.click(); await key2.click(); await key2.click();
+    await expect(page.locator('#upin-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    await page.evaluate(() => loadState());
+
+    // 1. Thomas has notify_email = 0 -> WhatsApp warning, no %%N%%
+    await page.evaluate((d) => openLeaveConfirm(d), TOMORROW);
+    const desc = page.locator('#mo-leave-desc');
+    await expect(page.locator('#mo-leave-confirm')).toHaveClass(/open/);
+    await expect(desc).not.toContainText('%%N%%');
+    await expect(desc).toContainText(/Thomas[\s\S]*Thomas/);
+    await expect(desc).toContainText('WhatsApp');
+    await page.click('#mo-leave-confirm .mo-close');
+
+    // 2. Thomas enables email notifications -> automatic email message, no WhatsApp, no %%N%%
+    await request.put(`/api.php/players/${thomas.id}`, {
+      headers: H,
+      data: { contact: 'thomas@example.com', notify_email: 1 },
+    });
+    await page.evaluate(() => loadState());
+    await page.evaluate((d) => openLeaveConfirm(d), TOMORROW);
+    await expect(page.locator('#mo-leave-confirm')).toHaveClass(/open/);
+    await expect(desc).not.toContainText('%%N%%');
+    await expect(desc).toContainText(/Thomas[\s\S]*Thomas/);
+    await expect(desc).toContainText('automatisch per E-Mail');
+    await expect(desc).not.toContainText('WhatsApp');
+    await page.click('#mo-leave-confirm .mo-close');
+
+    // 3. Guest of Thomas on waitlist -> notifies Thomas (host) per email when opted in
+    await request.put(`/api.php/sessions/${TOMORROW}`, {
+      headers: H,
+      data: {
+        courts: [[alice.id, null, null, null], [null, null, null, null]],
+        waitlist: [`${thomas.id}|g1`],
+      },
+    });
+    await page.evaluate(() => loadState());
+    await page.evaluate((d) => openLeaveConfirm(d), TOMORROW);
+    await expect(page.locator('#mo-leave-confirm')).toHaveClass(/open/);
+    await expect(desc).not.toContainText('%%N%%');
+    await expect(desc).toContainText('Ein Gast von Thomas');
+    await expect(desc).toContainText('automatisch per E-Mail');
+    await expect(desc).not.toContainText('WhatsApp');
+    await page.click('#mo-leave-confirm .mo-close');
+
+    // 4. Guest of Thomas when Thomas opted out -> WhatsApp warning for Thomas
+    await request.put(`/api.php/players/${thomas.id}`, {
+      headers: H,
+      data: { notify_email: 0 },
+    });
+    await page.evaluate(() => loadState());
+    await page.evaluate((d) => openLeaveConfirm(d), TOMORROW);
+    await expect(page.locator('#mo-leave-confirm')).toHaveClass(/open/);
+    await expect(desc).not.toContainText('%%N%%');
+    await expect(desc).toContainText('Ein Gast von Thomas');
+    await expect(desc).toContainText('WhatsApp');
   });
 
 });

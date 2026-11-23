@@ -128,6 +128,14 @@ function db(): PDO {
     if ($ver < 5) {
         migrate_v5_expense_sessions($pdo);
     }
+    $ver = (int)$pdo->query("SELECT value FROM config WHERE key='schema_version'")->fetchColumn();
+    if ($ver < 6) {
+        migrate_v6_player_notify_email($pdo);
+    }
+    $ver = (int)$pdo->query("SELECT value FROM config WHERE key='schema_version'")->fetchColumn();
+    if ($ver < 7) {
+        migrate_v7_player_notify_billing_deposit($pdo);
+    }
     return $pdo;
 }
 
@@ -140,6 +148,8 @@ function handle_system_init(): void {
     migrate_v3_tx_session_link($db);
     migrate_v4_expenses_session_link($db);
     migrate_v5_expense_sessions($db);
+    migrate_v6_player_notify_email($db);
+    migrate_v7_player_notify_billing_deposit($db);
     json_out(['ok' => true, 'message' => 'Datenbank-Struktur erfolgreich geprüft und aktualisiert.']);
 }
 
@@ -161,7 +171,28 @@ function handle_test_reset(): void {
         $db->exec("PRAGMA foreign_keys = ON");
     } catch (Throwable $e) {}
     
+    @unlink(dirname(DB_PATH) . '/test-emails.jsonl');
+    
     json_out(['status' => 'success', 'message' => 'Database successfully reset.']);
+}
+
+function handle_test_emails(): void {
+    if (strpos(DB_PATH, 'test') === false) {
+        err('Only allowed in test environments.', 403);
+    }
+    $file = dirname(DB_PATH) . '/test-emails.jsonl';
+    if (!file_exists($file)) {
+        json_out([]);
+    }
+    $lines = file($file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [];
+    $emails = [];
+    foreach ($lines as $line) {
+        $decoded = json_decode($line, true);
+        if (is_array($decoded)) {
+            $emails[] = $decoded;
+        }
+    }
+    json_out($emails);
 }
 
 function init_db(PDO $db): void {
@@ -176,7 +207,10 @@ function init_db(PDO $db): void {
         created_at TEXT NOT NULL, 
         last_login TEXT, 
         last_interaction TEXT, 
-        admin INTEGER DEFAULT 0
+        admin INTEGER DEFAULT 0,
+        notify_email INTEGER DEFAULT 0,
+        notify_charge INTEGER DEFAULT 0,
+        notify_deposit INTEGER DEFAULT 0
     )");
     
     $db->exec("CREATE TABLE IF NOT EXISTS transactions (
@@ -399,6 +433,17 @@ function migrate_v5_expense_sessions(PDO $db): void {
     $db->exec("INSERT OR IGNORE INTO expense_sessions (expense_id, session_id)
                SELECT id, session_id FROM expenses WHERE session_id IS NOT NULL AND session_id != ''");
     $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', '5')")->execute();
+}
+
+function migrate_v6_player_notify_email(PDO $db): void {
+    try { $db->exec("ALTER TABLE players ADD COLUMN notify_email INTEGER DEFAULT 0"); } catch (Throwable $e) {}
+    $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', '6')")->execute();
+}
+
+function migrate_v7_player_notify_billing_deposit(PDO $db): void {
+    try { $db->exec("ALTER TABLE players ADD COLUMN notify_charge INTEGER DEFAULT 0"); } catch (Throwable $e) {}
+    try { $db->exec("ALTER TABLE players ADD COLUMN notify_deposit INTEGER DEFAULT 0"); } catch (Throwable $e) {}
+    $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', '7')")->execute();
 }
 
 function migrate_v3_tx_session_link(PDO $db): void {
@@ -712,6 +757,906 @@ function get_effective_time_start(PDO $db, string $date, ?string $sessionTimeSta
     return $val ?: '19:00';
 }
 
+// ── Email Notifications (Resend) ──
+function get_app_instance_url(): string {
+    $envUrl = trim((string)(getenv('APP_URL') ?: ''));
+    if ($envUrl !== '') {
+        return rtrim($envUrl, '/');
+    }
+    $host = trim((string)($_SERVER['HTTP_HOST'] ?? ''));
+    if ($host === '') return '';
+    $proto = trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+    if ($proto !== '') {
+        $scheme = strtolower(explode(',', $proto)[0]);
+    } else {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    }
+    return $scheme . '://' . $host;
+}
+
+function build_waitlist_promotion_email(string $lang, array $data): array {
+    $templates = [
+        'de' => [
+            'subject' => 'Du bist nachgerückt: {session} ({date})',
+            'title' => 'Platz frei geworden!',
+            'greeting' => 'Hallo {player},',
+            'body' => 'gute Nachrichten: Du bist von der Warteliste nachgerückt und hast jetzt einen festen Platz.',
+            'subject_guest' => 'Dein Gast ist nachgerückt: {session} ({date})',
+            'title_guest' => 'Platz für deinen Gast frei geworden!',
+            'body_guest' => 'gute Nachrichten: Dein Gast ist von der Warteliste nachgerückt und hat jetzt einen festen Platz.',
+            'subject_guests' => 'Deine Gäste sind nachgerückt: {session} ({date})',
+            'title_guests' => 'Plätze für deine Gäste frei geworden!',
+            'body_guests' => 'gute Nachrichten: Deine {count} Gäste sind von der Warteliste nachgerückt und haben jetzt feste Plätze.',
+            'lbl_session' => 'Termin',
+            'lbl_date' => 'Datum',
+            'lbl_time' => 'Uhrzeit',
+            'lbl_location' => 'Ort',
+            'lbl_court' => 'Court',
+            'cta' => 'Zur App',
+            'footer' => 'Du erhältst diese Nachricht, weil du E-Mail-Benachrichtigungen in deinem Profil aktiviert hast.',
+        ],
+        'en' => [
+            'subject' => 'You got a spot: {session} ({date})',
+            'title' => 'You moved up from the waitlist!',
+            'greeting' => 'Hi {player},',
+            'body' => 'good news: a spot opened up and you have been moved from the waitlist onto a court.',
+            'subject_guest' => 'Your guest got a spot: {session} ({date})',
+            'title_guest' => 'Your guest moved up from the waitlist!',
+            'body_guest' => 'good news: a spot opened up and your guest has been moved from the waitlist onto a court.',
+            'subject_guests' => 'Your guests got spots: {session} ({date})',
+            'title_guests' => 'Your guests moved up from the waitlist!',
+            'body_guests' => 'good news: spots opened up and your {count} guests have been moved from the waitlist onto a court.',
+            'lbl_session' => 'Session',
+            'lbl_date' => 'Date',
+            'lbl_time' => 'Time',
+            'lbl_location' => 'Location',
+            'lbl_court' => 'Court',
+            'cta' => 'Open App',
+            'footer' => 'You are receiving this email because email notifications are enabled in your profile.',
+        ],
+        'es' => [
+            'subject' => 'Tienes plaza: {session} ({date})',
+            'title' => '¡Has subido desde la lista de espera!',
+            'greeting' => 'Hola {player},',
+            'body' => 'buenas noticias: se ha liberado una plaza y has pasado de la lista de espera a la pista.',
+            'subject_guest' => 'Tu invitado tiene plaza: {session} ({date})',
+            'title_guest' => '¡Tu invitado ha subido desde la lista de espera!',
+            'body_guest' => 'buenas noticias: se ha liberado una plaza y tu invitado ha pasado de la lista de espera a la pista.',
+            'subject_guests' => 'Tus invitados tienen plaza: {session} ({date})',
+            'title_guests' => '¡Tus invitados han subido desde la lista de espera!',
+            'body_guests' => 'buenas noticias: se han liberado plazas y tus {count} invitados han pasado de la lista de espera a la pista.',
+            'lbl_session' => 'Sesión',
+            'lbl_date' => 'Fecha',
+            'lbl_time' => 'Horario',
+            'lbl_location' => 'Lugar',
+            'lbl_court' => 'Pista',
+            'cta' => 'Abrir App',
+            'footer' => 'Recibes este correo porque tienes activadas las notificaciones por correo en tu perfil.',
+        ],
+        'it' => [
+            'subject' => 'Posto confermato: {session} ({date})',
+            'title' => 'Sei salito dalla lista d\'attesa!',
+            'greeting' => 'Ciao {player},',
+            'body' => 'buone notizie: si è liberato un posto e sei stato spostato dalla lista d\'attesa in campo.',
+            'subject_guest' => 'Posto confermato per il tuo ospite: {session} ({date})',
+            'title_guest' => 'Il tuo ospite è salito dalla lista d\'attesa!',
+            'body_guest' => 'buone notizie: si è liberato un posto e il tuo ospite è stato spostato dalla lista d\'attesa in campo.',
+            'subject_guests' => 'Posti confermati per i tuoi ospiti: {session} ({date})',
+            'title_guests' => 'I tuoi ospiti sono saliti dalla lista d\'attesa!',
+            'body_guests' => 'buone notizie: si sono liberati dei posti e i tuoi {count} ospiti sono stati spostati dalla lista d\'attesa in campo.',
+            'lbl_session' => 'Sessione',
+            'lbl_date' => 'Data',
+            'lbl_time' => 'Orario',
+            'lbl_location' => 'Luogo',
+            'lbl_court' => 'Campo',
+            'cta' => 'Apri App',
+            'footer' => 'Ricevi questa email perché hai attivato le notifiche email nel tuo profilo.',
+        ],
+        'fr' => [
+            'subject' => 'Place confirmée : {session} ({date})',
+            'title' => 'Vous avez quitté la liste d\'attente !',
+            'greeting' => 'Bonjour {player},',
+            'body' => 'bonne nouvelle : une place s\'est libérée et vous êtes passé de la liste d\'attente au terrain.',
+            'subject_guest' => 'Place confirmée pour votre invité : {session} ({date})',
+            'title_guest' => 'Votre invité a quitté la liste d\'attente !',
+            'body_guest' => 'bonne nouvelle : une place s\'est libérée et votre invité est passé de la liste d\'attente au terrain.',
+            'subject_guests' => 'Places confirmées pour vos invités : {session} ({date})',
+            'title_guests' => 'Vos invités ont quitté la liste d\'attente !',
+            'body_guests' => 'bonne nouvelle : des places se sont libérées et vos {count} invités sont passés de la liste d\'attente au terrain.',
+            'lbl_session' => 'Session',
+            'lbl_date' => 'Date',
+            'lbl_time' => 'Horaire',
+            'lbl_location' => 'Lieu',
+            'lbl_court' => 'Court',
+            'cta' => 'Ouvrir l\'app',
+            'footer' => 'Vous recevez cet e-mail car les notifications par e-mail sont activées dans votre profil.',
+        ],
+        'pt' => [
+            'subject' => 'Vaga confirmada: {session} ({date})',
+            'title' => 'Você saiu da lista de espera!',
+            'greeting' => 'Olá {player},',
+            'body' => 'boas notícias: abriu uma vaga e você avançou da lista de espera para a quadra.',
+            'subject_guest' => 'Vaga confirmada para seu convidado: {session} ({date})',
+            'title_guest' => 'Seu convidado saiu da lista de espera!',
+            'body_guest' => 'boas notícias: abriu uma vaga e seu convidado avançou da lista de espera para a quadra.',
+            'subject_guests' => 'Vagas confirmadas para seus convidados: {session} ({date})',
+            'title_guests' => 'Seus convidados saíram da lista de espera!',
+            'body_guests' => 'boas notícias: abriram vagas e seus {count} convidados avançaram da lista de espera para a quadra.',
+            'lbl_session' => 'Sessão',
+            'lbl_date' => 'Data',
+            'lbl_time' => 'Horário',
+            'lbl_location' => 'Local',
+            'lbl_court' => 'Quadra',
+            'cta' => 'Abrir App',
+            'footer' => 'Você está recebendo este e-mail porque as notificações por e-mail estão ativadas no seu perfil.',
+        ],
+    ];
+
+    $t = $templates[$lang] ?? $templates['de'];
+    $club = (string)($data['club_name'] ?: 'Courtle');
+    $sessionName = (string)($data['session_name'] ?: 'Session');
+    $rawDate = (string)($data['date'] ?? '');
+    $ts = $rawDate !== '' ? strtotime($rawDate) : false;
+    $formattedDate = $ts !== false ? date('d.m.Y', $ts) : $rawDate;
+    $timeRange = trim((string)($data['time_start'] ?? ''));
+    if (!empty($data['time_end'])) {
+        $timeRange .= ($timeRange !== '' ? ' – ' : '') . $data['time_end'];
+    }
+    $location = trim((string)($data['location'] ?? ''));
+    $courtLabel = trim((string)($data['court_label'] ?? ''));
+    $appUrl = trim((string)($data['app_url'] ?? ''));
+    $playerName = (string)($data['player_name'] ?? '');
+
+    $guestCount = (int)($data['guest_count'] ?? 0);
+    $includesSelf = !empty($data['includes_self']) || $guestCount === 0;
+    if (!$includesSelf && $guestCount > 1) {
+        $subjectTpl = $t['subject_guests'];
+        $titleText = $t['title_guests'];
+        $bodyTpl = $t['body_guests'];
+    } elseif (!$includesSelf && $guestCount === 1) {
+        $subjectTpl = $t['subject_guest'];
+        $titleText = $t['title_guest'];
+        $bodyTpl = $t['body_guest'];
+    } else {
+        $subjectTpl = $t['subject'];
+        $titleText = $t['title'];
+        $bodyTpl = $t['body'];
+    }
+
+    $subject = strtr($subjectTpl, [
+        '{session}' => $sessionName,
+        '{date}' => $formattedDate,
+    ]);
+    $greeting = strtr($t['greeting'], ['{player}' => $playerName]);
+    $bodyText = strtr($bodyTpl, ['{count}' => (string)$guestCount]);
+
+    $e = fn(string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+
+    $rows = [];
+    $rows[] = [$t['lbl_session'], $sessionName];
+    $rows[] = [$t['lbl_date'], $formattedDate];
+    if ($timeRange !== '') $rows[] = [$t['lbl_time'], $timeRange];
+    if ($location !== '') $rows[] = [$t['lbl_location'], $location];
+    if ($courtLabel !== '') $rows[] = [$t['lbl_court'], $courtLabel];
+
+    $tableRowsHtml = '';
+    $textDetails = [];
+    foreach ($rows as [$label, $val]) {
+        $tableRowsHtml .= '<tr>'
+            . '<td style="padding:6px 12px 6px 0;color:#64748b;font-size:14px;white-space:nowrap;">' . $e($label) . '</td>'
+            . '<td style="padding:6px 0;color:#0f172a;font-size:14px;font-weight:600;">' . $e($val) . '</td>'
+            . '</tr>';
+        $textDetails[] = $label . ': ' . $val;
+    }
+
+    $ctaHtml = '';
+    $ctaText = '';
+    if ($appUrl !== '') {
+        $ctaHtml = '<div style="margin-top:24px;">'
+            . '<a href="' . $e($appUrl) . '" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;">'
+            . $e($t['cta'])
+            . '</a></div>';
+        $ctaText = "\n\n" . $t['cta'] . ': ' . $appUrl;
+    }
+
+    $html = '<!DOCTYPE html><html><body style="margin:0;padding:24px;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#0f172a;">'
+        . '<div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;">'
+        . '<div style="font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:8px;">' . $e($club) . '</div>'
+        . '<h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;color:#0f172a;">' . $e($titleText) . '</h1>'
+        . '<p style="margin:0 0 12px;font-size:15px;line-height:1.5;">' . $e($greeting) . '</p>'
+        . '<p style="margin:0 0 20px;font-size:15px;line-height:1.5;">' . $e($bodyText) . '</p>'
+        . '<table style="width:100%;border-collapse:collapse;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:8px 0;">'
+        . $tableRowsHtml
+        . '</table>'
+        . $ctaHtml
+        . '<p style="margin:24px 0 0;font-size:12px;line-height:1.5;color:#64748b;">' . $e($t['footer']) . '</p>'
+        . '</div></body></html>';
+
+    $text = $titleText . "\n\n"
+        . $greeting . "\n"
+        . $bodyText . "\n\n"
+        . implode("\n", $textDetails)
+        . $ctaText . "\n\n"
+        . $t['footer'];
+
+    return ['subject' => $subject, 'html' => $html, 'text' => $text];
+}
+
+function format_resend_from(string $rawFrom, string $senderName): string {
+    $rawFrom = trim($rawFrom);
+    if ($rawFrom === '') return '';
+    if (preg_match('/<([^<>]+)>/', $rawFrom, $m)) {
+        $email = trim($m[1]);
+    } else {
+        $email = $rawFrom;
+    }
+    if ($email === '') return '';
+
+    $cleanName = trim(str_replace(["\r", "\n", '<', '>', '"'], '', $senderName));
+    if ($cleanName === '') {
+        $cleanName = 'Courtle';
+    }
+    if (preg_match('/[,;:()]/', $cleanName)) {
+        $cleanName = '"' . $cleanName . '"';
+    }
+    return $cleanName . ' <' . $email . '>';
+}
+
+function is_resend_configured(): bool {
+    $apiKey = trim((string)(getenv('RESEND_API_KEY') ?: ''));
+    $rawFrom = trim((string)(getenv('RESEND_FROM') ?: ''));
+    $isTestEnv = strpos(DB_PATH, 'test') !== false;
+    if ($isTestEnv && ($apiKey === '' || $apiKey === 'test-mock')) {
+        return true;
+    }
+    return $apiKey !== '' && format_resend_from($rawFrom, 'Courtle') !== '';
+}
+
+function send_resend_email(string $to, string $subject, string $html, string $text, string $senderName = 'Courtle'): bool {
+    $apiKey = trim((string)(getenv('RESEND_API_KEY') ?: ''));
+    $rawFrom = trim((string)(getenv('RESEND_FROM') ?: ''));
+    $replyTo = trim((string)(getenv('RESEND_REPLY_TO') ?: ''));
+
+    $isTestEnv = strpos(DB_PATH, 'test') !== false;
+    if ($isTestEnv && ($apiKey === '' || $apiKey === 'test-mock')) {
+        $from = format_resend_from($rawFrom !== '' ? $rawFrom : 'noreply@test.local', $senderName);
+        $payload = [
+            'from' => $from,
+            'to' => [$to],
+            'subject' => $subject,
+            'html' => $html,
+            'text' => $text,
+            'sent_at' => date('c'),
+        ];
+        if ($replyTo !== '') {
+            $payload['reply_to'] = $replyTo;
+        }
+        $file = dirname(DB_PATH) . '/test-emails.jsonl';
+        @file_put_contents($file, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n", FILE_APPEND | LOCK_EX);
+        return true;
+    }
+
+    $from = format_resend_from($rawFrom, $senderName);
+    if ($apiKey === '' || $from === '') {
+        if ($apiKey !== '' && $from === '') {
+            error_log('Resend skipped: RESEND_FROM is not configured.');
+        }
+        return false;
+    }
+
+    $payload = [
+        'from' => $from,
+        'to' => [$to],
+        'subject' => $subject,
+        'html' => $html,
+        'text' => $text,
+    ];
+    if ($replyTo !== '') {
+        $payload['reply_to'] = $replyTo;
+    }
+
+    if (!function_exists('curl_init')) {
+        error_log('Resend error: PHP curl extension is not available.');
+        return false;
+    }
+
+    $ch = curl_init('https://api.resend.com/emails');
+    if ($ch === false) {
+        error_log('Resend error: curl_init failed.');
+        return false;
+    }
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 3,
+        CURLOPT_TIMEOUT => 5,
+        CURLOPT_HTTPHEADER => [
+            'Authorization: Bearer ' . $apiKey,
+            'Content-Type: application/json',
+        ],
+        CURLOPT_POSTFIELDS => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    ]);
+    $resp = curl_exec($ch);
+    $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($resp === false || $httpCode >= 400) {
+        error_log("Resend API error (HTTP $httpCode): " . ($curlErr ?: (string)$resp));
+        return false;
+    }
+    return true;
+}
+
+function notify_waitlist_promotions(PDO $db, string $sessId, array $promotions): void {
+    try {
+        if (empty($promotions)) return;
+
+        $seenRaw = [];
+        $groupedPromotions = [];
+        foreach ($promotions as $promo) {
+            $rawPid = (string)($promo['player_id'] ?? '');
+            if ($rawPid === '' || isset($seenRaw[$rawPid])) continue;
+            $seenRaw[$rawPid] = true;
+            $baseId = explode('|', $rawPid)[0];
+            $isGuest = str_contains($rawPid, '|');
+            if (!isset($groupedPromotions[$baseId])) {
+                $groupedPromotions[$baseId] = [
+                    'self' => false,
+                    'guests' => 0,
+                    'court_index' => $promo['court_index'] ?? null,
+                ];
+            }
+            if ($isGuest) {
+                $groupedPromotions[$baseId]['guests']++;
+            } else {
+                $groupedPromotions[$baseId]['self'] = true;
+            }
+            if ($groupedPromotions[$baseId]['court_index'] === null && isset($promo['court_index'])) {
+                $groupedPromotions[$baseId]['court_index'] = $promo['court_index'];
+            }
+        }
+        if (empty($groupedPromotions)) return;
+
+        $sStmt = $db->prepare("SELECT * FROM sessions WHERE id=?");
+        $sStmt->execute([$sessId]);
+        $sess = $sStmt->fetch();
+        if (!$sess) return;
+
+        $cfgRows = $db->query("SELECT key, value FROM config WHERE key IN ('language','team_name','srlocation','srtimestart','srtimeend')")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $defaultLang = in_array($cfgRows['language'] ?? '', ['de', 'en', 'es', 'it', 'fr', 'pt'], true) ? $cfgRows['language'] : 'de';
+        $teamName = trim((string)($cfgRows['team_name'] ?? '')) ?: 'Courtle';
+
+        $date = (string)$sess['date'];
+        $series = get_series_for_date($db, $date, $sess['time_start'] ?? null) ?? get_series_by_weekday($db, $date);
+
+        $sessionName = trim((string)($sess['name'] ?? ''));
+        if ($sessionName === '' && $series && !empty($series['name'])) {
+            $sessionName = (string)$series['name'];
+        }
+        if ($sessionName === '') {
+            $sessionName = 'Session';
+        }
+
+        $timeStart = trim((string)($sess['time_start'] ?? ''));
+        if ($timeStart === '' && $series && !empty($series['time_start'])) $timeStart = (string)$series['time_start'];
+        if ($timeStart === '') $timeStart = (string)($cfgRows['srtimestart'] ?? '');
+
+        $timeEnd = trim((string)($sess['time_end'] ?? ''));
+        if ($timeEnd === '' && $series && !empty($series['time_end'])) $timeEnd = (string)$series['time_end'];
+        if ($timeEnd === '') $timeEnd = (string)($cfgRows['srtimeend'] ?? '');
+
+        $location = trim((string)($sess['location'] ?? ''));
+        if ($location === '' && $series && !empty($series['location'])) $location = (string)$series['location'];
+        if ($location === '') $location = trim((string)($cfgRows['srlocation'] ?? ''));
+
+        $courtNames = json_decode((string)($sess['court_names'] ?? '[]'), true);
+        if (!is_array($courtNames)) $courtNames = [];
+
+        $appUrl = get_app_instance_url();
+        $pStmt = $db->prepare("SELECT id, name, contact, language, COALESCE(notify_email, 0) AS notify_email FROM players WHERE id=?");
+
+        foreach ($groupedPromotions as $playerId => $promoInfo) {
+            $courtIndex = $promoInfo['court_index'];
+            $pStmt->execute([$playerId]);
+            $player = $pStmt->fetch();
+            if (!$player || (int)($player['notify_email'] ?? 0) !== 1) continue;
+
+            $email = trim((string)($player['contact'] ?? ''));
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
+
+            $lang = in_array($player['language'] ?? '', ['de', 'en', 'es', 'it', 'fr', 'pt'], true)
+                ? $player['language']
+                : $defaultLang;
+
+            $courtLabel = '';
+            if ($courtIndex !== null) {
+                $ci = (int)$courtIndex;
+                $customName = isset($courtNames[$ci]) ? trim((string)$courtNames[$ci]) : '';
+                $courtLabel = $customName !== '' ? $customName : ('Court ' . ($ci + 1));
+            }
+
+            $mail = build_waitlist_promotion_email($lang, [
+                'player_name' => (string)$player['name'],
+                'session_name' => $sessionName,
+                'date' => $date,
+                'time_start' => $timeStart,
+                'time_end' => $timeEnd,
+                'location' => $location,
+                'court_label' => $courtLabel,
+                'app_url' => $appUrl,
+                'club_name' => $teamName,
+                'includes_self' => $promoInfo['self'],
+                'guest_count' => $promoInfo['guests'],
+            ]);
+
+            send_resend_email($email, $mail['subject'], $mail['html'], $mail['text'], $teamName);
+        }
+    } catch (Throwable $e) {
+        error_log('Waitlist promotion notification error: ' . $e->getMessage());
+    }
+}
+
+function format_currency_amount(float $amount, string $currency, string $lang, bool $showPlus = false): string {
+    $symMap = ['EUR' => '€', 'USD' => '$', 'GBP' => '£', 'CHF' => 'CHF', 'SEK' => 'kr', 'NOK' => 'kr', 'DKK' => 'kr'];
+    $sym = $symMap[$currency] ?? ($currency !== '' ? $currency : '€');
+    $dec = ($lang === 'en') ? '.' : ',';
+    $rounded = round($amount, 2);
+    if (abs($rounded) < 0.005) $rounded = 0.0;
+    $sign = $rounded < 0 ? '-' : ($showPlus && $rounded > 0 ? '+' : '');
+    return $sign . number_format(abs($rounded), 2, $dec, '') . ' ' . $sym;
+}
+
+function get_player_balance(PDO $db, string $playerId): float {
+    $stmt = $db->prepare("SELECT COALESCE(SUM(CASE WHEN credit=1 THEN amount ELSE -amount END), 0) FROM transactions WHERE player_id=?");
+    $stmt->execute([$playerId]);
+    return round((float)$stmt->fetchColumn(), 2);
+}
+
+function render_courtle_email_card(array $p): array {
+    $e = fn(string $v): string => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+    $tableRowsHtml = '';
+    $textDetails = [];
+    foreach ($p['rows'] as [$label, $val]) {
+        $tableRowsHtml .= '<tr>'
+            . '<td style="padding:6px 12px 6px 0;color:#64748b;font-size:14px;white-space:nowrap;">' . $e($label) . '</td>'
+            . '<td style="padding:6px 0;color:#0f172a;font-size:14px;font-weight:600;">' . $e($val) . '</td>'
+            . '</tr>';
+        $textDetails[] = $label . ': ' . $val;
+    }
+
+    $ctaHtml = '';
+    $ctaText = '';
+    if (!empty($p['app_url'])) {
+        $ctaHtml = '<div style="margin-top:24px;">'
+            . '<a href="' . $e($p['app_url']) . '" style="display:inline-block;background:#0f172a;color:#ffffff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:600;">'
+            . $e($p['cta'])
+            . '</a></div>';
+        $ctaText = "\n\n" . $p['cta'] . ': ' . $p['app_url'];
+    }
+
+    $html = '<!DOCTYPE html><html><body style="margin:0;padding:24px;background:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,sans-serif;color:#0f172a;">'
+        . '<div style="max-width:520px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;padding:24px;">'
+        . '<div style="font-size:12px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:#64748b;margin-bottom:8px;">' . $e($p['club']) . '</div>'
+        . '<h1 style="margin:0 0 16px;font-size:20px;line-height:1.3;color:#0f172a;">' . $e($p['title']) . '</h1>'
+        . '<p style="margin:0 0 12px;font-size:15px;line-height:1.5;">' . $e($p['greeting']) . '</p>'
+        . '<p style="margin:0 0 20px;font-size:15px;line-height:1.5;">' . $e($p['body']) . '</p>'
+        . '<table style="width:100%;border-collapse:collapse;border-top:1px solid #e2e8f0;border-bottom:1px solid #e2e8f0;padding:8px 0;">'
+        . $tableRowsHtml
+        . '</table>'
+        . $ctaHtml
+        . '<p style="margin:24px 0 0;font-size:12px;line-height:1.5;color:#64748b;">' . $e($p['footer']) . '</p>'
+        . '</div></body></html>';
+
+    $text = $p['title'] . "\n\n"
+        . $p['greeting'] . "\n"
+        . $p['body'] . "\n\n"
+        . implode("\n", $textDetails)
+        . $ctaText . "\n\n"
+        . $p['footer'];
+
+    return ['subject' => $p['subject'], 'html' => $html, 'text' => $text];
+}
+
+function build_session_charge_email(string $lang, array $data): array {
+    $templates = [
+        'de' => [
+            'subject' => 'Abrechnung: {session} ({date})',
+            'title' => 'Session abgerechnet',
+            'greeting' => 'Hallo {player},',
+            'body' => 'deine Teilnahme an der folgenden Session wurde abgerechnet.',
+            'lbl_session' => 'Termin',
+            'lbl_date' => 'Datum',
+            'lbl_time' => 'Uhrzeit',
+            'lbl_slots' => 'Plätze',
+            'lbl_type' => 'Abrechnungsart',
+            'lbl_debit' => 'Betrag',
+            'lbl_direct' => 'Direkt gezahlt',
+            'lbl_outlay' => 'Auslage erstattet',
+            'lbl_balance' => 'Neuer Kontostand',
+            'type_balance' => 'Abrechnung über Guthaben',
+            'type_direct' => 'Direktzahlung vor Ort',
+            'type_partial_direct' => 'Teilweise Direktzahlung / Guthaben',
+            'type_outlay' => 'Auslage (Erstattung)',
+            'cta' => 'Zur App',
+            'footer' => 'Du erhältst diese Nachricht, weil du E-Mail-Benachrichtigungen für Abrechnungen aktiviert hast.',
+        ],
+        'en' => [
+            'subject' => 'Session charged: {session} ({date})',
+            'title' => 'Session charged',
+            'greeting' => 'Hi {player},',
+            'body' => 'your participation in the following session has been charged.',
+            'lbl_session' => 'Session',
+            'lbl_date' => 'Date',
+            'lbl_time' => 'Time',
+            'lbl_slots' => 'Spots',
+            'lbl_type' => 'Billing type',
+            'lbl_debit' => 'Amount',
+            'lbl_direct' => 'Paid directly',
+            'lbl_outlay' => 'Outlay reimbursed',
+            'lbl_balance' => 'New balance',
+            'type_balance' => 'Charged to account balance',
+            'type_direct' => 'Direct payment on site',
+            'type_partial_direct' => 'Partial direct payment / balance',
+            'type_outlay' => 'Outlay reimbursement',
+            'cta' => 'Open App',
+            'footer' => 'You are receiving this email because you enabled session billing notifications.',
+        ],
+        'es' => [
+            'subject' => 'Sesión cobrada: {session} ({date})',
+            'title' => 'Sesión cobrada',
+            'greeting' => 'Hola {player},',
+            'body' => 'se ha cobrado tu participación en la siguiente sesión.',
+            'lbl_session' => 'Sesión',
+            'lbl_date' => 'Fecha',
+            'lbl_time' => 'Horario',
+            'lbl_slots' => 'Plazas',
+            'lbl_type' => 'Tipo de cobro',
+            'lbl_debit' => 'Importe',
+            'lbl_direct' => 'Pago directo',
+            'lbl_outlay' => 'Gasto reembolsado',
+            'lbl_balance' => 'Nuevo saldo',
+            'type_balance' => 'Cargo en saldo',
+            'type_direct' => 'Pago directo en el lugar',
+            'type_partial_direct' => 'Pago directo parcial / saldo',
+            'type_outlay' => 'Reembolso de gasto',
+            'cta' => 'Abrir App',
+            'footer' => 'Recibes este correo porque activaste las notificaciones de cobro de sesiones.',
+        ],
+        'it' => [
+            'subject' => 'Sessione addebitata: {session} ({date})',
+            'title' => 'Sessione addebitata',
+            'greeting' => 'Ciao {player},',
+            'body' => 'la tua partecipazione alla seguente sessione è stata addebitata.',
+            'lbl_session' => 'Sessione',
+            'lbl_date' => 'Data',
+            'lbl_time' => 'Orario',
+            'lbl_slots' => 'Posti',
+            'lbl_type' => 'Tipo di addebito',
+            'lbl_debit' => 'Importo',
+            'lbl_direct' => 'Pagato direttamente',
+            'lbl_outlay' => 'Anticipo rimborsato',
+            'lbl_balance' => 'Nuovo saldo',
+            'type_balance' => 'Addebito sul saldo',
+            'type_direct' => 'Pagamento diretto sul posto',
+            'type_partial_direct' => 'Pagamento diretto parziale / saldo',
+            'type_outlay' => 'Rimborso anticipo',
+            'cta' => 'Apri App',
+            'footer' => 'Ricevi questa email perché hai attivato le notifiche per gli addebiti delle sessioni.',
+        ],
+        'fr' => [
+            'subject' => 'Session facturée : {session} ({date})',
+            'title' => 'Session facturée',
+            'greeting' => 'Bonjour {player},',
+            'body' => 'votre participation à la session suivante a été facturée.',
+            'lbl_session' => 'Session',
+            'lbl_date' => 'Date',
+            'lbl_time' => 'Horaire',
+            'lbl_slots' => 'Places',
+            'lbl_type' => 'Mode de facturation',
+            'lbl_debit' => 'Montant',
+            'lbl_direct' => 'Payé sur place',
+            'lbl_outlay' => 'Avance remboursée',
+            'lbl_balance' => 'Nouveau solde',
+            'type_balance' => 'Débit sur le solde',
+            'type_direct' => 'Paiement direct sur place',
+            'type_partial_direct' => 'Paiement direct partiel / solde',
+            'type_outlay' => 'Remboursement d\'avance',
+            'cta' => 'Ouvrir l\'app',
+            'footer' => 'Vous recevez cet e-mail car vous avez activé les notifications de facturation.',
+        ],
+        'pt' => [
+            'subject' => 'Sessão faturada: {session} ({date})',
+            'title' => 'Sessão faturada',
+            'greeting' => 'Olá {player},',
+            'body' => 'sua participação na seguinte sessão foi faturada.',
+            'lbl_session' => 'Sessão',
+            'lbl_date' => 'Data',
+            'lbl_time' => 'Horário',
+            'lbl_slots' => 'Vagas',
+            'lbl_type' => 'Tipo de cobrança',
+            'lbl_debit' => 'Valor',
+            'lbl_direct' => 'Pago diretamente',
+            'lbl_outlay' => 'Despesa reembolsada',
+            'lbl_balance' => 'Novo saldo',
+            'type_balance' => 'Débito no saldo',
+            'type_direct' => 'Pagamento direto no local',
+            'type_partial_direct' => 'Pagamento direto parcial / saldo',
+            'type_outlay' => 'Reembolso de despesa',
+            'cta' => 'Abrir App',
+            'footer' => 'Você está recebendo este e-mail porque ativou as notificações de cobrança de sessões.',
+        ],
+    ];
+
+    $t = $templates[$lang] ?? $templates['de'];
+    $club = (string)($data['club_name'] ?: 'Courtle');
+    $sessionName = (string)($data['session_name'] ?: 'Session');
+    $rawDate = (string)($data['date'] ?? '');
+    $ts = $rawDate !== '' ? strtotime($rawDate) : false;
+    $formattedDate = $ts !== false ? date('d.m.Y', $ts) : $rawDate;
+    $timeRange = trim((string)($data['time_start'] ?? ''));
+    if (!empty($data['time_end'])) {
+        $timeRange .= ($timeRange !== '' ? ' – ' : '') . $data['time_end'];
+    }
+    $currency = (string)($data['currency'] ?? '€');
+    $billingTypeKey = 'type_' . ($data['billing_type'] ?? 'balance');
+    $billingTypeLabel = $t[$billingTypeKey] ?? $t['type_balance'];
+
+    $rows = [];
+    $rows[] = [$t['lbl_session'], $sessionName];
+    $rows[] = [$t['lbl_date'], $formattedDate];
+    if ($timeRange !== '') $rows[] = [$t['lbl_time'], $timeRange];
+    if (!empty($data['slots'])) $rows[] = [$t['lbl_slots'], (string)(int)$data['slots']];
+    $rows[] = [$t['lbl_type'], $billingTypeLabel];
+    if ((float)($data['debit'] ?? 0) > 0) {
+        $rows[] = [$t['lbl_debit'], format_currency_amount(-(float)$data['debit'], $currency, $lang)];
+    }
+    if ((float)($data['direct_paid'] ?? 0) > 0) {
+        $rows[] = [$t['lbl_direct'], format_currency_amount((float)$data['direct_paid'], $currency, $lang, true)];
+    }
+    if ((float)($data['outlay_credit'] ?? 0) > 0) {
+        $rows[] = [$t['lbl_outlay'], format_currency_amount((float)$data['outlay_credit'], $currency, $lang, true)];
+    }
+    $rows[] = [$t['lbl_balance'], format_currency_amount((float)($data['new_balance'] ?? 0), $currency, $lang)];
+
+    return render_courtle_email_card([
+        'club' => $club,
+        'subject' => strtr($t['subject'], ['{session}' => $sessionName, '{date}' => $formattedDate]),
+        'title' => $t['title'],
+        'greeting' => strtr($t['greeting'], ['{player}' => (string)($data['player_name'] ?? '')]),
+        'body' => $t['body'],
+        'rows' => $rows,
+        'app_url' => trim((string)($data['app_url'] ?? '')),
+        'cta' => $t['cta'],
+        'footer' => $t['footer'],
+    ]);
+}
+
+function build_deposit_email(string $lang, array $data): array {
+    $templates = [
+        'de' => [
+            'subject' => 'Einzahlung verbucht ({amount})',
+            'title' => 'Einzahlung eingegangen',
+            'greeting' => 'Hallo {player},',
+            'body' => 'auf deinem Konto wurde eine Einzahlung verbucht.',
+            'lbl_amount' => 'Einzahlung',
+            'lbl_date' => 'Datum',
+            'lbl_note' => 'Notiz',
+            'lbl_balance' => 'Neuer Kontostand',
+            'cta' => 'Zur App',
+            'footer' => 'Du erhältst diese Nachricht, weil du E-Mail-Benachrichtigungen für Einzahlungen aktiviert hast.',
+        ],
+        'en' => [
+            'subject' => 'Deposit credited ({amount})',
+            'title' => 'Deposit received',
+            'greeting' => 'Hi {player},',
+            'body' => 'a deposit has been credited to your account.',
+            'lbl_amount' => 'Deposit',
+            'lbl_date' => 'Date',
+            'lbl_note' => 'Note',
+            'lbl_balance' => 'New balance',
+            'cta' => 'Open App',
+            'footer' => 'You are receiving this email because you enabled deposit notifications.',
+        ],
+        'es' => [
+            'subject' => 'Depósito registrado ({amount})',
+            'title' => 'Depósito recibido',
+            'greeting' => 'Hola {player},',
+            'body' => 'se ha registrado un depósito en tu cuenta.',
+            'lbl_amount' => 'Depósito',
+            'lbl_date' => 'Fecha',
+            'lbl_note' => 'Nota',
+            'lbl_balance' => 'Nuevo saldo',
+            'cta' => 'Abrir App',
+            'footer' => 'Recibes este correo porque activaste las notificaciones de depósitos.',
+        ],
+        'it' => [
+            'subject' => 'Ricarica registrata ({amount})',
+            'title' => 'Ricarica ricevuta',
+            'greeting' => 'Ciao {player},',
+            'body' => 'è stato accreditato un versamento sul tuo conto.',
+            'lbl_amount' => 'Importo',
+            'lbl_date' => 'Data',
+            'lbl_note' => 'Nota',
+            'lbl_balance' => 'Nuovo saldo',
+            'cta' => 'Apri App',
+            'footer' => 'Ricevi questa email perché hai attivato le notifiche per i versamenti.',
+        ],
+        'fr' => [
+            'subject' => 'Dépôt crédité ({amount})',
+            'title' => 'Dépôt reçu',
+            'greeting' => 'Bonjour {player},',
+            'body' => 'un dépôt a été crédité sur votre compte.',
+            'lbl_amount' => 'Dépôt',
+            'lbl_date' => 'Date',
+            'lbl_note' => 'Note',
+            'lbl_balance' => 'Nouveau solde',
+            'cta' => 'Ouvrir l\'app',
+            'footer' => 'Vous recevez cet e-mail car vous avez activé les notifications de dépôt.',
+        ],
+        'pt' => [
+            'subject' => 'Depósito creditado ({amount})',
+            'title' => 'Depósito recebido',
+            'greeting' => 'Olá {player},',
+            'body' => 'um depósito foi creditado na sua conta.',
+            'lbl_amount' => 'Depósito',
+            'lbl_date' => 'Data',
+            'lbl_note' => 'Nota',
+            'lbl_balance' => 'Novo saldo',
+            'cta' => 'Abrir App',
+            'footer' => 'Você está recebendo este e-mail porque ativou as notificações de depósito.',
+        ],
+    ];
+
+    $t = $templates[$lang] ?? $templates['de'];
+    $club = (string)($data['club_name'] ?: 'Courtle');
+    $currency = (string)($data['currency'] ?? '€');
+    $amountStr = format_currency_amount((float)($data['amount'] ?? 0), $currency, $lang, true);
+    $rawDate = (string)($data['date'] ?? '');
+    $ts = $rawDate !== '' ? strtotime($rawDate) : false;
+    $formattedDate = $ts !== false ? date('d.m.Y', $ts) : $rawDate;
+    $note = trim((string)($data['note'] ?? ''));
+
+    $rows = [
+        [$t['lbl_amount'], $amountStr],
+        [$t['lbl_date'], $formattedDate],
+    ];
+    if ($note !== '') $rows[] = [$t['lbl_note'], $note];
+    $rows[] = [$t['lbl_balance'], format_currency_amount((float)($data['new_balance'] ?? 0), $currency, $lang)];
+
+    return render_courtle_email_card([
+        'club' => $club,
+        'subject' => strtr($t['subject'], ['{amount}' => $amountStr]),
+        'title' => $t['title'],
+        'greeting' => strtr($t['greeting'], ['{player}' => (string)($data['player_name'] ?? '')]),
+        'body' => $t['body'],
+        'rows' => $rows,
+        'app_url' => trim((string)($data['app_url'] ?? '')),
+        'cta' => $t['cta'],
+        'footer' => $t['footer'],
+    ]);
+}
+
+function notify_session_charges(PDO $db, array $chargeBatches): void {
+    try {
+        if (empty($chargeBatches)) return;
+        $cfgRows = $db->query("SELECT key, value FROM config WHERE key IN ('language','team_name','currency','srtimestart','srtimeend')")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $defaultLang = in_array($cfgRows['language'] ?? '', ['de', 'en', 'es', 'it', 'fr', 'pt'], true) ? $cfgRows['language'] : 'de';
+        $teamName = trim((string)($cfgRows['team_name'] ?? '')) ?: 'Courtle';
+        $currency = trim((string)($cfgRows['currency'] ?? '')) ?: '€';
+        $appUrl = get_app_instance_url();
+
+        $sStmt = $db->prepare("SELECT * FROM sessions WHERE id=?");
+        $pStmt = $db->prepare("SELECT id, name, contact, language, COALESCE(notify_charge, 0) AS notify_charge FROM players WHERE id=?");
+
+        foreach ($chargeBatches as $batch) {
+            $sessId = (string)($batch['session_id'] ?? '');
+            $playerBilling = $batch['player_billing'] ?? [];
+            if ($sessId === '' || empty($playerBilling)) continue;
+
+            $sStmt->execute([$sessId]);
+            $sess = $sStmt->fetch();
+            if (!$sess) continue;
+
+            $date = (string)$sess['date'];
+            $series = get_series_for_date($db, $date, $sess['time_start'] ?? null) ?? get_series_by_weekday($db, $date);
+            $sessionName = trim((string)($sess['name'] ?? ''));
+            if ($sessionName === '' && $series && !empty($series['name'])) $sessionName = (string)$series['name'];
+            if ($sessionName === '') $sessionName = 'Session';
+
+            $timeStart = trim((string)($sess['time_start'] ?? ''));
+            if ($timeStart === '' && $series && !empty($series['time_start'])) $timeStart = (string)$series['time_start'];
+            if ($timeStart === '') $timeStart = (string)($cfgRows['srtimestart'] ?? '');
+
+            $timeEnd = trim((string)($sess['time_end'] ?? ''));
+            if ($timeEnd === '' && $series && !empty($series['time_end'])) $timeEnd = (string)$series['time_end'];
+            if ($timeEnd === '') $timeEnd = (string)($cfgRows['srtimeend'] ?? '');
+
+            foreach ($playerBilling as $pid => $info) {
+                $pStmt->execute([$pid]);
+                $player = $pStmt->fetch();
+                if (!$player || (int)($player['notify_charge'] ?? 0) !== 1) continue;
+
+                $email = trim((string)($player['contact'] ?? ''));
+                if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) continue;
+
+                $lang = in_array($player['language'] ?? '', ['de', 'en', 'es', 'it', 'fr', 'pt'], true)
+                    ? $player['language']
+                    : $defaultLang;
+
+                $debit = (float)($info['debit'] ?? 0);
+                $directPaid = (float)($info['direct_paid'] ?? 0);
+                $outlayCredit = (float)($info['outlay_credit'] ?? 0);
+                if ($outlayCredit > 0) {
+                    $billingType = 'outlay';
+                } elseif ($debit > 0 && abs($directPaid - $debit) < 0.005) {
+                    $billingType = 'direct';
+                } elseif ($directPaid > 0) {
+                    $billingType = 'partial_direct';
+                } else {
+                    $billingType = 'balance';
+                }
+
+                $newBalance = get_player_balance($db, (string)$pid);
+                $mail = build_session_charge_email($lang, [
+                    'player_name' => (string)$player['name'],
+                    'session_name' => $sessionName,
+                    'date' => $date,
+                    'time_start' => $timeStart,
+                    'time_end' => $timeEnd,
+                    'slots' => (int)($info['slots'] ?? 0),
+                    'debit' => $debit,
+                    'direct_paid' => $directPaid,
+                    'outlay_credit' => $outlayCredit,
+                    'billing_type' => $billingType,
+                    'new_balance' => $newBalance,
+                    'currency' => $currency,
+                    'app_url' => $appUrl,
+                    'club_name' => $teamName,
+                ]);
+                send_resend_email($email, $mail['subject'], $mail['html'], $mail['text'], $teamName);
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('Session charge notification error: ' . $e->getMessage());
+    }
+}
+
+function notify_deposit_received(PDO $db, string $playerId, float $amount, string $date, ?string $note): void {
+    try {
+        $pStmt = $db->prepare("SELECT id, name, contact, language, COALESCE(notify_deposit, 0) AS notify_deposit FROM players WHERE id=?");
+        $pStmt->execute([$playerId]);
+        $player = $pStmt->fetch();
+        if (!$player || (int)($player['notify_deposit'] ?? 0) !== 1) return;
+
+        $email = trim((string)($player['contact'] ?? ''));
+        if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) return;
+
+        $cfgRows = $db->query("SELECT key, value FROM config WHERE key IN ('language','team_name','currency')")->fetchAll(PDO::FETCH_KEY_PAIR);
+        $defaultLang = in_array($cfgRows['language'] ?? '', ['de', 'en', 'es', 'it', 'fr', 'pt'], true) ? $cfgRows['language'] : 'de';
+        $teamName = trim((string)($cfgRows['team_name'] ?? '')) ?: 'Courtle';
+        $currency = trim((string)($cfgRows['currency'] ?? '')) ?: '€';
+        $lang = in_array($player['language'] ?? '', ['de', 'en', 'es', 'it', 'fr', 'pt'], true)
+            ? $player['language']
+            : $defaultLang;
+
+        $newBalance = get_player_balance($db, $playerId);
+        $mail = build_deposit_email($lang, [
+            'player_name' => (string)$player['name'],
+            'amount' => $amount,
+            'date' => $date,
+            'note' => $note ?? '',
+            'new_balance' => $newBalance,
+            'currency' => $currency,
+            'app_url' => get_app_instance_url(),
+            'club_name' => $teamName,
+        ]);
+        send_resend_email($email, $mail['subject'], $mail['html'], $mail['text'], $teamName);
+    } catch (Throwable $e) {
+        error_log('Deposit notification error: ' . $e->getMessage());
+    }
+}
+
 // ── Auth ──
 function token_valid(bool $require_admin = false): bool {
     $token = $_SERVER['HTTP_X_TOKEN'] ?? '';
@@ -817,6 +1762,7 @@ for ($attempt = 0; $attempt <= $maxRetries; $attempt++) {
 
             // ── Test-Reset (E2E only) ──
             $resource === 'test-reset' && $method === 'POST' => handle_test_reset(),
+            $resource === 'test-emails' && $method === 'GET' => handle_test_emails(),
 
             default => err('Unknown endpoint.', 404)
             
@@ -939,10 +1885,13 @@ function handle_me(): void {
 // ── Players ──
 function handle_players_list(): void {
     // public endpoint
-    $rows = db()->query("SELECT id, name, contact, created_at, last_login, last_interaction, admin, emoji, active, language, theme FROM players ORDER BY name")->fetchAll();
+    $rows = db()->query("SELECT id, name, contact, created_at, last_login, last_interaction, admin, emoji, active, language, theme, COALESCE(notify_email, 0) AS notify_email, COALESCE(notify_charge, 0) AS notify_charge, COALESCE(notify_deposit, 0) AS notify_deposit FROM players ORDER BY name")->fetchAll();
     
     // Attach balance
     foreach ($rows as &$p) {
+        $p['notify_email'] = (int)($p['notify_email'] ?? 0);
+        $p['notify_charge'] = (int)($p['notify_charge'] ?? 0);
+        $p['notify_deposit'] = (int)($p['notify_deposit'] ?? 0);
         $stmt = db()->prepare("SELECT SUM(CASE WHEN credit=1 THEN amount ELSE -amount END) FROM transactions WHERE player_id=?");
         $stmt->execute([$p['id']]);
         $p['balance'] = (float)($stmt->fetchColumn() ?? 0);
@@ -1033,12 +1982,42 @@ function handle_player_update(string $id): void {
         $db->prepare("UPDATE players SET name=? WHERE id=?")->execute([$b['name'], $id]);
     }
     if (isset($b['contact'])) $db->prepare("UPDATE players SET contact=? WHERE id=?")->execute([$b['contact'], $id]);
+    if (array_key_exists('contact', $b) && $b['contact'] === null) {
+        $db->prepare("UPDATE players SET contact=NULL WHERE id=?")->execute([$id]);
+    }
+    $notifyKeys = ['notify_email', 'notify_charge', 'notify_deposit'];
+    $hasAnyNotifyKey = false;
+    foreach ($notifyKeys as $nk) {
+        if (array_key_exists($nk, $b)) {
+            $hasAnyNotifyKey = true;
+            break;
+        }
+    }
+    if (array_key_exists('contact', $b)) {
+        $effectiveContact = trim((string)($b['contact'] ?? ''));
+    } else {
+        $cStmt = $db->prepare("SELECT contact FROM players WHERE id=?");
+        $cStmt->execute([$id]);
+        $effectiveContact = trim((string)($cStmt->fetchColumn() ?? ''));
+    }
+    if ($hasAnyNotifyKey) {
+        foreach ($notifyKeys as $nk) {
+            if (!array_key_exists($nk, $b)) continue;
+            $want = !empty($b[$nk]) ? 1 : 0;
+            if ($want === 1 && ($effectiveContact === '' || !filter_var($effectiveContact, FILTER_VALIDATE_EMAIL))) {
+                err('Valid email address required for notifications.', 400);
+            }
+            $db->prepare("UPDATE players SET $nk=? WHERE id=?")->execute([$want, $id]);
+        }
+    } elseif (array_key_exists('contact', $b) && $effectiveContact === '') {
+        $db->prepare("UPDATE players SET notify_email=0, notify_charge=0, notify_deposit=0 WHERE id=?")->execute([$id]);
+    }
     if (array_key_exists('emoji', $b)) $db->prepare("UPDATE players SET emoji=? WHERE id=?")->execute([$b['emoji'], $id]);
     if (array_key_exists('language', $b)) {
         $lang = $b['language'];
         if ($lang === null || $lang === '') {
             $db->prepare("UPDATE players SET language=NULL WHERE id=?")->execute([$id]);
-        } elseif (in_array($lang, ['de', 'en', 'es', 'it', 'fr'], true)) {
+        } elseif (in_array($lang, ['de', 'en', 'es', 'it', 'fr', 'pt'], true)) {
             $db->prepare("UPDATE players SET language=? WHERE id=?")->execute([$lang, $id]);
         }
     }
@@ -1121,10 +2100,17 @@ function handle_tx_create(): void {
     require_auth(true);
     $b = body();
     if (empty($b['player_id']) || !isset($b['amount'])) err('Fields are missing.');
+    $db = db();
     $id = gid();
-    $stmt = db()->prepare("INSERT INTO transactions (id,player_id,credit,amount,date,created_at,note) VALUES (?,?,?,?,?,?,?)");
-    $stmt->execute([$id, $b['player_id'], $b['credit'] ? 1 : 0, (float)$b['amount'],
-        $b['date'] ?? date('Y-m-d'), date('c'), $b['note'] ?? null]);
+    $isCredit = !empty($b['credit']) ? 1 : 0;
+    $amount = (float)$b['amount'];
+    $txDate = $b['date'] ?? date('Y-m-d');
+    $note = $b['note'] ?? null;
+    $stmt = $db->prepare("INSERT INTO transactions (id,player_id,credit,amount,date,created_at,note) VALUES (?,?,?,?,?,?,?)");
+    $stmt->execute([$id, $b['player_id'], $isCredit, $amount, $txDate, date('c'), $note]);
+    if ($isCredit === 1 && $amount > 0) {
+        notify_deposit_received($db, (string)$b['player_id'], $amount, (string)$txDate, $note !== null ? (string)$note : null);
+    }
     json_out(['id' => $id], 201);
 }
 
@@ -1354,6 +2340,7 @@ function handle_session_update(string $idOrDate): void {
     }
 
     // Log waitlist changes
+    $waitlistLeft = [];
     if (isset($b['waitlist'])) {
         $new_waitlist = $b['waitlist'];
         $joined = array_diff($new_waitlist, $old_waitlist);
@@ -1361,6 +2348,7 @@ function handle_session_update(string $idOrDate): void {
             log_session_history($db, $sessId, $pid, 'waitlist_join', null, null, $performed_by, null, $sessDate);
         }
         $left = array_diff($old_waitlist, $new_waitlist);
+        $waitlistLeft = $left;
         foreach ($left as $pid) {
             log_session_history($db, $sessId, $pid, 'waitlist_leave', null, null, $performed_by, null, $sessDate);
         }
@@ -1386,22 +2374,31 @@ function handle_session_update(string $idOrDate): void {
         $db->prepare("UPDATE sessions SET court_names=? WHERE id=?")->execute([is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : null, $sessId]);
     }
 
+    $manualPromotions = [];
     if (isset($b['courts'])) {
         // Get old courts for comparison
         $stmt_old = $db->prepare("SELECT court_index, slot_index, player_id FROM courts WHERE session_id=?");
         $stmt_old->execute([$sessId]);
         $old_slots = [];
+        $oldCourtPids = [];
         foreach ($stmt_old->fetchAll() as $row) {
             $key = $row['court_index'] . '|' . $row['slot_index'];
             $old_slots[$key] = $row['player_id'];
+            if (!empty($row['player_id'])) {
+                $oldCourtPids[(string)$row['player_id']] = true;
+            }
         }
 
         $db->prepare("DELETE FROM courts WHERE session_id=?")->execute([$sessId]);
         $stmt = $db->prepare("INSERT INTO courts (session_id, court_index, slot_index, player_id) VALUES (?,?,?,?)");
+        $newCourtSlots = [];
 
         foreach ($b['courts'] as $ci => $slots) {
             foreach ($slots as $si => $pid) {
                 $stmt->execute([$sessId, $ci, $si, $pid ?: null]);
+                if ($pid) {
+                    $newCourtSlots[(string)$pid] = (int)$ci;
+                }
 
                 $key = $ci . '|' . $si;
                 $old_pid = $old_slots[$key] ?? null;
@@ -1426,6 +2423,15 @@ function handle_session_update(string $idOrDate): void {
                 }
             }
         }
+
+        if (!empty($waitlistLeft)) {
+            foreach ($waitlistLeft as $pid) {
+                $pidStr = (string)$pid;
+                if ($pidStr !== '' && !isset($oldCourtPids[$pidStr]) && isset($newCourtSlots[$pidStr])) {
+                    $manualPromotions[] = ['player_id' => $pidStr, 'court_index' => $newCourtSlots[$pidStr]];
+                }
+            }
+        }
     }
 
     if (isset($b['interaction_pids'])) {
@@ -1442,6 +2448,10 @@ function handle_session_update(string $idOrDate): void {
 
     if (isset($b['billingDeferred'])) {
         $db->prepare("UPDATE sessions SET billing_deferred=? WHERE id=?")->execute([$b['billingDeferred'] ? 1 : 0, $sessId]);
+    }
+
+    if (!empty($manualPromotions)) {
+        notify_waitlist_promotions($db, $sessId, $manualPromotions);
     }
 
     json_out(['ok' => true, 'id' => $sessId, 'date' => $sessDate]);
@@ -1699,12 +2709,14 @@ function charge_session(PDO $db, array $sess, array $paidPids, string $now, stri
     $timeLabel = $sess['time_start'] ? " ({$sess['time_start']})" : "";
     $total = 0.0;
     $direct = 0.0;
+    $playerBilling = [];
     foreach ($counts as $pid => $n) {
         $amt  = $playerDebits[$pid] ?? 0.0;
         $note = $n > 1 ? "Session $date$timeLabel (+" . ($n-1) . " Guest)" : "Session $date$timeLabel";
         // 1. Charge (debit)
         $tx->execute([gid(), $pid, 0, $amt, $date, $now, $note, $sessId]);
         $total += $amt;
+        $directForPid = 0.0;
         // 2. Direct payment (counter-booking) for players/guests who paid on site
         if ($paidSlots !== null) {
             $paidForPid = array_values(array_filter($slotsByPid[$pid], fn($sid) => in_array($sid, $paidSlots, true)));
@@ -1717,11 +2729,19 @@ function charge_session(PDO $db, array $sess, array $paidPids, string $now, stri
                     : "Direct payment $date$timeLabel";
                 $tx->execute([gid(), $pid, 1, $directAmt, $date, $now, $directNote, $sessId]);
                 $direct += $directAmt;
+                $directForPid = $directAmt;
             }
         } elseif (in_array($pid, $paidPids, true)) {
             $tx->execute([gid(), $pid, 1, $amt, $date, $now, "Direct payment $date$timeLabel", $sessId]);
             $direct += $amt;
+            $directForPid = $amt;
         }
+        $playerBilling[(string)$pid] = [
+            'slots' => (int)$n,
+            'debit' => $amt,
+            'direct_paid' => $directForPid,
+            'outlay_credit' => 0.0,
+        ];
     }
 
     // 3. Player outlay reimbursement or team expense
@@ -1734,6 +2754,10 @@ function charge_session(PDO $db, array $sess, array $paidPids, string $now, stri
         $reimburseAmt = round($totalPrice, 2);
         // Credit on player's account
         $tx->execute([gid(), $paidByPlayerId, 1, $reimburseAmt, $date, $now, "Auslage Session $date$timeLabel", $sessId]);
+        if (!isset($playerBilling[$paidByPlayerId])) {
+            $playerBilling[$paidByPlayerId] = ['slots' => 0, 'debit' => 0.0, 'direct_paid' => 0.0, 'outlay_credit' => 0.0];
+        }
+        $playerBilling[$paidByPlayerId]['outlay_credit'] += $reimburseAmt;
         // Expense record
         $expId = gid();
         $expStmt = $db->prepare("INSERT INTO expenses (id, amount, date, note, created_at, session_id, paid_by) VALUES (?, ?, ?, ?, ?, ?, ?)");
@@ -1768,7 +2792,13 @@ function charge_session(PDO $db, array $sess, array $paidPids, string $now, stri
             'link_expense_id' => $linkExpenseId
         ]), $date);
 
-    return ['session_id' => $sessId, 'players' => count($counts), 'slots' => array_sum($counts), 'amount' => $total];
+    return [
+        'session_id' => $sessId,
+        'players' => count($counts),
+        'slots' => array_sum($counts),
+        'amount' => $total,
+        '_notify' => ['session_id' => $sessId, 'player_billing' => $playerBilling],
+    ];
 }
 
 function handle_charge(): void {
@@ -1788,6 +2818,7 @@ function handle_charge(): void {
     $now = date('c');
     $by = get_performer_id();
     $results = [];
+    $notifyBatches = [];
     $db->exec('BEGIN IMMEDIATE');
     try {
         foreach ($items as $it) {
@@ -1805,12 +2836,20 @@ function handle_charge(): void {
             $recordTeamExpense = !empty($it['record_team_expense']);
             $linkExpenseId = !empty($it['link_expense_id']) ? (string)$it['link_expense_id'] : null;
 
-            $results[] = charge_session($db, $sess, $paid, $now, $by, $totalPrice, $paidByPlayerId, $recordTeamExpense, $linkExpenseId, $paidSlots);
+            $res = charge_session($db, $sess, $paid, $now, $by, $totalPrice, $paidByPlayerId, $recordTeamExpense, $linkExpenseId, $paidSlots);
+            if (!empty($res['_notify'])) {
+                $notifyBatches[] = $res['_notify'];
+                unset($res['_notify']);
+            }
+            $results[] = $res;
         }
         $db->exec('COMMIT');
     } catch (Throwable $e) {
         $db->exec('ROLLBACK');
         err($e->getMessage(), 400);
+    }
+    if (!empty($notifyBatches)) {
+        notify_session_charges($db, $notifyBatches);
     }
     $payload = ['ok' => true, 'results' => $results,
         'charged' => array_sum(array_column($results, 'players')), 'slots' => array_sum(array_column($results, 'slots'))];
@@ -1866,6 +2905,7 @@ function handle_config_get(): void {
     $out = [];
     foreach ($rows as $r) $out[$r['key']] = $r['value'];
     $out['server_build'] = get_server_build();
+    $out['email_notifications_configured'] = is_resend_configured();
     json_out($out);
 }
 
@@ -2001,7 +3041,7 @@ function handle_import(): void {
     $db->exec("DELETE FROM config");
 
     foreach (($b['players'] ?? []) as $p) {
-        $db->prepare("INSERT OR IGNORE INTO players (id,name,contact,pin_hash,created_at,last_login,last_interaction,admin,active) VALUES (?,?,?,?,?,?,?,?,?)")
+        $db->prepare("INSERT OR IGNORE INTO players (id,name,contact,pin_hash,created_at,last_login,last_interaction,admin,active,notify_email,notify_charge,notify_deposit) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
             ->execute([
                 $p['id'],
                 $p['name'],
@@ -2011,7 +3051,10 @@ function handle_import(): void {
                 $p['last_login'] ?? null,
                 $p['last_interaction'] ?? null,
                 !empty($p['admin']) ? 1 : 0,
-                !array_key_exists('active', $p) ? 1 : ($p['active'] ? 1 : 0)
+                !array_key_exists('active', $p) ? 1 : ($p['active'] ? 1 : 0),
+                !empty($p['notify_email']) ? 1 : 0,
+                !empty($p['notify_charge']) ? 1 : 0,
+                !empty($p['notify_deposit']) ? 1 : 0
             ]);
     }
     foreach (($b['transactions'] ?? []) as $t) {
@@ -2277,6 +3320,7 @@ function handle_session_leave(string $idOrDate): void {
 
     // 🏆 Auto-Nachrücken (Compaction) oder Standard-Warteliste
     $autoCompact = $db->query("SELECT value FROM config WHERE key='auto_compact_slots'")->fetchColumn() === '1';
+    $promotedPlayers = [];
 
     if ($autoCompact) {
         $disabledCourts = json_decode($sess['disabled_courts'] ?? '[]', true) ?: [];
@@ -2302,9 +3346,11 @@ function handle_session_leave(string $idOrDate): void {
         $waitlist = json_decode($wlStmt->fetchColumn() ?: '[]', true) ?: [];
 
         // Falls Kapazität frei und Warteliste gefüllt ist, nachrücken lassen
+        $promotedIdxMap = [];
         while (count($activePlayers) < $totalActiveCapacity && !empty($waitlist)) {
             $next_player = array_shift($waitlist);
             $activePlayers[] = $next_player;
+            $promotedIdxMap[$next_player] = true;
             log_session_history($db, $sessId, $next_player, 'promoted', null, null, $performed_by, json_encode(['from_waitlist' => true]), $date);
         }
         $db->prepare("UPDATE sessions SET waitlist=? WHERE id=?")->execute([json_encode(array_values($waitlist)), $sessId]);
@@ -2316,7 +3362,11 @@ function handle_session_leave(string $idOrDate): void {
         foreach ($activeCourtIndices as $cIdx) {
             for ($sIdx = 0; $sIdx < 4; $sIdx++) {
                 if (isset($activePlayers[$pIdx])) {
-                    $ins->execute([$sessId, $cIdx, $sIdx, $activePlayers[$pIdx]]);
+                    $pid = $activePlayers[$pIdx];
+                    $ins->execute([$sessId, $cIdx, $sIdx, $pid]);
+                    if (isset($promotedIdxMap[$pid])) {
+                        $promotedPlayers[] = ['player_id' => $pid, 'court_index' => $cIdx];
+                    }
                     $pIdx++;
                 }
             }
@@ -2333,6 +3383,7 @@ function handle_session_leave(string $idOrDate): void {
                 $next_player = array_shift($waitlist);
                 $db->prepare("UPDATE courts SET player_id = ? WHERE session_id=? AND court_index=? AND slot_index=?")
                    ->execute([$next_player, $sessId, $slot['court_index'], $slot['slot_index']]);
+                $promotedPlayers[] = ['player_id' => $next_player, 'court_index' => $slot['court_index']];
                 // Log the promotion
                 log_session_history($db, $sessId, $next_player, 'promoted', $slot['court_index'], $slot['slot_index'], $performed_by, json_encode(['from_waitlist' => true]), $date);
             }
@@ -2341,6 +3392,10 @@ function handle_session_leave(string $idOrDate): void {
     }
     
     $db->exec('COMMIT');
+    
+    if (!empty($promotedPlayers)) {
+        notify_waitlist_promotions($db, $sessId, $promotedPlayers);
+    }
     
     if ($baseId) {
         $db->prepare("UPDATE players SET last_interaction=? WHERE id=?")->execute([date('c'), $baseId]);

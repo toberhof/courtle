@@ -1162,4 +1162,228 @@ test.describe('API Handler Integration Suite', () => {
     expect(players.find(p => p.id === alice.id).balance).toBe(-20);
     expect(players.find(p => p.id === bob.id).balance).toBe(-10);
   });
+
+  test('Waitlist promotion — email notifications opt-in, language, and compaction', async ({ request }) => {
+    const admin = await (await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } })).json();
+    const auth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const H = { 'X-Token': auth.token, 'Content-Type': 'application/json' };
+
+    await request.put('/api.php/config', { headers: H, data: { courts: '1', cancel_hours: '0', team_name: 'Padel-Frechen' } });
+
+    const p1 = await (await request.post('/api.php/players', { headers: H, data: { name: 'Player1', pin: '1001' } })).json();
+    const p2 = await (await request.post('/api.php/players', { headers: H, data: { name: 'Player2', pin: '1002' } })).json();
+    const p3 = await (await request.post('/api.php/players', { headers: H, data: { name: 'Player3', pin: '1003' } })).json();
+    const p4 = await (await request.post('/api.php/players', { headers: H, data: { name: 'Player4', pin: '1004' } })).json();
+    const wlOptedIn = await (await request.post('/api.php/players', { headers: H, data: { name: 'WaitlistYes', pin: '1005' } })).json();
+    const wlOptedOut = await (await request.post('/api.php/players', { headers: H, data: { name: 'WaitlistNo', pin: '1006' } })).json();
+
+    // 1. Default notify_email is 0
+    let players = await (await request.get('/api.php/players', { headers: H })).json();
+    expect(players.find(p => p.id === wlOptedIn.id).notify_email).toBe(0);
+
+    // 2. Enabling notify_email without valid email returns 400
+    const badOptIn = await request.put(`/api.php/players/${wlOptedIn.id}`, {
+      headers: H,
+      data: { notify_email: 1 }
+    });
+    expect(badOptIn.status()).toBe(400);
+
+    // 3. Set email + opt-in + English profile language on wlOptedIn
+    const goodOptIn = await request.put(`/api.php/players/${wlOptedIn.id}`, {
+      headers: H,
+      data: { contact: 'yes@example.com', notify_email: 1, language: 'en' }
+    });
+    expect(goodOptIn.ok()).toBeTruthy();
+
+    // Set email on wlOptedOut, keep notify_email = 0
+    await request.put(`/api.php/players/${wlOptedOut.id}`, {
+      headers: H,
+      data: { contact: 'no@example.com', notify_email: 0 }
+    });
+
+    players = await (await request.get('/api.php/players', { headers: H })).json();
+    expect(players.find(p => p.id === wlOptedIn.id).notify_email).toBe(1);
+    expect(players.find(p => p.id === wlOptedOut.id).notify_email).toBe(0);
+
+    // 4. Create session and fill 4 slots + 2 waitlist entries
+    const sRes = await (await request.put('/api.php/sessions/new', {
+      headers: H,
+      data: {
+        date: '2099-05-01',
+        name: 'Friday Event',
+        location: 'Hall A',
+        timeStart: '18:00',
+        timeEnd: '20:00',
+        courts: [[p1.id, p2.id, p3.id, p4.id]]
+      }
+    })).json();
+    const sid = sRes.id;
+
+    // Join waitlist: wlOptedOut first, then wlOptedIn
+    await request.post(`/api.php/sessions/${sid}/join-waitlist`, { headers: H, data: { player_id: wlOptedOut.id } });
+    await request.post(`/api.php/sessions/${sid}/join-waitlist`, { headers: H, data: { player_id: wlOptedIn.id } });
+
+    // p1 leaves -> wlOptedOut promoted (notify_email=0 -> NO email sent)
+    const leave1 = await request.post(`/api.php/sessions/${sid}/leave`, { headers: H, data: { player_id: p1.id } });
+    expect(leave1.ok()).toBeTruthy();
+
+    let emails = await (await request.get('/api.php/test-emails')).json();
+    expect(emails.length).toBe(0);
+
+    // p2 leaves -> wlOptedIn promoted (notify_email=1, language='en' -> email sent in English)
+    const leave2 = await request.post(`/api.php/sessions/${sid}/leave`, { headers: H, data: { player_id: p2.id } });
+    expect(leave2.ok()).toBeTruthy();
+
+    emails = await (await request.get('/api.php/test-emails')).json();
+    expect(emails.length).toBe(1);
+    expect(emails[0].from).toBe('Padel-Frechen <noreply@test.local>');
+    expect(emails[0].to).toEqual(['yes@example.com']);
+    expect(emails[0].subject).not.toContain('[Padel-Frechen]');
+    expect(emails[0].subject).toMatch(/^You got a spot: Friday Event/);
+    expect(emails[0].text).toContain('Hall A');
+    expect(emails[0].text).toContain('18:00');
+    // Root app instance URL only (no deep-link path/query)
+    expect(emails[0].text).toMatch(/https?:\/\/[^/\s]+$/m);
+
+    // 5. Also verify auto_compact_slots = 1 triggers promotion email
+    await request.put('/api.php/config', { headers: H, data: { auto_compact_slots: '1' } });
+    const sRes2 = await (await request.put('/api.php/sessions/new', {
+      headers: H,
+      data: {
+        date: '2099-05-02',
+        name: 'Compact Event',
+        timeStart: '19:00',
+        timeEnd: '21:00',
+        courts: [[p1.id, p2.id, p3.id, p4.id]]
+      }
+    })).json();
+    await request.post(`/api.php/sessions/${sRes2.id}/join-waitlist`, { headers: H, data: { player_id: wlOptedIn.id } });
+    const leave3 = await request.post(`/api.php/sessions/${sRes2.id}/leave`, { headers: H, data: { player_id: p3.id } });
+    expect(leave3.ok()).toBeTruthy();
+
+    emails = await (await request.get('/api.php/test-emails')).json();
+    expect(emails.length).toBe(2);
+    expect(emails[1].subject).toContain('Compact Event');
+
+    // 6. Guest on waitlist notifies host player
+    await request.post(`/api.php/sessions/${sRes2.id}/join-waitlist`, {
+      headers: H,
+      data: { player_id: `${wlOptedIn.id}|g1` }
+    });
+    const leave4 = await request.post(`/api.php/sessions/${sRes2.id}/leave`, {
+      headers: H,
+      data: { player_id: p4.id }
+    });
+    expect(leave4.ok()).toBeTruthy();
+
+    emails = await (await request.get('/api.php/test-emails')).json();
+    expect(emails.length).toBe(3);
+    expect(emails[2].to).toEqual(['yes@example.com']);
+    expect(emails[2].subject).toContain('Your guest got a spot: Compact Event');
+  });
+
+  test('Billing & deposit email notifications — opt-in, billing type, and new balance', async ({ request }) => {
+    const admin = await (await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } })).json();
+    const auth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const H = { 'X-Token': auth.token, 'Content-Type': 'application/json' };
+
+    await request.put('/api.php/config', { headers: H, data: { cost: '10', courts: '1', team_name: 'Padel-Frechen', currency: 'EUR' } });
+
+    const pBal = await (await request.post('/api.php/players', { headers: H, data: { name: 'BalanceUser', pin: '2001' } })).json();
+    const pDir = await (await request.post('/api.php/players', { headers: H, data: { name: 'DirectUser', pin: '2002' } })).json();
+    const pOut = await (await request.post('/api.php/players', { headers: H, data: { name: 'OutlayUser', pin: '2003' } })).json();
+    const pOff = await (await request.post('/api.php/players', { headers: H, data: { name: 'OptOutUser', pin: '2004' } })).json();
+
+    // 1. Default flags are 0
+    let players = await (await request.get('/api.php/players', { headers: H })).json();
+    expect(players.find(p => p.id === pBal.id).notify_charge).toBe(0);
+    expect(players.find(p => p.id === pBal.id).notify_deposit).toBe(0);
+
+    // 2. Enabling notify_charge / notify_deposit without email returns 400
+    expect((await request.put(`/api.php/players/${pBal.id}`, { headers: H, data: { notify_charge: 1 } })).status()).toBe(400);
+    expect((await request.put(`/api.php/players/${pBal.id}`, { headers: H, data: { notify_deposit: 1 } })).status()).toBe(400);
+
+    // 3. Configure opt-ins
+    await request.put(`/api.php/players/${pBal.id}`, {
+      headers: H,
+      data: { contact: 'bal@example.com', notify_charge: 1, notify_deposit: 1, language: 'de' }
+    });
+    await request.put(`/api.php/players/${pDir.id}`, {
+      headers: H,
+      data: { contact: 'dir@example.com', notify_charge: 1, notify_deposit: 0, language: 'en' }
+    });
+    await request.put(`/api.php/players/${pOut.id}`, {
+      headers: H,
+      data: { contact: 'out@example.com', notify_charge: 1, notify_deposit: 0, language: 'de' }
+    });
+    await request.put(`/api.php/players/${pOff.id}`, {
+      headers: H,
+      data: { contact: 'off@example.com', notify_charge: 0, notify_deposit: 0 }
+    });
+
+    // 4. Deposit (credit=1) -> sends email to pBal, not to pOff; manual debit (credit=0) sends nothing
+    await request.post('/api.php/transactions', {
+      headers: H,
+      data: { player_id: pBal.id, credit: 1, amount: 50, date: '2099-06-01', note: 'Bank transfer' }
+    });
+    await request.post('/api.php/transactions', {
+      headers: H,
+      data: { player_id: pOff.id, credit: 1, amount: 50, date: '2099-06-01' }
+    });
+    await request.post('/api.php/transactions', {
+      headers: H,
+      data: { player_id: pBal.id, credit: 0, amount: 5, date: '2099-06-01', note: 'Manual debit' }
+    });
+
+    let emails = await (await request.get('/api.php/test-emails')).json();
+    expect(emails.length).toBe(1);
+    expect(emails[0].from).toBe('Padel-Frechen <noreply@test.local>');
+    expect(emails[0].to).toEqual(['bal@example.com']);
+    expect(emails[0].subject).toContain('Einzahlung verbucht (+50,00 €)');
+    expect(emails[0].text).toContain('Bank transfer');
+    expect(emails[0].text).toContain('Neuer Kontostand: 50,00 €');
+
+    // 5. Session charge: pBal (balance -> 45 - 10 = 35), pDir (direct payment -> 0), pOff (opted out), pOut (outlay -> +40)
+    const sRes = await (await request.put('/api.php/sessions/new', {
+      headers: H,
+      data: {
+        date: '2099-06-02',
+        name: 'Evening Match',
+        timeStart: '18:00',
+        timeEnd: '20:00',
+        courts: [[pBal.id, pDir.id, pOut.id, pOff.id]]
+      }
+    })).json();
+
+    const chargeRes = await request.post('/api.php/charge', {
+      headers: H,
+      data: {
+        items: [{
+          id: sRes.id,
+          paid_pids: [pDir.id],
+          paid_by_player_id: pOut.id
+        }]
+      }
+    });
+    expect(chargeRes.ok()).toBeTruthy();
+
+    emails = await (await request.get('/api.php/test-emails')).json();
+    // 1 deposit + 3 opted-in charged players (pBal, pDir, pOut) = 4
+    expect(emails.length).toBe(4);
+
+    const balMail = emails.find(e => e.to[0] === 'bal@example.com' && e.subject.includes('Evening Match'));
+    expect(balMail).toBeTruthy();
+    expect(balMail.text).toContain('Abrechnung über Guthaben');
+    expect(balMail.text).toContain('Neuer Kontostand: 35,00 €');
+
+    const dirMail = emails.find(e => e.to[0] === 'dir@example.com');
+    expect(dirMail).toBeTruthy();
+    expect(dirMail.text).toContain('Direct payment on site');
+    expect(dirMail.text).toContain('New balance: 0.00 €');
+
+    const outMail = emails.find(e => e.to[0] === 'out@example.com');
+    expect(outMail).toBeTruthy();
+    expect(outMail.text).toContain('Auslage (Erstattung)');
+    expect(outMail.text).toContain('Neuer Kontostand: 30,00 €');
+  });
 });
