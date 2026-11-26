@@ -210,8 +210,8 @@ The public/player dashboard displays upcoming sessions as stylized sports-themed
   }
   ```
 
-### Polling Must Update All State
-* The 20-second polling interval must refresh **both** `S.sessions` AND `S.players`.
+### Polling Must Update All State & Preserve All Fields (`pollLiveRefresh`)
+* The 20-second polling interval (`pollLiveRefresh()` in `app.js`) must refresh **both** `S.sessions` AND `S.players`.
 * If polling only updates sessions, `S.players` becomes stale and may cause inconsistent UI state.
 * Use `Promise.all()` to fetch both in parallel:
   ```js
@@ -220,6 +220,9 @@ The public/player dashboard displays upcoming sessions as stylized sports-themed
     apiFetch('GET', '/players')
   ]);
   ```
+* **Never strip API fields when mapping**: Always spread `...s` (and explicitly normalize boolean/numeric flags like `charged`, `billingDeferred`, `cancelled`, `timeEnd`, `cancelHours`, `courtNames`) in `pollLiveRefresh()`, and include every relevant field in the `window._lastPollRaw` change-detection array. Omitting a field (e.g. `billingDeferred`) causes it to vanish after the first poll, breaking other menus/views when navigating there later.
+* **Also update `getOrSess()`**: When adding a new session property in `api.php`, update `pollLiveRefresh()` (both `raw` and `.map(...)`) and the fallback object in `getOrSess()` at the same time.
+* **Refresh all active views & badges**: Views use `.active` (not `.open`). After polling updates `S.sessions`/`S.players`, always call `renderSessions()` and, for admins, `updateBillingBadge()` plus the render function of whichever admin view currently has `.classList.contains('active')` (e.g. `renderAdminPlan()`, `renderBilling()`).
 
 ### Boot Sequence Order
 1. `themeInit()` → `registerSW()` → `checkIOSInstallBanner()`

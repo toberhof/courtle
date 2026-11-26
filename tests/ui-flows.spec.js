@@ -865,6 +865,44 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
   });
 
+  test('26a — Billing view: deferred flag survives background polling and navigation from players view', async ({ page, request }) => {
+    const H = { 'Content-Type': 'application/json', 'X-Token': aToken };
+    const players = await (await request.get('/api.php/players')).json();
+    const alice = players.find(p => p.name === 'Alice');
+
+    const mk = async (date) => {
+      const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date, courts: [[null,null,null,null]], timeStart: '1900', timeEnd: '2100' } })).json();
+      const id = r.id || date;
+      await request.post(`/api.php/sessions/${id}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: alice.id } });
+      return id;
+    };
+    const s1 = await mk('2020-04-14');
+    await mk('2020-04-16');
+
+    await request.put(`/api.php/sessions/${s1}`, { headers: H, data: { billingDeferred: true } });
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('#nav-billing-count')).toHaveText('1');
+
+    await navigateAdmin(page, 'players');
+    await expect(page.locator('#view-players')).toHaveClass(/active/);
+
+    await page.evaluate(() => pollLiveRefresh());
+
+    await navigateAdmin(page, 'billing');
+    await expect(page.locator('#view-billing')).toHaveClass(/active/);
+
+    await expect(page.locator('#nav-billing-count')).toHaveText('1');
+    await expect(page.locator('#billing-tab-open')).toContainText('(1)');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+
+    await page.click('#billing-tab-deferred');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+    await expect(page.locator('#billing-content .billing-item .badge')).toContainText('Zurückgestellt');
+  });
+
   test('26b — Billing: mark player guests individually as directly paid', async ({ page, request }) => {
     const H = { 'Content-Type': 'application/json', 'X-Token': aToken };
     const aliceRes = await request.get('/api.php/players', { headers: H });

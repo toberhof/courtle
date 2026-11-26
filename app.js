@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:517
-const CLIENT_BUILD = 517;
+// built:518
+const CLIENT_BUILD = 518;
 let S = {
   players: [],
   transactions: [],
@@ -550,6 +550,7 @@ function getOrSess(idOrDate) {
       date: date,
       courts: Array(seriesCourts || 2).fill(null).map(() => [null,null,null,null]),
       charged: false,
+      billingDeferred: false,
       waitlist: [],
       disabledCourts: [],
       courtNames: seriesMatch?.courtNames ? [...seriesMatch.courtNames] : [],
@@ -7316,51 +7317,65 @@ checkIOSInstallBanner();
   if (!guestId) setTimeout(openWelcomeModal, 350);
 
   // Simple polling for live refresh
-  setInterval(async () => {
-    try {
-      const [sessions, players] = await Promise.all([
-        apiFetch('GET', '/sessions'),
-        apiFetch('GET', '/players')
-      ]);
-      const raw = JSON.stringify(sessions.map(s => [s.id, s.date, s.timeStart, s.courts, s.waitlist, s.disabledCourts, s.cancelled, s.note, s.location, s.price, s.name]));
-      if (raw === window._lastPollRaw && JSON.stringify(players) === window._lastPollPlayers) return;
-      window._lastPollRaw = raw;
-      window._lastPollPlayers = JSON.stringify(players);
-      S.players = players.map(p => ({ 
-        ...p, 
-        admin: p.admin === 1, 
-        active: p.active !== 0,
-        totalDeposits: parseFloat(p.total_deposits || 0),
-        lastLogin: p.last_login,
-        lastInteraction: p.last_interaction
-      }));
-      S.sessions = sessions.map(s => ({
-        id: s.id,
-        date: s.date,
-        charged: !!s.charged,
-        disabledCourts: s.disabledCourts || [],
-        waitlist: s.waitlist || [],
-        courts: s.courts || [],
-        note: s.note || '',
-        cancelled: !!s.cancelled,
-        timeStart: s.timeStart || null,
-        timeEnd: s.timeEnd || null,
-        location: s.location || null,
-        price: s.price !== null && s.price !== undefined ? parseFloat(s.price) : null,
-        cancelHours: s.cancelHours !== null && s.cancelHours !== undefined ? parseFloat(s.cancelHours) : null,
-        name: s.name || null,
-        courtNames: s.courtNames || []
-      }));
-      window._dbSessionDates = new Set(S.sessions.map(s => s.date));
-      renderSessions();
-      if (isAdmin && document.getElementById('view-admin-plan').classList.contains('open')) {
+  setInterval(pollLiveRefresh, 20000); // Poll every 20 seconds
+})();
+
+async function pollLiveRefresh() {
+  try {
+    const [sessions, players] = await Promise.all([
+      apiFetch('GET', '/sessions'),
+      apiFetch('GET', '/players')
+    ]);
+    const raw = JSON.stringify(sessions.map(s => [
+      s.id, s.date, s.timeStart, s.timeEnd, s.courts, s.waitlist,
+      s.disabledCourts, s.cancelled, s.charged, s.billingDeferred,
+      s.note, s.location, s.price, s.cancelHours, s.name, s.courtNames
+    ]));
+    if (raw === window._lastPollRaw && JSON.stringify(players) === window._lastPollPlayers) return;
+    window._lastPollRaw = raw;
+    window._lastPollPlayers = JSON.stringify(players);
+    S.players = players.map(p => ({
+      ...p,
+      admin: p.admin === 1,
+      active: p.active !== 0,
+      totalDeposits: parseFloat(p.total_deposits || 0),
+      lastLogin: p.last_login,
+      lastInteraction: p.last_interaction
+    }));
+    S.sessions = sessions.map(s => ({
+      ...s,
+      id: s.id,
+      date: s.date,
+      charged: !!s.charged,
+      billingDeferred: !!s.billingDeferred,
+      disabledCourts: s.disabledCourts || [],
+      waitlist: s.waitlist || [],
+      courts: s.courts || [],
+      note: s.note || '',
+      cancelled: !!s.cancelled,
+      timeStart: s.timeStart || null,
+      timeEnd: s.timeEnd || null,
+      location: s.location || null,
+      price: s.price !== null && s.price !== undefined ? parseFloat(s.price) : null,
+      cancelHours: s.cancelHours !== null && s.cancelHours !== undefined ? parseFloat(s.cancelHours) : null,
+      name: s.name || null,
+      courtNames: s.courtNames || []
+    }));
+    window._dbSessionDates = new Set(S.sessions.map(s => s.date));
+    renderSessions();
+    if (isAdmin) {
+      updateBillingBadge();
+      if (document.getElementById('view-admin-plan')?.classList.contains('active')) {
         renderAdminPlan();
       }
-    } catch(e) {
-      // Ignore errors to avoid spam
+      if (document.getElementById('view-billing')?.classList.contains('active')) {
+        renderBilling();
+      }
     }
-  }, 20000); // Poll every 20 seconds
-})();
+  } catch(e) {
+    // Ignore errors to avoid spam
+  }
+}
 
 
 async function adminDoAddWl(date, pid) {
