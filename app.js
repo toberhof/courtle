@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:518
-const CLIENT_BUILD = 518;
+// built:519
+const CLIENT_BUILD = 519;
 let S = {
   players: [],
   transactions: [],
@@ -106,8 +106,8 @@ async function apiFetch(method, path, body, sendToken = true) {
 
 async function persistSession(sess, interactionPids = []) {
   try {
-    const id = sess.id || sess.date;
-    const res = await apiFetch('PUT', '/sessions/' + id, {
+    const prevId = sess.id || sess.date;
+    const res = await apiFetch('PUT', '/sessions/' + prevId, {
       id: sess.id,
       date: sess.date,
       courts: sess.courts,
@@ -122,8 +122,11 @@ async function persistSession(sess, interactionPids = []) {
       price:     sess.price     ?? null,
       name:      sess.name      ?? null,
     });
-    if (res && res.id) sess.id = res.id;
-    const idx = S.sessions.findIndex(s => (s.id && s.id === sess.id) || (s.date === sess.date && s.id === sess.id));
+    if (res && res.id) {
+      sess.id = res.id;
+      if (typeof planDate !== 'undefined' && planDate === prevId) planDate = res.id;
+    }
+    const idx = S.sessions.findIndex(s => (s.id && (s.id === sess.id || s.id === prevId)) || (s.date === sess.date && s.id === sess.id));
     if (idx >= 0) S.sessions[idx] = sess; else S.sessions.push(sess);
   } catch(e) {
     throw e; // ← weiterwerfen damit Aufrufer (leaveSession etc.) reagieren kann
@@ -566,9 +569,11 @@ function getOrSess(idOrDate) {
     S.sessions.push(s);
   }
 
-  // Fehlende Courts auffüllen
-  const minCourts = s.courts?.length || S.cfg.courts || 2;
-  while (s.courts && s.courts.length < minCourts) s.courts.push([null, null, null, null]);
+  // Fehlende Courts/Slots nur bei undefiniertem Array initialisieren (0 Courts nach Löschen respektieren)
+  if (!Array.isArray(s.courts)) {
+    const fallbackCourts = parseInt(S.cfg.courts, 10) || 2;
+    s.courts = Array(fallbackCourts).fill(null).map(() => [null, null, null, null]);
+  }
   if (s.courts) {
     for (var ci = 0; ci < s.courts.length; ci++) {
       while (s.courts[ci].length < 4) s.courts[ci].push(null);
@@ -3322,6 +3327,7 @@ async function deleteCourt(date, ci) {
       }
       sess.disabledCourts = sess.disabledCourts.filter(i => i !== ci).map(i => i > ci ? i - 1 : i);
       await persistSession(sess);
+      await loadState();
       renderAdminPlan(); renderSessions();
       showToast(t('toast.court_deleted', { n: courtNum }));
     }

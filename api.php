@@ -136,6 +136,10 @@ function db(): PDO {
     if ($ver < 7) {
         migrate_v7_player_notify_billing_deposit($pdo);
     }
+    $ver = (int)$pdo->query("SELECT value FROM config WHERE key='schema_version'")->fetchColumn();
+    if ($ver < 8) {
+        migrate_v8_session_courts_count($pdo);
+    }
     return $pdo;
 }
 
@@ -150,6 +154,7 @@ function handle_system_init(): void {
     migrate_v5_expense_sessions($db);
     migrate_v6_player_notify_email($db);
     migrate_v7_player_notify_billing_deposit($db);
+    migrate_v8_session_courts_count($db);
     json_out(['ok' => true, 'message' => 'Datenbank-Struktur erfolgreich geprüft und aktualisiert.']);
 }
 
@@ -239,7 +244,8 @@ function init_db(PDO $db): void {
         cancel_hours REAL DEFAULT NULL,
         name TEXT DEFAULT NULL,
         court_names TEXT,
-        billing_deferred INTEGER DEFAULT 0
+        billing_deferred INTEGER DEFAULT 0,
+        courts_count INTEGER DEFAULT NULL
     )");
     
     $db->exec("CREATE TABLE IF NOT EXISTS courts (
@@ -338,7 +344,8 @@ function init_db(PDO $db): void {
         "ALTER TABLE sessions ADD COLUMN court_names TEXT",
         "ALTER TABLE series ADD COLUMN court_names TEXT",
         "ALTER TABLE transactions ADD COLUMN session_id TEXT DEFAULT NULL",
-        "ALTER TABLE sessions ADD COLUMN billing_deferred INTEGER DEFAULT 0"
+        "ALTER TABLE sessions ADD COLUMN billing_deferred INTEGER DEFAULT 0",
+        "ALTER TABLE sessions ADD COLUMN courts_count INTEGER DEFAULT NULL"
     ];
 
     foreach ($migrations as $sql) {
@@ -444,6 +451,11 @@ function migrate_v7_player_notify_billing_deposit(PDO $db): void {
     try { $db->exec("ALTER TABLE players ADD COLUMN notify_charge INTEGER DEFAULT 0"); } catch (Throwable $e) {}
     try { $db->exec("ALTER TABLE players ADD COLUMN notify_deposit INTEGER DEFAULT 0"); } catch (Throwable $e) {}
     $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', '7')")->execute();
+}
+
+function migrate_v8_session_courts_count(PDO $db): void {
+    try { $db->exec("ALTER TABLE sessions ADD COLUMN courts_count INTEGER DEFAULT NULL"); } catch (Throwable $e) {}
+    $db->prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', '8')")->execute();
 }
 
 function migrate_v3_tx_session_link(PDO $db): void {
@@ -2149,6 +2161,7 @@ function handle_sessions_list(): void {
     if ($totalPrivacy && !token_valid()) {
         json_out([]);
     }
+    $defaultCourts = intval($db->query("SELECT value FROM config WHERE key='courts'")->fetchColumn() ?: 2);
     $rows = $db->query("SELECT * FROM sessions ORDER BY date ASC, time_start ASC, id ASC")->fetchAll();
     $out  = [];
     foreach ($rows as $s) {
@@ -2164,7 +2177,12 @@ function handle_sessions_list(): void {
         foreach ($courts as &$c) ksort($c);
         
         $maxCourtIdx = !empty($courts) ? max(array_keys($courts)) + 1 : 0;
-        $numCourts = max($maxCourtIdx, intval($db->query("SELECT value FROM config WHERE key='courts'")->fetchColumn() ?: 2));
+        $explicitCourtsCount = array_key_exists('courts_count', $s) && $s['courts_count'] !== null
+            ? (int)$s['courts_count']
+            : null;
+        $numCourts = $explicitCourtsCount !== null
+            ? max($maxCourtIdx, $explicitCourtsCount)
+            : max($maxCourtIdx, $defaultCourts);
         $fullCourts = [];
         for ($ci = 0; $ci < $numCourts; $ci++) {
             for ($si = 0; $si < 4; $si++) {
@@ -2306,8 +2324,17 @@ function handle_session_update(string $idOrDate): void {
 
     // Upsert session row if not exists
     if (!$sess) {
-        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
-            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, ?)")
+        $initialCourtsCount = null;
+        if (isset($b['courts']) && is_array($b['courts'])) {
+            $initialCourtsCount = count($b['courts']);
+        } else {
+            $matchedSeries = get_series_for_date($db, $sessDate, $b['timeStart'] ?? null);
+            if ($matchedSeries && isset($matchedSeries['courts'])) {
+                $initialCourtsCount = (int)$matchedSeries['courts'];
+            }
+        }
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred, courts_count)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)")
            ->execute([
                $sessId,
                $sessDate,
@@ -2318,7 +2345,8 @@ function handle_session_update(string $idOrDate): void {
                isset($b['cancelHours']) && $b['cancelHours'] !== null ? (float)$b['cancelHours'] : null,
                $b['name'] ?? null,
                isset($b['courtNames']) && is_array($b['courtNames']) ? json_encode(array_values($b['courtNames'])) : '[]',
-               !empty($b['billingDeferred']) ? 1 : 0
+               !empty($b['billingDeferred']) ? 1 : 0,
+               $initialCourtsCount
            ]);
     }
 
@@ -2385,6 +2413,9 @@ function handle_session_update(string $idOrDate): void {
 
     $manualPromotions = [];
     if (isset($b['courts'])) {
+        if (is_array($b['courts'])) {
+            $db->prepare("UPDATE sessions SET courts_count=? WHERE id=?")->execute([count($b['courts']), $sessId]);
+        }
         // Get old courts for comparison
         $stmt_old = $db->prepare("SELECT court_index, slot_index, player_id FROM courts WHERE session_id=?");
         $stmt_old->execute([$sessId]);
@@ -3072,7 +3103,7 @@ function handle_import(): void {
     }
     foreach (($b['sessions'] ?? []) as $s) {
         $sessId = $s['id'] ?? uuid_v4();
-        $db->prepare("INSERT OR IGNORE INTO sessions (id,date,charged,disabled_courts,waitlist,note,time_start,time_end,cancelled,location,price,cancel_hours,name,court_names,billing_deferred) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+        $db->prepare("INSERT OR IGNORE INTO sessions (id,date,charged,disabled_courts,waitlist,note,time_start,time_end,cancelled,location,price,cancel_hours,name,court_names,billing_deferred,courts_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
             ->execute([
                 $sessId,
                 $s['date'],
@@ -3088,7 +3119,8 @@ function handle_import(): void {
                 isset($s['cancel_hours']) && $s['cancel_hours'] !== null ? (float)$s['cancel_hours'] : null,
                 $s['name'] ?? null,
                 $s['court_names'] ?? '[]',
-                !empty($s['billing_deferred']) ? 1 : 0
+                !empty($s['billing_deferred']) ? 1 : 0,
+                isset($s['courts_count']) && $s['courts_count'] !== null ? (int)$s['courts_count'] : null
             ]);
     }
     foreach (($b['courts'] ?? []) as $c) {
@@ -3171,8 +3203,19 @@ function handle_session_book(string $idOrDate): void {
     if ($sess && $sess['charged']) err('This session has already been charged.', 403);
     if ($sess && $sess['cancelled']) err('This session is cancelled.', 403);
 
+    if ($sess && isset($sess['courts_count']) && $sess['courts_count'] !== null) {
+        if ((int)$ci < 0 || (int)$ci >= (int)$sess['courts_count']) {
+            err('Invalid court index.', 400);
+        }
+    }
+
     $date = $sess ? $sess['date'] : ($b['date'] ?? (preg_match('/^\d{4}-\d{2}-\d{2}$/', $idOrDate) ? $idOrDate : date('Y-m-d')));
     $sessId = $sess ? $sess['id'] : (is_uuid($idOrDate) ? $idOrDate : uuid_v4());
+
+    $series = null;
+    if (!$sess) {
+        $series = get_series_for_date($db, $date, $b['timeStart'] ?? null);
+    }
 
     // If session does not exist yet in DB, validate that it is an allowed upcoming series date
     if (!$sess && !token_valid(true)) {
@@ -3180,7 +3223,6 @@ function handle_session_book(string $idOrDate): void {
         if ($date < $today) {
             err('Cannot book past dates.', 400);
         }
-        $series = get_series_for_date($db, $date, $b['timeStart'] ?? null);
         if (!$series) {
             err('Session date is not part of an active series.', 400);
         }
@@ -3202,10 +3244,12 @@ function handle_session_book(string $idOrDate): void {
         $name = $b['name'] ?? ($series['name'] ?? null);
         $hasCustomCourtNames = isset($b['courtNames']) && is_array($b['courtNames']) && count(array_filter($b['courtNames'], fn($v) => trim((string)$v) !== '')) > 0;
         $cn = $hasCustomCourtNames ? json_encode(array_values($b['courtNames'])) : ($series['court_names'] ?? '[]');
+        $defaultCourts = (int)($db->query("SELECT value FROM config WHERE key='courts'")->fetchColumn() ?: 2);
+        $initialCourtsCount = max((int)$ci + 1, (int)($series['courts'] ?? $defaultCourts));
 
-        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
-            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, 0)")
-           ->execute([$sessId, $date, $timeStart, $timeEnd, $loc, $pr, $ch, $name, $cn]);
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred, courts_count)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, 0, ?)")
+           ->execute([$sessId, $date, $timeStart, $timeEnd, $loc, $pr, $ch, $name, $cn, $initialCourtsCount]);
     }
 
     $stmt = $db->prepare("SELECT player_id FROM courts WHERE session_id=? AND court_index=? AND slot_index=?");
@@ -3345,7 +3389,15 @@ function handle_session_leave(string $idOrDate): void {
 
     if ($autoCompact) {
         $disabledCourts = json_decode($sess['disabled_courts'] ?? '[]', true) ?: [];
-        $numCourts = (int)($db->query("SELECT value FROM config WHERE key='courts'")->fetchColumn() ?: 2);
+        $stmtMaxC = $db->prepare("SELECT MAX(court_index) FROM courts WHERE session_id=?");
+        $stmtMaxC->execute([$sessId]);
+        $maxC = $stmtMaxC->fetchColumn();
+        $maxCourtIdx = ($maxC !== false && $maxC !== null) ? ((int)$maxC + 1) : 0;
+        if (isset($sess['courts_count']) && $sess['courts_count'] !== null) {
+            $numCourts = max($maxCourtIdx, (int)$sess['courts_count']);
+        } else {
+            $numCourts = max($maxCourtIdx, (int)($db->query("SELECT value FROM config WHERE key='courts'")->fetchColumn() ?: 2));
+        }
 
         // Aktive Courts in Reihenfolge ermitteln
         $activeCourtIndices = [];
@@ -3446,17 +3498,20 @@ function handle_session_join_waitlist(string $idOrDate): void {
     $date = $sess ? $sess['date'] : ($b['date'] ?? (preg_match('/^\d{4}-\d{2}-\d{2}$/', $idOrDate) ? $idOrDate : date('Y-m-d')));
     $sessId = $sess ? $sess['id'] : (is_uuid($idOrDate) ? $idOrDate : uuid_v4());
 
+    $series = null;
     if ($sess) {
         if ($sess['charged']) err('This session has already been charged.', 403);
         if ($sess['cancelled']) err('This session is cancelled.', 403);
-    } elseif (!token_valid(true)) {
-        $today = date('Y-m-d');
-        if ($date < $today) {
-            err('Cannot join waitlist for past dates.', 400);
-        }
+    } else {
         $series = get_series_for_date($db, $date, $b['timeStart'] ?? null);
-        if (!$series) {
-            err('Session date is not part of an active series.', 400);
+        if (!token_valid(true)) {
+            $today = date('Y-m-d');
+            if ($date < $today) {
+                err('Cannot join waitlist for past dates.', 400);
+            }
+            if (!$series) {
+                err('Session date is not part of an active series.', 400);
+            }
         }
     }
 
@@ -3471,10 +3526,11 @@ function handle_session_join_waitlist(string $idOrDate): void {
         $name = $b['name'] ?? ($series['name'] ?? null);
         $hasCustomCourtNames = isset($b['courtNames']) && is_array($b['courtNames']) && count(array_filter($b['courtNames'], fn($v) => trim((string)$v) !== '')) > 0;
         $cn = $hasCustomCourtNames ? json_encode(array_values($b['courtNames'])) : ($series['court_names'] ?? '[]');
+        $initialCourtsCount = (int)($series['courts'] ?? ($db->query("SELECT value FROM config WHERE key='courts'")->fetchColumn() ?: 2));
 
-        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred)
-            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, 0)")
-           ->execute([$sessId, $date, $timeStart, $timeEnd, $loc, $pr, $ch, $name, $cn]);
+        $db->prepare("INSERT INTO sessions (id, date, charged, disabled_courts, waitlist, note, time_start, time_end, cancelled, location, price, cancel_hours, name, court_names, billing_deferred, courts_count)
+            VALUES (?, ?, 0, '[]', '[]', '', ?, ?, 0, ?, ?, ?, ?, ?, 0, ?)")
+           ->execute([$sessId, $date, $timeStart, $timeEnd, $loc, $pr, $ch, $name, $cn, $initialCourtsCount]);
     }
 
     $stmt = $db->prepare("SELECT waitlist FROM sessions WHERE id=?");

@@ -544,6 +544,57 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('.court-sep button.btn-dan').last()).toBeVisible();
   });
 
+  test('17b — Deleted court on manually created session stays deleted after reload', async ({ page }) => {
+    await navigateAdmin(page, 'admin-plan');
+    await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
+    await page.waitForTimeout(400);
+
+    // Create a new manual session for 5 days from now
+    await page.click('button:has-text("Neue Session")');
+    await expect(page.locator('#mo-add-session')).toHaveClass(/open/);
+
+    const future = new Date();
+    future.setDate(future.getDate() + 5);
+    const futureDate = future.toISOString().split('T')[0];
+
+    await page.fill('#add-sess-date', futureDate);
+    await page.fill('#add-sess-start', '18:00');
+    await page.fill('#add-sess-end', '20:00');
+    await page.locator('#mo-add-session .btn-pri').click();
+    await expect(page.locator('#mo-add-session')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Select the new session and verify 2 courts exist (from config.courts = 2)
+    await page.locator(`#plan-strip .plan-chip[data-date="${futureDate}"]`).first().click();
+    await page.waitForTimeout(400);
+    await expect(page.locator('#plan-slots-editor .court-sep')).toHaveCount(2);
+
+    // Deactivate Court 2
+    await page.locator('#plan-slots-editor .court-sep').last().locator('button.btn-dan').click();
+    const delModal = page.locator('#mo-del-court');
+    await expect(delModal).toHaveClass(/open/);
+    await delModal.locator('.btn-dan').click();
+    await expect(delModal).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Delete Court 2 permanently via trash button
+    await page.locator('#plan-slots-editor .court-sep').last().locator('button.btn-dan:has(svg), #plan-slots-editor .court-sep button.btn-dan').last().click();
+    const confirmModal = page.locator('#mo-confirm');
+    await expect(confirmModal).toHaveClass(/open/);
+    await page.locator('#mo-confirm-btn').click();
+    await expect(confirmModal).not.toHaveClass(/open/, { timeout: 5000 });
+
+    await expect(page.locator('#plan-slots-editor .court-sep')).toHaveCount(1);
+
+    // Reload page, re-open Session Planner on that session, and verify Court 2 did NOT come back
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await navigateAdmin(page, 'admin-plan');
+    await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
+    await page.locator(`#plan-strip .plan-chip[data-date="${futureDate}"]`).first().click();
+    await page.waitForTimeout(400);
+
+    await expect(page.locator('#plan-slots-editor .court-sep')).toHaveCount(1);
+  });
+
   test('18 — Privacy Mode UI Toggle & Anonymous Card Display', async ({ page, request }) => {
     // Book tomorrow's session with a player and set custom location
     const pRes = await request.post('/api.php/players', {
