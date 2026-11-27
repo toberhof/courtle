@@ -21,6 +21,7 @@ Full E2E suite takes 6–7 min across 5 browsers; prefer targeted runs. Tests ru
 - `sw.js`: fetch-through service worker, no cache.
 - Migrations live in `init_db()`/`migrate_v*()`; `schema_version` in `config`. Add new migrations in both `db()` and `handle_system_init()`.
 - State changes: never mutate `S` directly in handlers; call API → `loadState()` → render helpers.
+- Live polling (`pollLiveRefresh()` in `app.js`): always preserve all API fields (spread `...s` + include flags like `billingDeferred`/`charged` in `_lastPollRaw`), update `getOrSess()`, and re-render `updateBillingBadge()` + any currently `.active` view across all menus.
 - Admin endpoints require an admin token.
 
 ## Conventions that differ from defaults

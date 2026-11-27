@@ -1,8 +1,8 @@
 // ════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════
-// built:516
-const CLIENT_BUILD = 516;
+// built:519
+const CLIENT_BUILD = 519;
 let S = {
   players: [],
   transactions: [],
@@ -106,8 +106,8 @@ async function apiFetch(method, path, body, sendToken = true) {
 
 async function persistSession(sess, interactionPids = []) {
   try {
-    const id = sess.id || sess.date;
-    const res = await apiFetch('PUT', '/sessions/' + id, {
+    const prevId = sess.id || sess.date;
+    const res = await apiFetch('PUT', '/sessions/' + prevId, {
       id: sess.id,
       date: sess.date,
       courts: sess.courts,
@@ -122,8 +122,11 @@ async function persistSession(sess, interactionPids = []) {
       price:     sess.price     ?? null,
       name:      sess.name      ?? null,
     });
-    if (res && res.id) sess.id = res.id;
-    const idx = S.sessions.findIndex(s => (s.id && s.id === sess.id) || (s.date === sess.date && s.id === sess.id));
+    if (res && res.id) {
+      sess.id = res.id;
+      if (typeof planDate !== 'undefined' && planDate === prevId) planDate = res.id;
+    }
+    const idx = S.sessions.findIndex(s => (s.id && (s.id === sess.id || s.id === prevId)) || (s.date === sess.date && s.id === sess.id));
     if (idx >= 0) S.sessions[idx] = sess; else S.sessions.push(sess);
   } catch(e) {
     throw e; // ← weiterwerfen damit Aufrufer (leaveSession etc.) reagieren kann
@@ -550,6 +553,7 @@ function getOrSess(idOrDate) {
       date: date,
       courts: Array(seriesCourts || 2).fill(null).map(() => [null,null,null,null]),
       charged: false,
+      billingDeferred: false,
       waitlist: [],
       disabledCourts: [],
       courtNames: seriesMatch?.courtNames ? [...seriesMatch.courtNames] : [],
@@ -565,9 +569,11 @@ function getOrSess(idOrDate) {
     S.sessions.push(s);
   }
 
-  // Fehlende Courts auffüllen
-  const minCourts = s.courts?.length || S.cfg.courts || 2;
-  while (s.courts && s.courts.length < minCourts) s.courts.push([null, null, null, null]);
+  // Fehlende Courts/Slots nur bei undefiniertem Array initialisieren (0 Courts nach Löschen respektieren)
+  if (!Array.isArray(s.courts)) {
+    const fallbackCourts = parseInt(S.cfg.courts, 10) || 2;
+    s.courts = Array(fallbackCourts).fill(null).map(() => [null, null, null, null]);
+  }
   if (s.courts) {
     for (var ci = 0; ci < s.courts.length; ci++) {
       while (s.courts[ci].length < 4) s.courts[ci].push(null);
@@ -1322,7 +1328,7 @@ function buildSessionCard(dateOrSess, isNextSession = false) {
           nameHtml = `<div class="slot-name slot-name-col">
             <div class="slot-guest-title">
               <span>${t('session.guest')}</span>
-              ${isMyGuest ? `<button onclick="removeGuestSlot('${sessId}',${ci},${si})" class="slot-guest-remove" title="${t('misc.guest')} entfernen">×</button>` : ''}
+              ${isMyGuest && !past && !sess.charged ? `<button onclick="openRemoveGuestConfirm('${sessId}',${ci},${si})" class="slot-guest-remove" title="${esc(t('leave.guest_title'))}">×</button>` : ''}
             </div>
             <div class="slot-guest-sub">${t('session.guest_of').replace('{name}', esc(p ? p.name : '?'))}</div>
           </div>`;
@@ -1596,8 +1602,12 @@ async function removeGuestSlot(idOrDate, ci, si) {
     await loadState();
     renderSessions();
     if (isAdmin) renderAdminPlan();
+    showToast(t('toast.guest_removed'));
   } catch(e) {
-    showToast((e && e.message) ? e.message : 'Fehler beim Entfernen des Gastes.');
+    await loadState();
+    renderSessions();
+    if (isAdmin) renderAdminPlan();
+    showToast((e && e.message) ? '❌ ' + e.message : t('toast.guest_removed_error'));
   }
 }
 
@@ -3317,6 +3327,7 @@ async function deleteCourt(date, ci) {
       }
       sess.disabledCourts = sess.disabledCourts.filter(i => i !== ci).map(i => i > ci ? i - 1 : i);
       await persistSession(sess);
+      await loadState();
       renderAdminPlan(); renderSessions();
       showToast(t('toast.court_deleted', { n: courtNum }));
     }
@@ -7312,51 +7323,65 @@ checkIOSInstallBanner();
   if (!guestId) setTimeout(openWelcomeModal, 350);
 
   // Simple polling for live refresh
-  setInterval(async () => {
-    try {
-      const [sessions, players] = await Promise.all([
-        apiFetch('GET', '/sessions'),
-        apiFetch('GET', '/players')
-      ]);
-      const raw = JSON.stringify(sessions.map(s => [s.id, s.date, s.timeStart, s.courts, s.waitlist, s.disabledCourts, s.cancelled, s.note, s.location, s.price, s.name]));
-      if (raw === window._lastPollRaw && JSON.stringify(players) === window._lastPollPlayers) return;
-      window._lastPollRaw = raw;
-      window._lastPollPlayers = JSON.stringify(players);
-      S.players = players.map(p => ({ 
-        ...p, 
-        admin: p.admin === 1, 
-        active: p.active !== 0,
-        totalDeposits: parseFloat(p.total_deposits || 0),
-        lastLogin: p.last_login,
-        lastInteraction: p.last_interaction
-      }));
-      S.sessions = sessions.map(s => ({
-        id: s.id,
-        date: s.date,
-        charged: !!s.charged,
-        disabledCourts: s.disabledCourts || [],
-        waitlist: s.waitlist || [],
-        courts: s.courts || [],
-        note: s.note || '',
-        cancelled: !!s.cancelled,
-        timeStart: s.timeStart || null,
-        timeEnd: s.timeEnd || null,
-        location: s.location || null,
-        price: s.price !== null && s.price !== undefined ? parseFloat(s.price) : null,
-        cancelHours: s.cancelHours !== null && s.cancelHours !== undefined ? parseFloat(s.cancelHours) : null,
-        name: s.name || null,
-        courtNames: s.courtNames || []
-      }));
-      window._dbSessionDates = new Set(S.sessions.map(s => s.date));
-      renderSessions();
-      if (isAdmin && document.getElementById('view-admin-plan').classList.contains('open')) {
+  setInterval(pollLiveRefresh, 20000); // Poll every 20 seconds
+})();
+
+async function pollLiveRefresh() {
+  try {
+    const [sessions, players] = await Promise.all([
+      apiFetch('GET', '/sessions'),
+      apiFetch('GET', '/players')
+    ]);
+    const raw = JSON.stringify(sessions.map(s => [
+      s.id, s.date, s.timeStart, s.timeEnd, s.courts, s.waitlist,
+      s.disabledCourts, s.cancelled, s.charged, s.billingDeferred,
+      s.note, s.location, s.price, s.cancelHours, s.name, s.courtNames
+    ]));
+    if (raw === window._lastPollRaw && JSON.stringify(players) === window._lastPollPlayers) return;
+    window._lastPollRaw = raw;
+    window._lastPollPlayers = JSON.stringify(players);
+    S.players = players.map(p => ({
+      ...p,
+      admin: p.admin === 1,
+      active: p.active !== 0,
+      totalDeposits: parseFloat(p.total_deposits || 0),
+      lastLogin: p.last_login,
+      lastInteraction: p.last_interaction
+    }));
+    S.sessions = sessions.map(s => ({
+      ...s,
+      id: s.id,
+      date: s.date,
+      charged: !!s.charged,
+      billingDeferred: !!s.billingDeferred,
+      disabledCourts: s.disabledCourts || [],
+      waitlist: s.waitlist || [],
+      courts: s.courts || [],
+      note: s.note || '',
+      cancelled: !!s.cancelled,
+      timeStart: s.timeStart || null,
+      timeEnd: s.timeEnd || null,
+      location: s.location || null,
+      price: s.price !== null && s.price !== undefined ? parseFloat(s.price) : null,
+      cancelHours: s.cancelHours !== null && s.cancelHours !== undefined ? parseFloat(s.cancelHours) : null,
+      name: s.name || null,
+      courtNames: s.courtNames || []
+    }));
+    window._dbSessionDates = new Set(S.sessions.map(s => s.date));
+    renderSessions();
+    if (isAdmin) {
+      updateBillingBadge();
+      if (document.getElementById('view-admin-plan')?.classList.contains('active')) {
         renderAdminPlan();
       }
-    } catch(e) {
-      // Ignore errors to avoid spam
+      if (document.getElementById('view-billing')?.classList.contains('active')) {
+        renderBilling();
+      }
     }
-  }, 20000); // Poll every 20 seconds
-})();
+  } catch(e) {
+    // Ignore errors to avoid spam
+  }
+}
 
 
 async function adminDoAddWl(date, pid) {
@@ -7467,21 +7492,30 @@ function shuffleTeams() {
 }
 
 let pendingLeaveId = null;
+let pendingLeaveGuestSlot = null;
 
-function openLeaveConfirm(idOrDate) {
+function openRemoveGuestConfirm(idOrDate, ci, si) {
+  openLeaveConfirm(idOrDate, { ci, si });
+}
+
+function openLeaveConfirm(idOrDate, guestSlot = null) {
   const sess = getOrSess(idOrDate);
   if (!sess) return;
-  if (!isWithinCancelWindow(sess)) {
+  if (!isAdmin && !isWithinCancelWindow(sess)) {
     const deadline = getCancelDeadline(sess);
     const deadlineStr = fmtDateTime(deadline);
     showToast(t('toast.leave_failed') + ' (' + t('session.cancel_deadline') + ' ' + t('session.until') + ': ' + deadlineStr + ')');
     return;
   }
   pendingLeaveId = sess.id || sess.date;
+  pendingLeaveGuestSlot = guestSlot || null;
+  const titleEl = document.getElementById('mo-leave-title');
+  if (titleEl) titleEl.textContent = guestSlot ? t('leave.guest_title') : t('leave.title');
   const hasWL = sess.waitlist && sess.waitlist.length > 0;
   const deadline = getCancelDeadline(sess);
   const deadlineStr = fmtDateTime(deadline);
-  let msg;
+  const deadlineHtml = '<span style="font-size:0.9em;opacity:0.7">' + esc(t('session.leave') + ' ' + t('session.possible') + ' ' + t('session.until') + ': ' + deadlineStr) + '</span>';
+  const descEl = document.getElementById('mo-leave-desc');
   if (hasWL) {
     const nextId = sess.waitlist[0];
     const isGuestWl = String(nextId).includes('|');
@@ -7500,23 +7534,29 @@ function openLeaveConfirm(idOrDate) {
       ? (willBeEmailed ? 'leave.warn_guest_notified' : 'leave.warn_guest')
       : (willBeEmailed ? 'leave.warn_notified' : 'leave.warn');
     const warnHtml = t(warnKey).replaceAll('%%N%%', nameTag);
-    document.getElementById('mo-leave-desc').innerHTML = (warnHtml + '<br><br><span style="font-size:0.9em;opacity:0.7">' + t('session.leave') + ' ' + t('session.possible') + ' ' + t('session.until') + ': ' + esc(deadlineStr) + '</span>');
+    descEl.innerHTML = guestSlot
+      ? esc(t('leave.guest_desc')) + '<br><br>' + warnHtml + '<br><br>' + deadlineHtml
+      : warnHtml + '<br><br>' + deadlineHtml;
     openMo('mo-leave-confirm');
     return;
-  } else {
-    msg = t('leave.desc') + '\n\n' + t('session.leave') + ' ' + t('session.possible') + ' ' + t('session.until') + ': ' + deadlineStr;
   }
-  document.getElementById('mo-leave-desc').textContent = msg;
+  descEl.innerHTML = esc(guestSlot ? t('leave.guest_desc') : t('leave.desc')) + '<br><br>' + deadlineHtml;
   openMo('mo-leave-confirm');
 }
 
-function confirmLeave() {
+async function confirmLeave() {
   closeMo('mo-leave-confirm');
-  if (pendingLeaveId) {
-    leaveSession(pendingLeaveId);
-    renderMyHistory();
-    pendingLeaveId = null;
+  const id = pendingLeaveId;
+  const guestSlot = pendingLeaveGuestSlot;
+  pendingLeaveId = null;
+  pendingLeaveGuestSlot = null;
+  if (!id) return;
+  if (guestSlot) {
+    await removeGuestSlot(id, guestSlot.ci, guestSlot.si);
+  } else {
+    await leaveSession(id);
   }
+  renderMyHistory();
 }
 
 let editTxId = null;

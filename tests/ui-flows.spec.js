@@ -544,6 +544,57 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     await expect(page.locator('.court-sep button.btn-dan').last()).toBeVisible();
   });
 
+  test('17b — Deleted court on manually created session stays deleted after reload', async ({ page }) => {
+    await navigateAdmin(page, 'admin-plan');
+    await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
+    await page.waitForTimeout(400);
+
+    // Create a new manual session for 5 days from now
+    await page.click('button:has-text("Neue Session")');
+    await expect(page.locator('#mo-add-session')).toHaveClass(/open/);
+
+    const future = new Date();
+    future.setDate(future.getDate() + 5);
+    const futureDate = future.toISOString().split('T')[0];
+
+    await page.fill('#add-sess-date', futureDate);
+    await page.fill('#add-sess-start', '18:00');
+    await page.fill('#add-sess-end', '20:00');
+    await page.locator('#mo-add-session .btn-pri').click();
+    await expect(page.locator('#mo-add-session')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Select the new session and verify 2 courts exist (from config.courts = 2)
+    await page.locator(`#plan-strip .plan-chip[data-date="${futureDate}"]`).first().click();
+    await page.waitForTimeout(400);
+    await expect(page.locator('#plan-slots-editor .court-sep')).toHaveCount(2);
+
+    // Deactivate Court 2
+    await page.locator('#plan-slots-editor .court-sep').last().locator('button.btn-dan').click();
+    const delModal = page.locator('#mo-del-court');
+    await expect(delModal).toHaveClass(/open/);
+    await delModal.locator('.btn-dan').click();
+    await expect(delModal).not.toHaveClass(/open/, { timeout: 5000 });
+
+    // Delete Court 2 permanently via trash button
+    await page.locator('#plan-slots-editor .court-sep').last().locator('button.btn-dan:has(svg), #plan-slots-editor .court-sep button.btn-dan').last().click();
+    const confirmModal = page.locator('#mo-confirm');
+    await expect(confirmModal).toHaveClass(/open/);
+    await page.locator('#mo-confirm-btn').click();
+    await expect(confirmModal).not.toHaveClass(/open/, { timeout: 5000 });
+
+    await expect(page.locator('#plan-slots-editor .court-sep')).toHaveCount(1);
+
+    // Reload page, re-open Session Planner on that session, and verify Court 2 did NOT come back
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await navigateAdmin(page, 'admin-plan');
+    await expect(page.locator('#view-admin-plan')).toHaveClass(/active/);
+    await page.locator(`#plan-strip .plan-chip[data-date="${futureDate}"]`).first().click();
+    await page.waitForTimeout(400);
+
+    await expect(page.locator('#plan-slots-editor .court-sep')).toHaveCount(1);
+  });
+
   test('18 — Privacy Mode UI Toggle & Anonymous Card Display', async ({ page, request }) => {
     // Book tomorrow's session with a player and set custom location
     const pRes = await request.post('/api.php/players', {
@@ -863,6 +914,44 @@ test.describe('UI E2E Suite — Admin & Feature Flows', () => {
     // Switch back to "Offen" tab and verify 2 items
     await page.click('#billing-tab-open');
     await expect(page.locator('#billing-content .billing-item')).toHaveCount(2);
+  });
+
+  test('26a — Billing view: deferred flag survives background polling and navigation from players view', async ({ page, request }) => {
+    const H = { 'Content-Type': 'application/json', 'X-Token': aToken };
+    const players = await (await request.get('/api.php/players')).json();
+    const alice = players.find(p => p.name === 'Alice');
+
+    const mk = async (date) => {
+      const r = await (await request.put('/api.php/sessions/new', { headers: H, data: { date, courts: [[null,null,null,null]], timeStart: '1900', timeEnd: '2100' } })).json();
+      const id = r.id || date;
+      await request.post(`/api.php/sessions/${id}/book`, { headers: H, data: { court_index: 0, slot_index: 0, player_id: alice.id } });
+      return id;
+    };
+    const s1 = await mk('2020-04-14');
+    await mk('2020-04-16');
+
+    await request.put(`/api.php/sessions/${s1}`, { headers: H, data: { billingDeferred: true } });
+
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('#nav-billing-count')).toHaveText('1');
+
+    await navigateAdmin(page, 'players');
+    await expect(page.locator('#view-players')).toHaveClass(/active/);
+
+    await page.evaluate(() => pollLiveRefresh());
+
+    await navigateAdmin(page, 'billing');
+    await expect(page.locator('#view-billing')).toHaveClass(/active/);
+
+    await expect(page.locator('#nav-billing-count')).toHaveText('1');
+    await expect(page.locator('#billing-tab-open')).toContainText('(1)');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+
+    await page.click('#billing-tab-deferred');
+    await expect(page.locator('#billing-content .billing-item')).toHaveCount(1);
+    await expect(page.locator('#billing-content .billing-item .badge')).toContainText('Zurückgestellt');
   });
 
   test('26b — Billing: mark player guests individually as directly paid', async ({ page, request }) => {
@@ -1488,6 +1577,110 @@ test.describe('UI E2E Suite — Public Booking Flow', () => {
     await expect(desc).not.toContainText('%%N%%');
     await expect(desc).toContainText('Ein Gast von Thomas');
     await expect(desc).toContainText('WhatsApp');
+  });
+
+  test('24 — Guest Removal Confirmation Modal with Waitlist Promotion', async ({ page, request }) => {
+    const pageErrors = [];
+    page.on('pageerror', err => pageErrors.push(err.message));
+
+    const players = await (await request.get('/api.php/players')).json();
+    const admin = players.find(p => p.name === 'Admin');
+    const alice = players.find(p => p.name === 'Alice');
+    const auth = await (await request.post('/api.php/auth', {
+      data: { player_id: admin.id, pin: '1111' },
+    })).json();
+    const H = { 'Content-Type': 'application/json', 'X-Token': auth.token };
+
+    const thomas = await (await request.post('/api.php/players', {
+      headers: H,
+      data: { name: 'Thomas', pin: '3333', admin: false },
+    })).json();
+
+    await request.put(`/api.php/sessions/${TOMORROW}`, {
+      headers: H,
+      data: {
+        courts: [[alice.id, `${alice.id}|g1`, null, null], [null, null, null, null]],
+        waitlist: [thomas.id],
+      },
+    });
+
+    // Login as Alice (PIN 2222)
+    await page.click('#player-pick-grid button:has-text("Alice")');
+    await expect(page.locator('#upin-overlay')).toHaveClass(/open/);
+    const key2 = page.locator('.pkey', { hasText: '2' }).first();
+    await key2.click(); await key2.click(); await key2.click(); await key2.click();
+    await expect(page.locator('#upin-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
+
+    await page.evaluate(async () => { await loadState(); renderSessions(); });
+
+    const removeGuestBtn = page.locator('.slot-guest-remove').first();
+    await expect(removeGuestBtn).toBeVisible({ timeout: 5000 });
+
+    // 1. Thomas has notify_email = 0 -> modal shows guest title/desc + WhatsApp waitlist warning
+    await removeGuestBtn.click();
+    const modal = page.locator('#mo-leave-confirm');
+    const title = page.locator('#mo-leave-title');
+    const desc = page.locator('#mo-leave-desc');
+    await expect(modal).toHaveClass(/open/);
+    await expect(title).toHaveText('Gast abmelden');
+    await expect(desc).toContainText('Bist du sicher, dass du deinen Gast abmelden möchtest?');
+    await expect(desc).not.toContainText('%%N%%');
+    await expect(desc).toContainText('Thomas');
+    await expect(desc).toContainText('WhatsApp');
+
+    // 2. Cancel keeps guest slot booked
+    await page.click('#mo-leave-confirm .btn-sec');
+    await expect(modal).not.toHaveClass(/open/);
+    await expect(removeGuestBtn).toBeVisible();
+
+    // 3. Thomas enables email notifications -> modal reflects automatic email
+    await request.put(`/api.php/players/${thomas.id}`, {
+      headers: H,
+      data: { contact: 'thomas@example.com', notify_email: 1 },
+    });
+    await page.evaluate(async () => { await loadState(); renderSessions(); });
+    await removeGuestBtn.click();
+    await expect(modal).toHaveClass(/open/);
+    await expect(desc).toContainText('automatisch per E-Mail');
+    await expect(desc).not.toContainText('WhatsApp');
+
+    // 4. Confirm removes guest slot and promotes Thomas while keeping Alice
+    await page.click('#mo-leave-confirm-btn');
+    await expect(modal).not.toHaveClass(/open/);
+    await expect(page.locator('.slot-guest-remove')).toHaveCount(0);
+
+    const sessionsAfter = await (await request.get('/api.php/sessions')).json();
+    const updatedSess = sessionsAfter.find(s => s.date === TOMORROW);
+    expect(updatedSess.waitlist).toEqual([]);
+    expect(updatedSess.courts[0]).toContain(alice.id);
+    expect(updatedSess.courts[0]).toContain(thomas.id);
+    expect(updatedSess.courts[0]).not.toContain(`${alice.id}|g1`);
+
+    // 5. Empty waitlist -> still shows confirmation modal without waitlist warning
+    await request.put(`/api.php/sessions/${TOMORROW}`, {
+      headers: H,
+      data: {
+        courts: [[alice.id, `${alice.id}|g1`, thomas.id, null], [null, null, null, null]],
+        waitlist: [],
+      },
+    });
+    await page.evaluate(async () => { await loadState(); renderSessions(); });
+    await expect(removeGuestBtn).toBeVisible({ timeout: 5000 });
+    await removeGuestBtn.click();
+    await expect(modal).toHaveClass(/open/);
+    await expect(title).toHaveText('Gast abmelden');
+    await expect(desc).toContainText('Bist du sicher, dass du deinen Gast abmelden möchtest?');
+    await expect(desc).not.toContainText('Warteliste');
+
+    await page.click('#mo-leave-confirm-btn');
+    await expect(modal).not.toHaveClass(/open/);
+    await expect(page.locator('.slot-guest-remove')).toHaveCount(0);
+
+    const sessionsFinal = await (await request.get('/api.php/sessions')).json();
+    const finalSess = sessionsFinal.find(s => s.date === TOMORROW);
+    expect(finalSess.courts[0]).toContain(alice.id);
+    expect(finalSess.courts[0]).not.toContain(`${alice.id}|g1`);
+    expect(pageErrors).toEqual([]);
   });
 
 });

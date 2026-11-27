@@ -1434,4 +1434,97 @@ test.describe('API Handler Integration Suite', () => {
     expect(outMail.text).toContain('Auslage (Erstattung)');
     expect(outMail.text).toContain('Neuer Kontostand: 30,00 €');
   });
+
+  test('27 — Deleted Session Courts Stay Deleted (courts_count persistence)', async ({ request }) => {
+    const admin = await (await request.post('/api.php/players', { data: { name: 'Admin', pin: '1111' } })).json();
+    const auth = await (await request.post('/api.php/auth', { data: { player_id: admin.id, pin: '1111' } })).json();
+    const H = { 'Content-Type': 'application/json', 'X-Token': auth.token };
+
+    await request.put('/api.php/config', { headers: H, data: { courts: '2', auto_compact_slots: '0' } });
+
+    const players = [];
+    for (let i = 1; i <= 5; i++) {
+      const p = await (await request.post('/api.php/players', { headers: H, data: { name: `P${i}`, pin: `${i}${i}${i}${i}` } })).json();
+      players.push(p);
+    }
+
+    // 1. Create manual session with 2 courts
+    const createRes = await request.put('/api.php/sessions/new', {
+      headers: H,
+      data: {
+        date: '2099-07-10',
+        timeStart: '18:00',
+        timeEnd: '20:00',
+        courts: [[null, null, null, null], [null, null, null, null]]
+      }
+    });
+    expect(createRes.ok()).toBeTruthy();
+    const { id: sessId } = await createRes.json();
+
+    let sess = (await (await request.get('/api.php/sessions')).json()).find(s => s.id === sessId);
+    expect(sess.courts.length).toBe(2);
+
+    // 2. Delete 1 court -> should persist as 1 court, NOT be padded back to 2
+    const delOneRes = await request.put(`/api.php/sessions/${sessId}`, {
+      headers: H,
+      data: { courts: [[null, null, null, null]] }
+    });
+    expect(delOneRes.ok()).toBeTruthy();
+
+    sess = (await (await request.get('/api.php/sessions')).json()).find(s => s.id === sessId);
+    expect(sess.courts.length).toBe(1);
+
+    // 3. Partial update without courts should keep courts.length === 1
+    await request.put(`/api.php/sessions/${sessId}`, {
+      headers: H,
+      data: { note: 'Nur 1 Court' }
+    });
+    sess = (await (await request.get('/api.php/sessions')).json()).find(s => s.id === sessId);
+    expect(sess.courts.length).toBe(1);
+    expect(sess.note).toBe('Nur 1 Court');
+
+    // 4. Booking on deleted court_index 1 should fail with 400 and not resurrect court
+    const badBookRes = await request.post(`/api.php/sessions/${sessId}/book`, {
+      headers: H,
+      data: { court_index: 1, slot_index: 0, player_id: players[0].id }
+    });
+    expect(badBookRes.status()).toBe(400);
+    sess = (await (await request.get('/api.php/sessions')).json()).find(s => s.id === sessId);
+    expect(sess.courts.length).toBe(1);
+
+    // 5. Enable auto_compact_slots, fill Court 0 + waitlist, leave -> Court 1 must NOT be recreated
+    await request.put('/api.php/config', { headers: H, data: { auto_compact_slots: '1' } });
+    for (let si = 0; si < 4; si++) {
+      const br = await request.post(`/api.php/sessions/${sessId}/book`, {
+        headers: H,
+        data: { court_index: 0, slot_index: si, player_id: players[si].id }
+      });
+      expect(br.ok()).toBeTruthy();
+    }
+    const wlRes = await request.post(`/api.php/sessions/${sessId}/join-waitlist`, {
+      headers: H,
+      data: { player_id: players[4].id }
+    });
+    expect(wlRes.ok()).toBeTruthy();
+
+    const leaveRes = await request.post(`/api.php/sessions/${sessId}/leave`, {
+      headers: H,
+      data: { player_id: players[1].id }
+    });
+    expect(leaveRes.ok()).toBeTruthy();
+
+    sess = (await (await request.get('/api.php/sessions')).json()).find(s => s.id === sessId);
+    expect(sess.courts.length).toBe(1);
+    expect(sess.courts[0]).toEqual([players[0].id, players[2].id, players[3].id, players[4].id]);
+    expect(sess.waitlist).toEqual([]);
+
+    // 6. Delete remaining court -> 0 courts, then add 1 back -> 1 court
+    await request.put(`/api.php/sessions/${sessId}`, { headers: H, data: { courts: [] } });
+    sess = (await (await request.get('/api.php/sessions')).json()).find(s => s.id === sessId);
+    expect(sess.courts.length).toBe(0);
+
+    await request.put(`/api.php/sessions/${sessId}`, { headers: H, data: { courts: [[null, null, null, null]] } });
+    sess = (await (await request.get('/api.php/sessions')).json()).find(s => s.id === sessId);
+    expect(sess.courts.length).toBe(1);
+  });
 });
